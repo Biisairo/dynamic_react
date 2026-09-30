@@ -1,8 +1,8 @@
 # adapters — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.2 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D2, D14, D15, R8, R9)
+- 버전: 0.3 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D2, D14, D15, R8, R9, R11, R12)
 - 의존 명세: `L0_core/contract/SPEC.md`
 - 사용하는 쪽: `L1_inject/sets/SPEC.md`
 
@@ -14,12 +14,13 @@
 `model.call` step 에 주입되는 **모델 방언 어댑터**와, `model.select` 가 쓰는 **모델 카탈로그**를 정의한다. 어댑터는 contract 의 중립 `Request` 를 provider 방언으로 바꿔 보내고, 응답 스트림을 contract `StreamEvent` 로 되돌린다. API 가 바뀌면 이 레이어만 고친다 (07 문서 2.8).
 
 ### 1.2 범위
-- 포함 (D15): Anthropic Messages, OpenAI Chat Completions (및 호환 서버: OpenAI, OpenRouter, vLLM, llama.cpp, Ollama 의 OpenAI 호환 엔드포인트), 에러 분류, usage 정규화, stop reason 매핑, 모델 카탈로그, API 키 해석.
-- 제외: OpenAI Responses, Gemini, Bedrock (다음 단계). 재시도·fallback 판단 (sets). 토큰 추정 (sets).
+- 포함 (D15): 방언 3종 — Anthropic Messages, OpenAI Chat Completions(호환 서버 포함), OpenAI Responses. provider 프로필(3.4), 에러 분류, usage 정규화, stop reason 매핑, 동적 모델 카탈로그(3.6), API 키 해석.
+- 제외: Gemini, Bedrock, Azure, Mistral 자체 API (다음 단계). 구독 요금제 엔드포인트 (AD-C1). 재시도·fallback 판단 (sets). 토큰 추정 (sets).
 
 ### 1.3 참조
-- `hermes_study/analysis/05-provider-wire-formats.md` 2장(Anthropic), 3장(Chat Completions), 7장(비교표), 8장(형식 간 이동)
-- pi 구현: `pi-mono/packages/ai/src/api/anthropic-messages.ts`, `openai-completions.ts`, `utils/overflow.ts`
+- `hermes_study/analysis/05-provider-wire-formats.md` 2장(Anthropic), 3장(Chat Completions), 4장(Responses), 7장(비교표), 8장(형식 간 이동)
+- pi 구현: `pi-mono/packages/ai/src/api/anthropic-messages.ts`, `openai-completions.ts`, `openai-responses*.ts`, `providers/*.ts`(프로필 원본), `utils/overflow.ts`
+- Anthropic Models API (`GET /v1/models/{id}`: `max_input_tokens`, `max_tokens`, `capabilities`), 현재 모델의 thinking 규칙 (adaptive + `output_config.effort`, `budget_tokens` 거부) — claude-api 참조 자료, 2026-09-25
 
 ---
 
@@ -28,11 +29,12 @@
 ### 2.1 제품 관점
 
 ```text
- sets: model.select ──► Catalog.Lookup(ref) -> ModelInfo
- sets: model.call   ──► adapters.Call(ctx, req) -> iter.Seq2[StreamEvent, error]
-                             │ route by req.Model.API
+ sets: model.select ──► client.Lookup(ctx, provider, id) -> ModelInfo   (dynamic, cached)
+ sets: model.call   ──► client.Call(ctx, req) -> iter.Seq2[StreamEvent, error]
+                             │ route by profile(req.Model.Provider).API
                              ├──► anthropic-messages
-                             └──► openai-chat  (+ compat profile per provider)
+                             ├──► openai-chat       (+ compat per profile)
+                             └──► openai-responses
                                      │
                                      ▼ net/http + SSE
                                  provider endpoint
@@ -41,7 +43,7 @@
 - 어댑터는 contract 만 보는 단독 LLM 클라이언트다 (R9). `ModelCallFn` 으로 감싸 `core.CallStream` 을 만드는 것은 sets 몫이다.
 
 ### 2.2 제약
-- AD-C1. provider 인증은 **API 키만** 지원한다. 구독 계정(Claude Pro/Max, ChatGPT 등)의 로그인·OAuth 토큰을 쓰는 경로를 구현하지 않는다. 키는 코드·로그·에러 메시지·트레이스에 노출하지 않는다.
+- AD-C1. provider 인증은 **API 키만** 지원한다. 구독 계정(Claude Pro/Max, ChatGPT 등)의 로그인·OAuth 토큰을 쓰는 경로와 **구독 요금제 전용 엔드포인트**(pi 의 openai-codex, github-copilot, kimi-coding, *-token-plan*, zai-coding 등)를 내장하지 않는다. Anthropic 은 `ANTHROPIC_API_KEY` 만 읽는다 (`ANTHROPIC_AUTH_TOKEN`·OAuth 토큰 환경변수는 읽지 않는다). 키는 코드·로그·에러 메시지·트레이스에 노출하지 않는다.
 - AD-C2. API 키는 환경변수 또는 설정의 **환경변수 이름 참조**로만 받는다 (설정 파일에 키 값을 직접 쓰는 형식을 지원하지 않는다).
 - AD-C3. HTTP 는 Go 표준 `net/http` 와 자체 SSE 파서로 구현한다. 이유: Chat Completions 호환 서버의 방언 차이(05 문서 3장)를 SDK 없이 직접 흡수해야 하고, core 와 같은 무의존 원칙을 L1 에도 가능한 한 적용한다. (재검토 가능: 6장 O1)
 - AD-C4. 어댑터는 panic 하거나 스트림 도중 Go error 로 끝나지 않는다. 모든 실패는 contract `error` 이벤트(`CallError` 포함)로 끝낸다 (CT-FR-16).
@@ -55,7 +57,7 @@
 
 | id | 요구사항 |
 |---|---|
-| AD-FR-01 | `adapters.Call` 은 `Request.Model.API` 로 방언을 고른다 (`anthropic-messages`, `openai-chat`). 모르는 API 면 `error` 이벤트(`Class: invalid_request`) 하나로 끝나는 스트림을 돌려준다 |
+| AD-FR-01 | `Client.Call(ctx, req)` 는 `req.Model.Provider` 의 프로필(3.4)로 방언·base URL·키를 정한다. `req.Model.API` 가 비어 있지 않으면 프로필의 API 와 같아야 한다. 모르는 provider·API 면 `error` 이벤트(`Class: invalid_request`) 하나로 끝나는 스트림을 돌려준다 |
 | AD-FR-02 | ctx 가 취소되면 HTTP 요청·응답 본문을 닫고 `error` 이벤트(`Class: unknown`, 메시지 "aborted")로 끝낸다 |
 | AD-FR-03 | tool call id 는 `[a-zA-Z0-9_-]`, 64자 이하로 정규화한다. 다른 문자는 `_` 로 바꾼다. 정규화 전후 대응을 한 요청 안에서 일관되게 유지한다 |
 | AD-FR-04 | `ProviderData` 는 **같은 Provider·Model** 로 가는 요청에만 재전송하고, 아니면 버린다 (CT-FR-04). 서명 없는 thinking 블록은 text 로 바꿔 보낸다 (Anthropic) 또는 버린다 (Chat, 3.3 참조) |
@@ -71,8 +73,8 @@
 | AD-FR-09 | 도구 정의 `{name, description, input_schema}`. 도구 호출은 assistant 의 `tool_use{id, name, input(객체)}` 블록 |
 | AD-FR-10 | 도구 결과는 **user 메시지 안의 `tool_result{tool_use_id, content, is_error}`** 블록. 연속된 결과는 user 메시지 하나로 묶는다 |
 | AD-FR-11 | thinking 블록은 `{type:"thinking", thinking, signature}` 로 되돌려 보낸다 (signature = 같은 모델의 ProviderData). 가려진 추론은 opaque 블록 → `redacted_thinking{data}` |
-| AD-FR-12 | `Options.CacheHints` 는 해당 블록에 `cache_control:{type:"ephemeral"}` 로 붙인다 |
-| AD-FR-13 | `Options.Thinking` 이 있으면 `thinking` 파라미터를 보내고 `temperature` 는 보내지 않는다 |
+| AD-FR-12 | `Options.CacheHints` 는 가리키는 위치(system 블록 / 메시지)의 **마지막 블록**에 `cache_control:{type:"ephemeral"}` 로 붙인다. 메시지가 여러 방언 블록으로 나뉘면(도구 결과 묶음) 그 메시지에서 나온 마지막 블록 |
+| AD-FR-13 | `Options.Thinking`(level: `low`/`medium`/`high`/`xhigh`/`max`)이 비어 있으면 thinking 관련 필드를 보내지 않는다 (모델 기본값). 있으면: 카탈로그(3.6)가 그 모델의 `capabilities.thinking.types.adaptive` 를 지원한다고 하거나 capability 를 모르면 `thinking:{type:"adaptive"}` + `output_config:{effort: level}`. budget 방식만 지원하면 level 을 토큰 수로 환산하지 않고 `invalid_request` 로 끝낸다 — 그때는 `Options.Extra["thinking"]` 에 원문을 넣는다. 모르는 level 도 `invalid_request`. `Options.Extra` 의 키는 요청 최상위에 그대로 싣는다 (같은 키가 있으면 Extra 가 이긴다) |
 | AD-FR-14 | 스트림 이벤트 매핑: `message_start` → `start` + usage(입력 쪽), `content_block_start/delta/stop` → `text_delta` / `thinking_delta` / `toolcall_start` / `toolcall_delta`(input_json_delta) / `toolcall_end`(누적 JSON 파싱), `signature_delta` → thinking 의 ProviderData, `message_delta` → 최종 usage·stop reason, `message_stop` → `done` |
 | AD-FR-15 | usage: `input_tokens` → Input(이미 캐시 제외), `cache_read_input_tokens` → CacheRead, `cache_creation_input_tokens` → CacheWrite, `output_tokens` → Output. `message_delta` 에 input 이 없으면 `message_start` 값을 유지 |
 | AD-FR-16 | stop reason: `end_turn`·`stop_sequence`·`pause_turn` → stop, `max_tokens` → length, `tool_use` → tool_use, `refusal` → error. 모르는 값 → error (Raw 보존) |
@@ -94,12 +96,53 @@
 | AD-FR-27 | stop reason (`finish_reason`): `stop`·`end`·null → stop, `length` → length, `tool_calls`·`function_call` → tool_use, `content_filter` 외 → error |
 | AD-FR-28 | assistant 메시지에 content 도 tool_calls 도 없으면 보내지 않는다 (일부 서버가 거부) |
 
-### 3.4 compat 프로필
+### 3.3a OpenAI Responses (`POST {base}/responses`, SSE)
 
 | id | 요구사항 |
 |---|---|
-| AD-FR-29 | Chat Completions 의 서버별 차이는 `Compat` 구조체로 표현한다: `BaseURL`, `APIKeyEnv`, `SupportsDeveloperRole`, `SupportsUsageInStreaming`, `MaxTokensField`, `ThinkingFormat`, `ReasoningField`, `RequiresToolResultName` |
-| AD-FR-30 | 1차 내장 프로필: `openai`, `openrouter`, `vllm`, `llamacpp`, `ollama`. 프로필은 카탈로그(3.6)에서 provider 별로 연결된다 |
+| AD-FR-40 | 인증 `Authorization: Bearer <key>`. 본문 `stream: true`, `store: false`. 프로필이 `EncryptedReasoning` 이면 `include: ["reasoning.encrypted_content"]` |
+| AD-FR-41 | system 은 `input[0]` 의 `developer`(프로필 `SupportsDeveloperRole`) 또는 `system` 역할 메시지 |
+| AD-FR-42 | 도구 정의는 평평한 `{type:"function", name, description, parameters}` |
+| AD-FR-43 | 메시지 → item: user 텍스트·이미지 → `input_text`·`input_image`(data URL), assistant 텍스트 → `{type:"message", role:"assistant", content:[output_text]}`, thinking 블록(같은 provider·model 의 ProviderData) → `{type:"reasoning", id, summary:[summary_text], encrypted_content}`, tool_call 블록 → `{type:"function_call", id(블록 ProviderData 의 item id, 같은 모델일 때만), call_id, name, arguments(문자열)}`, 도구 결과 → `{type:"function_call_output", call_id, output}` (이미지가 있으면 output 은 `input_text`·`input_image` 배열) |
+| AD-FR-44 | `Options.Thinking` → `reasoning:{effort: level, summary:"auto"}`. `MaxOutputTokens` → `max_output_tokens`. ToolChoice `auto`/`none`/`required` → 문자열, `tool` → `{type:"function", name}`. CacheHints 는 보내지 않는다 (자동 캐시) |
+| AD-FR-45 | 스트림: `response.created` → start, `output_item.added`(reasoning / message / function_call) → 블록 시작(`toolcall_start` 포함), `reasoning_summary_text.delta` → thinking_delta, `output_text.delta` → text_delta, `refusal.delta` → text_delta + 최종 stop reason error, `function_call_arguments.delta` → toolcall_delta, `output_item.done` → reasoning 의 ProviderData(`{id, encrypted_content}`) 확정 / `toolcall_end`(ProviderData 에 item id). 이벤트 `Index` = `output_index` |
+| AD-FR-46 | 끝: `response.completed` → done (출력에 function_call 이 있으면 stop reason tool_use, 아니면 stop), `response.incomplete` → done (`max_output_tokens` 이면 length, 그 외 error), `response.failed`·`error` 이벤트 → error 이벤트 (`CallError` 는 3.5 로 분류, 코드 `context_length_exceeded` 는 overflow, `rate_limit_exceeded` 는 rate_limit) |
+| AD-FR-47 | usage: Input = `input_tokens − input_tokens_details.cached_tokens`, CacheRead = `cached_tokens`, Output = `output_tokens`, Reasoning = `output_tokens_details.reasoning_tokens` |
+
+### 3.4 provider 프로필
+
+| id | 요구사항 |
+|---|---|
+| AD-FR-29 | provider 는 `Profile` 로 표현한다: `API`(방언), `BaseURL`, `APIKeyEnv`(빈 값이면 인증 헤더 없음: 로컬 서버), `Lookup`(3.6 조회 방식), Chat·Responses 차이 `SupportsDeveloperRole`, `SupportsUsageInStreaming`, `MaxTokensField`, `ThinkingFormat`, `ReasoningField`, `RequiresToolResultName`, `EncryptedReasoning` |
+| AD-FR-30 | 내장 프로필 = pi 의 provider 중 1차 방언을 API 키로 쓰는 것 + 로컬 서버 (R12). 값의 원본은 pi `providers/*.ts` (base URL·키 환경변수). z.ai 는 일반 API(`https://api.z.ai/api/paas/v4`, 공식 문서 확인) |
+
+| provider | API | base URL | 키 환경변수 | Lookup |
+|---|---|---|---|---|
+| anthropic | anthropic-messages | `https://api.anthropic.com` | `ANTHROPIC_API_KEY` | anthropic |
+| minimax | anthropic-messages | `https://api.minimax.io/anthropic` | `MINIMAX_API_KEY` | none |
+| minimax-cn | anthropic-messages | `https://api.minimaxi.com/anthropic` | `MINIMAX_CN_API_KEY` | none |
+| fireworks | anthropic-messages | `https://api.fireworks.ai/inference` | `FIREWORKS_API_KEY` | none |
+| vercel-ai-gateway | anthropic-messages | `https://ai-gateway.vercel.sh` | `AI_GATEWAY_API_KEY` | none |
+| openai | openai-responses | `https://api.openai.com/v1` | `OPENAI_API_KEY` | none |
+| xai | openai-responses | `https://api.x.ai/v1` | `XAI_API_KEY` | none |
+| deepseek | openai-chat | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` | none |
+| zai | openai-chat | `https://api.z.ai/api/paas/v4` | `ZAI_API_KEY` | none |
+| xiaomi | openai-chat | `https://api.xiaomimimo.com/v1` | `XIAOMI_API_KEY` | none |
+| moonshotai | openai-chat | `https://api.moonshot.ai/v1` | `MOONSHOT_API_KEY` | none |
+| moonshotai-cn | openai-chat | `https://api.moonshot.cn/v1` | `MOONSHOT_API_KEY` | none |
+| openrouter | openai-chat | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | openrouter |
+| groq | openai-chat | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` | none |
+| cerebras | openai-chat | `https://api.cerebras.ai/v1` | `CEREBRAS_API_KEY` | none |
+| together | openai-chat | `https://api.together.ai/v1` | `TOGETHER_API_KEY` | none |
+| nvidia | openai-chat | `https://integrate.api.nvidia.com/v1` | `NVIDIA_API_KEY` | none |
+| huggingface | openai-chat | `https://router.huggingface.co/v1` | `HF_TOKEN` | none |
+| baseten | openai-chat | `https://inference.baseten.co/v1` | `BASETEN_API_KEY` | none |
+| ant-ling | openai-chat | `https://api.ant-ling.com/v1` | `ANT_LING_API_KEY` | none |
+| vllm | openai-chat | `http://localhost:8000/v1` | (없음) | vllm |
+| llamacpp | openai-chat | `http://localhost:8080/v1` | (없음) | llamacpp |
+| ollama | openai-chat | `http://localhost:11434/v1` | (없음) | ollama |
+
+Chat·Responses 차이 필드(developer 역할, usage 스트리밍, max tokens 필드, thinking 형식, 추론 필드)의 provider 별 값은 pi `api/openai-completions.ts` 의 compat 판별과 `providers/*.ts` 를 원본으로 삼는다. |
 | AD-FR-31 | 사용자 설정으로 프로필 값을 덮을 수 있다 (없는 provider 추가 포함) |
 
 ### 3.5 에러 분류
@@ -110,23 +153,32 @@
 | AD-FR-33 | overflow 문구 목록 (대소문자 무시): `prompt is too long`, `maximum context length`, `context_length_exceeded`, `context length exceeded`, `prompt too long; exceeded`, `input is too long`, `too many tokens`. 목록은 한 곳(상수)에 두고 테스트로 고정한다 |
 | AD-FR-34 | 에러 메시지·Raw 에 API 키나 Authorization 헤더 값이 들어가지 않게 제거한다 (AD-C1) |
 
-### 3.6 모델 카탈로그
+### 3.6 모델 카탈로그 (동적, R11)
 
 | id | 요구사항 |
 |---|---|
-| AD-FR-35 | `Catalog.Lookup(provider, id) (contract.ModelInfo, bool)` 을 제공한다 |
-| AD-FR-36 | 내장 카탈로그는 바이너리에 포함된 JSON 이다: provider → API, compat 프로필, 모델 목록(`id`, `contextWindow`, `maxOutputTokens`, capability) |
-| AD-FR-37 | 사용자 설정 파일(경로는 sets 가 넘김)이 내장 항목을 덮거나 추가한다. 모델 단위로 `contextWindow`, `maxOutputTokens`, capability 를 바꿀 수 있다 |
-| AD-FR-38 | 카탈로그에 없는 모델은 `ok=false`. 창 크기를 추측하지 않는다 — 기본값 판단은 sets 의 `model.select` 몫이다 |
-| AD-FR-39 | 1차는 원격 카탈로그 조회(models.dev 등)를 하지 않는다 |
+| AD-FR-35 | `Client.Lookup(ctx, provider, id) (contract.ModelInfo, bool)` 을 제공한다 |
+| AD-FR-36 | 내장 모델 목록은 없다. Lookup 은 프로필의 `Lookup` 방식으로 provider 의 조회 API 를 부른다: `anthropic` = `GET {base}/v1/models/{id}` (`max_input_tokens` → ContextWindow, `max_tokens` → MaxOutputTokens, `capabilities.image_input` → Vision, `capabilities.thinking` → Thinking, adaptive 여부는 AD-FR-13 에 씀) · `openrouter` = `GET {base}/models` (`context_length`, `top_provider.max_completion_tokens`, `architecture.input_modalities` 에 image, `reasoning` 존재) · `ollama` = `POST {host}/api/show {model}` (`model_info` 의 `*.context_length`, `capabilities` 의 vision·thinking) · `llamacpp` = `GET {host}/props` (`default_generation_settings.n_ctx`) · `vllm` = `GET {base}/models` 의 해당 모델 `max_model_len` (구현 시 문서로 필드 확인) · `none` = 조회하지 않음 |
+| AD-FR-37 | 사용자 설정(파일 경로는 sets 가 넘김)이 조회 결과를 모델 단위로 덮거나 추가한다: `contextWindow`, `maxOutputTokens`, capability. 조회 방식이 `none` 인 provider 의 창 크기는 이것으로만 정해진다 |
+| AD-FR-38 | 조회가 실패하거나 값을 주지 않고 사용자 설정도 없으면 해당 값은 0(모름)이다. 추측하지 않는다 — 기본값 판단은 sets 의 `model.select` 몫이다. 모델이 조회 결과에 없으면 `ok=false` |
+| AD-FR-39 | 조회 결과는 Client 값 안에 (provider, id) 별로 캐시한다. 실패는 캐시하지 않는다 (다음 Lookup 에서 다시 시도). 동시 Lookup 에 안전하다 |
 
 ### 3.7 비기능
 
 | id | 요구사항 |
 |---|---|
-| AD-NFR-01 | 05 문서 2·3장의 request JSON 예시를 중립 형식에서 **생성**하고, stream 예시를 **파싱**해 같은 의미가 되는지 골든 테스트로 고정한다 (CT-NFR-01 의 두 방언분) |
+| AD-NFR-01 | 05 문서 2·3·4장의 request JSON 예시를 중립 형식에서 **생성**하고, stream 예시를 **파싱**해 같은 의미가 되는지 골든 테스트로 고정한다 (CT-NFR-01 의 세 방언분). 2장의 thinking 은 AD-FR-13 의 새 형식으로 바꾼 값을 기대값으로 한다 |
 | AD-NFR-02 | 실제 provider 호출 테스트는 환경변수 키가 있을 때만 실행하고, 없으면 건너뛴다 (CI 기본은 건너뜀) |
 | AD-NFR-03 | `httptest` 가짜 서버로 SSE 스크립트를 재생하는 테스트가 모든 매핑(3.2~3.5)을 덮는다 |
+
+### 3.8 Go 표현
+
+| id | 요구사항 |
+|---|---|
+| AD-FR-48 | `adapters.New(Options{HTTPClient, Getenv, Now, Config}) *Client`. nil 이면 `http.DefaultClient`, `os.Getenv`, `time.Now`. `Client` 는 동시 사용에 안전하다 |
+| AD-FR-49 | `Config` JSON: `{"providers": {name: Profile 필드(부분 덮어쓰기·새 provider)}, "models": {"provider/id": {"contextWindow", "maxOutputTokens", "capabilities"}}}`. `LoadConfig(path)` 는 모르는 키를 에러로 거부한다. 키 **값**을 담는 필드는 없다 (AD-C2, 환경변수 이름만) |
+| AD-FR-50 | 키 환경변수가 비어 있으면 요청을 보내지 않고 `error` 이벤트(`Class: auth`, 메시지에 **환경변수 이름**만)로 끝낸다 |
+| AD-FR-51 | done 이벤트의 Message: `ID` = provider 응답 id(없으면 무작위), `Timestamp` = `Now()`, `Role` assistant, `Usage`·`StopReason` 채움 (contract CT-FR-17). 스트림 도중 받은 블록은 이벤트 `Index` 순서로 Content 가 된다 |
 
 ---
 
@@ -139,7 +191,9 @@
 | AD-FR-17~28 | 같음 + compat 프로필별 차이(developer 역할, include_usage, max_tokens 필드, thinking 형식, 추론 필드, 이미지 분리) |
 | AD-FR-29~31 | 프로필 덮어쓰기 |
 | AD-FR-32~34 | 상태 코드·본문 표 기반 테스트, 키 마스킹 |
-| AD-FR-35~39 | 내장·사용자 덮어쓰기·없는 모델 |
+| AD-FR-35~39 | httptest 조회 서버: 방식별 필드 매핑, 사용자 덮어쓰기, 실패 시 0·재시도, 캐시, 동시 Lookup |
+| AD-FR-40~47 | 골든(요청 생성) + httptest SSE 재생 |
+| AD-FR-30 | 표 대조 테스트, AD-C1 코드 검색(구독 엔드포인트·OAuth 환경변수 없음) |
 | AD-C1, C2 | 코드 검색 테스트: OAuth·구독 토큰 경로 없음, 설정 스키마에 키 값 필드 없음 |
 | AD-C5 | `go list -deps` 검사: contract·표준 라이브러리 외 없음 |
 
@@ -160,8 +214,8 @@
 
 | id | 내용 |
 |---|---|
-| O1 | 공식 Go SDK(anthropic-sdk-go, openai-go) 사용 여부. 1차는 net/http 직접 구현 (AD-C3) |
-| O2 | 내장 카탈로그의 초기 모델 목록 (구현 시 사용자에게 확인) |
+| O1 | 공식 Go SDK 사용 여부 → **net/http 직접 구현**으로 확정 (AD-C3, 사용자 진행 승인) |
+| O2 | ~~내장 모델 목록~~ → **동적 조회**로 확정 (R11, 사용자) |
 
 ---
 
@@ -170,3 +224,6 @@
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
 | 0.2 | adapters 가 inject 의 `ModelCallFn` 을 직접 제공하고 `core.CallStream` 을 돌려줌 (contract·core·inject 의존) | `Call(ctx, req) iter.Seq2[contract.StreamEvent, error]`, contract 만 의존 (AD-C5). 감싸기는 sets | R8·R9: 독립 모듈로 단독 사용 가능하게 |
+| 0.3 | 방언 2종, 내장 카탈로그(JSON), 프로필 5종 | 방언 3종(+Responses), 동적 카탈로그, pi 기반 프로필 23종 | 사용자: OpenAI·xAI 는 Responses, 모델은 매번 조회, pi 의 provider 기본 포함 |
+| 0.3 | AD-FR-13: thinking 이면 temperature 제외 | adaptive + effort, budget 전용 모델은 Extra | 현재 Anthropic 모델은 budget_tokens 를 400 으로 거부. 사용자 확정 |
+| 0.3 | AD-C1: API 키만 | + 구독 요금제 엔드포인트 미내장, Anthropic OAuth 환경변수 무시 | 자격증명 보호 |

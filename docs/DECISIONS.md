@@ -28,7 +28,7 @@
 | D12 | 서드파티 | ~~별도 프로세스(gRPC) 로더~~ → **서드파티도 같은 프로세스의 Go FunctionSet** 이다. 사용자는 세트를 고치거나 새로 만들어 `Bind` 로 겹친다. 런타임 격리·RPC 는 목표가 아니다 (impl-01 에서 사용자 정정) |
 | D13 | step 목록 | 고정하되 22개로 세분화 (L0_core/core/SPEC.md 3.1) |
 | D14 | 레이어 묶음 | `L0_core/{contract, core}` · `L1_inject/{inject, sets, adapters}` · `L2_ui/{surfaces}`. 주입(프레임워크 포함)은 사용자가 수정하는 영역이라 L1 |
-| D15 | 1차 구현 범위 | **L0 + L1 전체 = 실행 가능한 에이전트.** sets 는 `base` + `resilient`, adapters 는 Anthropic Messages + OpenAI Chat Completions |
+| D15 | 1차 구현 범위 | **L0 + L1 전체 = 실행 가능한 에이전트.** sets 는 `base` + `resilient`, adapters 는 Anthropic Messages + OpenAI Chat Completions + **OpenAI Responses** (impl-01 에서 Responses 추가, 사용자) |
 | D16 | 실행 진입점 | L2 전이라 검증용 최소 print CLI 를 L1 예제로 둔다 (`L1_inject/cmd/dr-print`). 본격 UI 는 L2 |
 
 ## 3. 스펙 작성 중 확정한 세부 (R)
@@ -47,3 +47,5 @@
 | R8 | **패키지 폴더마다 독립 Go 모듈**: `L0_core/contract`, `L0_core/core`, `L1_inject/inject`, `L1_inject/adapters`, `L1_inject/sets`, `L1_inject/cmd/dr-print` 가 각자 `go.mod` 를 가진다. 개발은 루트 `go.work` 로 묶는다. 버전 태그는 폴더 접두어(`L0_core/contract/v0.1.0`). 모듈 의존: contract ← core ← inject, contract ← adapters, sets → {contract, core, inject, adapters}, dr-print → sets 이하. 모듈 간 require 는 공개 전까지 `v0.0.0` + `replace => ../상대경로` (모듈 단독 `go mod tidy` 가능, replace 는 소비자에게 적용되지 않음). 공개 시 태그 버전으로 교체 | 사용자가 pi·omp 처럼 필요한 모듈만 골라 쓰고 교체할 수 있게. 의존 방향을 `go.mod` 가 강제 (CORE-NFR-01 이 구조로 보장) |
 | R9 | **adapters 는 contract 에만 의존**하는 단독 LLM 클라이언트다: `Call(ctx, req) iter.Seq2[contract.StreamEvent, error]`. 이것을 `ModelCallFn` 으로 감싸 `core.CallStream` 을 만드는 것은 sets 몫이다 | R8: 루프 없이 모델 호출만 쓰려는 사용자가 core·inject 를 받지 않게. 이전: adapters 가 inject 의 `ModelCallFn` 을 직접 제공 |
 | R10 | ~~원격 경계는 결정적 JSON~~ → 폐기 (D12 정정으로 원격 경계가 없음) | — |
+| R11 | 모델 카탈로그는 내장 목록 없이 provider 조회 API 로 동적 조회, Client 안에 캐시, 사용자 설정이 덮어씀. 조회로 알 수 없으면 0(모름) | 사용자: 수동으로 박지 말고 매번 가져오기 |
+| R12 | 내장 provider 프로필 = pi 의 provider 중 1차 방언 + API 키 방식인 것 + 로컬 서버. 구독 요금제 엔드포인트는 제외 | 사용자: pi 에 있는 것 기본 포함, claude·openai·z.ai·deepseek·xiaomi·minimax 필수 |
