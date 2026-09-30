@@ -317,6 +317,6 @@ step 하나에 함수 하나라는 규칙은 유지하고, 여러 기능을 하�
 
 | id | 내용 | 결정 시점 |
 |---|---|---|
-| O1 | StepSpec 소스 형식 (Go 코드 / YAML) | 구현 시작 시 |
-| O2 | 원격 plugin 프로세스 관리에 기존 라이브러리(예: hashicorp/go-plugin)를 쓸지 직접 구현할지 | 구현 시작 시. 외부 라이브러리 도입 전 라이선스 확인 |
+| O1 | ~~StepSpec 소스 형식~~ → **Go 코드** 로 확정 (사용자, impl-01). 허용 신호는 core 의 `AllowedSignals` 를 직접 읽는다 | 확정 |
+| O2 | ~~원격 plugin 관리 라이브러리~~ → **직접 구현** 으로 확정 (사용자, impl-01): os/exec + unix socket 위 gRPC. 외부 의존성은 grpc(Apache-2.0)·protobuf(BSD-3) 만 | 확정 |
 | O3 | IN-FR-11 의 "dispatch 밖 panic" 정책이 서버형 surface(메신저 게이트웨이)에서 허용 가능한지 | surfaces 스펙 작성 시 재검토 |
