@@ -20,7 +20,7 @@
   - 의존 interface: `ModelCaller`, `ToolRegistry`, `Store`, `Summarizer` (2.3)
   - 메모리 Store, 도구 레지스트리(맵), 토큰 추정, 압축 절단점, 루프 설정 스키마
 - 제외:
-  - L2_harness 로 이동 (R13): 도구 4종 구현, JSONL 세션 저장소, 시스템 프롬프트 조립(기본 문안·AGENTS.md·스킬), 요약 프롬프트·요약기 구현, 설정 파일 경로 해석, dr-print CLI, 실제 provider 종단 테스트
+  - L2_harness 로 이동 (R13): 도구 4종 구현, JSONL 세션 저장소, 시스템 프롬프트 조립(기본 문안·AGENTS.md·스킬), 요약 프롬프트·요약기 구현, 설정 파일 경로 해석(→ `L2_harness/agent`), dr-print CLI(→ `L3_ui/cmd/dr-print`, R17), 실제 provider 종단 테스트(→ `L2_harness/agent`)
   - 다음 단계 세트 (`quality`·`assistant`): 병렬·선행 실행 스케줄러, 서브에이전트, soft tool requirement, 메모리, 백그라운드 리뷰, fallback provider, 권한 승인
 
 ### 1.3 참조 (수치의 출처)
@@ -219,7 +219,7 @@ if used > W - reserve and not blocked and Summarizer != nil:
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-28~31 | (이동: L2_harness `cmd/dr-print`) |
+| ST-FR-28~31 | (이동: `L3_ui/cmd/dr-print` DP-FR-01~09, R17) |
 
 ### 3.9 비기능
 

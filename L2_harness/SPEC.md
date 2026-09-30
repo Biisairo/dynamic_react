@@ -1,17 +1,17 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.5 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14)
+- 버전: 0.6 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
-- 사용하는 쪽: `L3_ui` (Env 구현·ModelCaller·사용자 입출력을 넣는다), `L3_ui/cmd/dr-print` (검증용)
+- 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
 ---
 
 ## 1. 소개
 
 ### 1.1 목적
-L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로** 제공한다 (R13, R14). 도구가 무엇을 하는지(인자, 절단, edit 알고리즘), 세션을 어떤 형식으로 남기는지, 시스템 프롬프트·요약 프롬프트를 어떻게 만드는지는 여기서 정한다. **실제 입출력(파일, 프로세스, 네트워크, 터미널, 환경변수)은 하지 않고** `Env` interface 와 `sets.ModelCaller` 로 받는다 (pi `packages/agent/src/harness` 의 `ExecutionEnv` 구조).
+L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로** 제공한다 (R13, R14). 도구가 무엇을 하는지(인자, 절단, edit 알고리즘), 세션을 어떤 형식으로 남기는지, 시스템 프롬프트·요약 프롬프트를 어떻게 만드는지는 여기서 정한다. **실제 입출력(파일, 프로세스, 네트워크, 터미널, 환경변수)은 하지 않고** `Env` interface 와 `sets.ModelCaller` 로 받는다 (pi `packages/agent/src/harness` 의 `ExecutionEnv` 구조). 실제 입출력을 붙인 완성된 에이전트는 같은 L2 의 `osenv`·`agent` 모듈이다 (R17).
 
 ### 1.2 범위
 - 포함 (모듈 `L2_harness/harness`):
@@ -21,14 +21,13 @@ L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로**
   - 시스템 프롬프트 조립: 기본 문안, 대체·덧붙임, `AGENTS.md`·`CLAUDE.md` 탐색, 스킬 목록 (Env.FileSystem 으로 읽음) — 3.4
   - 요약기 (`sets.Summarizer`, pi 요약 프롬프트, ModelCaller 로 호출) — 3.5
   - 조립: `harness.New(Options)` → `Agent.Start` → `*core.Run` — 3.6
-- 제외 — L3 (R14):
-  - `Env` 의 OS 구현 (`os`·`os/exec`, 프로세스 그룹 kill, 임시 파일) → `L3_ui/osenv`
-  - `ModelCaller` 생성 (adapters.Client, API 키 환경변수) → L3
-  - 터미널 입출력, 스트리밍 표시, 사용자 이미지 첨부 읽기, 설정 파일·환경변수 해석, 시그널, 종료 코드
-  - 검증용 CLI → `L3_ui/cmd/dr-print`
+- 제외 — 같은 L2 의 다른 모듈 (R17):
+  - `Env` 의 OS 구현 (`os`·`os/exec`, 프로세스 그룹 kill, 임시 파일) → `L2_harness/osenv`
+  - `ModelCaller` 생성 (adapters.Client, API 키 환경변수), 설정 파일·환경변수 해석 → `L2_harness/agent`
+- 제외 — L3 (R17): 터미널 입출력, 스트리밍 표시, 사용자 이미지 첨부 읽기, 시그널, 종료 코드, 검증용 CLI `L3_ui/cmd/dr-print`
 - 제외 — 다음 단계: 권한 승인, 서브에이전트, MCP, 병렬 도구 스케줄러 (sets 1.2 와 같음)
 
-L3 가 쓰는 통로: 스트림·생명주기 = `core.Observer`, 사용자 입력(텍스트·이미지) = `contract.Message`, follow-up = `core.Run.Input`.
+위 레이어가 쓰는 통로: 스트림·생명주기 = `core.Observer`, 사용자 입력(텍스트·이미지) = `contract.Message`, follow-up = `core.Run.Input`.
 
 ### 1.3 참조
 
@@ -39,7 +38,7 @@ L3 가 쓰는 통로: 스트림·생명주기 = `core.Observer`, 사용자 입�
 | 도구 결과 2000줄 / 50KB | pi `utils/truncate.ts` (sets 1.3 과 같음) |
 | 시스템 프롬프트 구조 (preamble·tools·rules·project_context·skills·cwd) | pi `coding-agent/src/core/system-prompt.ts` |
 | 요약 시스템 프롬프트·요약 프롬프트·갱신 프롬프트, 직렬화 | pi `coding-agent/src/core/compaction/utils.ts`·`compaction.ts` |
-| 기본 sessionDir `~/.dynamic_react/sessions`, `DR_SESSION_DIR` | impl-01 사용자 확정 (값의 해석은 L3, 3.3 HN-FR-15) |
+| 기본 sessionDir `~/.dynamic_react/sessions`, `DR_SESSION_DIR` | impl-01 사용자 확정 (값의 해석은 `L2_harness/agent`, 3.3 HN-FR-15) |
 
 ---
 
@@ -48,9 +47,10 @@ L3 가 쓰는 통로: 스트림·생명주기 = `core.Observer`, 사용자 입�
 ### 2.1 제품 관점
 
 ```text
- L3_ui ── osenv.New(cwd) : harness.Env        (os, os/exec)
-       ── adapters.New(...) : sets.ModelCaller (HTTP, API key env)
-       ── terminal / stream display (core.Observer) / image files -> contract.Message
+ L2_harness/agent ── osenv.New(cwd) : harness.Env        (os, os/exec)
+                  ── adapters.New(...) : sets.ModelCaller (HTTP, API key env)
+                  ── config file / env
+ L3_ui ── agent ── terminal / stream display (core.Observer) / image files -> contract.Message
         │ harness.Options{Env, Model, SessionDir, ...}
         ▼
  harness.New ── tools.All(env) ── session.New(env, dir) ── prompt.Build(...) ── summary.New(model)
@@ -61,7 +61,7 @@ L3 가 쓰는 통로: 스트림·생명주기 = `core.Observer`, 사용자 입�
  core.New(dispatcher, core.Options{Observer}) ── Agent.Start(ctx, RunRequest) -> *core.Run
 ```
 
-모듈 의존: harness → contract, core, inject, sets, 표준 라이브러리. **adapters 에 의존하지 않는다** (ModelCaller 는 L3 가 넣음).
+모듈 의존: harness → contract, core, inject, sets, 표준 라이브러리. **adapters·osenv 에 의존하지 않는다** (둘은 `L2_harness/agent` 가 넣음).
 
 ### 2.2 제약
 - HN-C1. **harness 는 실제 입출력을 하지 않는다** (외부 모듈은 `golang.org/x/text` 만, HN-NFR-04): `os`, `os/exec`, `net`, `net/http`, `syscall`, `io/ioutil`, `path/filepath` 의 파일시스템 접근 함수(`Walk`, `Glob`, `Abs`, `EvalSymlinks`)를 쓰지 않는다. 파일·프로세스는 `Env`, 모델은 `ModelCaller` 로만 (R14). 시계·ID 는 `sets.Deps` 와 같이 주입(`Now`, `NewID`)한다
@@ -138,7 +138,7 @@ type Env interface {
 | HN-FR-12 | 줄 종류: `{"type":"message","message":Message}`, `{"type":"edit","edit":ContextEdit}`, `{"type":"state","ns":string,"delta":StateDelta}`. `Append*`·`SaveState` 호출 하나의 줄들은 `AppendFile` 한 번으로 쓴다. `Load` 는 `ReadFile` 후 순서대로 재생해 `sets.Session` 을 만든다 (state 는 delta 를 순서대로 적용). 파일이 없으면 빈 세션 |
 | HN-FR-13 | 개행으로 끝나지 않은 마지막 조각(쓰다 중단)이 깨져 있으면 `Load` 는 그것을 버리고 파일을 그 앞까지로 `WriteFile` 해 복구한다 (이후 append 가 깨진 줄 뒤에 붙지 않게). 개행으로 끝나지 않았지만 온전한 줄이면 개행을 붙여 복구한다. 개행으로 끝난 깨진 줄이나 모르는 type 은 에러 |
 | HN-FR-14 | sessionID 는 `[A-Za-z0-9._-]{1,128}` 이고 `.`·`..` 가 아니어야 한다. 어기면 에러 (경로 탈출 방지). `session.NewID(now, rand)` 는 `20060102-150405-<8 hex>` 형식 |
-| HN-FR-15 | `session.DefaultDir(getenv func(string) string, home string) string` = `getenv("DR_SESSION_DIR")` 가 있으면 그것, 없으면 `<home>/.dynamic_react/sessions`. 순수 함수이고 값을 읽어 넘기는 것은 L3 다 |
+| HN-FR-15 | `session.DefaultDir(getenv func(string) string, home string) string` = `getenv("DR_SESSION_DIR")` 가 있으면 그것, 없으면 `<home>/.dynamic_react/sessions`. 순수 함수이고 값을 읽어 넘기는 것은 `L2_harness/agent` 다 |
 | HN-FR-16 | 동시 사용에 안전하다 (같은 Store 값). 프로세스 간 동시 쓰기는 보장하지 않는다 |
 
 ### 3.4 시스템 프롬프트 (`harness/prompt`)
@@ -177,7 +177,7 @@ type Options struct {
 type RunRequest struct {
     SessionID string                 // 비면 session.NewID
     Input     []contract.Message
-    Config    json.RawMessage        // sets 설정 JSON (L3 가 파일에서 읽은 그대로). sets.Config 값을 쓰지 않는 이유: zero 값 enabled=false 가 압축을 끔
+    Config    json.RawMessage        // sets 설정 JSON (agent 가 설정 파일에서 읽은 그대로). sets.Config 값을 쓰지 않는 이유: zero 값 enabled=false 가 압축을 끔
 }
 ```
 
@@ -192,7 +192,7 @@ type RunRequest struct {
 
 | id | 요구사항 |
 |---|---|
-| HN-NFR-01 | 모든 테스트는 `envtest` 가짜 Env 로 한다. 실제 파일시스템·프로세스를 쓰지 않는다 (OS 구현의 테스트는 `L3_ui/osenv` 의 몫, `envtest.Conformance` 로) |
+| HN-NFR-01 | 모든 테스트는 `envtest` 가짜 Env 로 한다. 실제 파일시스템·프로세스를 쓰지 않는다 (OS 구현의 테스트는 `L2_harness/osenv` 의 몫, `envtest.Conformance` 로) |
 | HN-NFR-02 | 종단 테스트: 가짜 ModelCaller(스크립트된 스트림) + 가짜 Env + 실제 도구·세션·요약기 + `harness.New` 로 "read→edit→bash 라운드 후 종료", "세션 재개(새 Agent, 같은 Env·dir) 시 History·편집 복원", "overflow → 실제 요약기로 압축 → 재호출" |
 | HN-NFR-03 | `go test -race` 통과, `GOWORK=off` 단독 테스트 통과 |
 | HN-NFR-04 | import 는 contract·core·inject·sets·표준 라이브러리와 `golang.org/x/text`(edit 의 NFKC, v0.28.0 = Go 1.23 호환 최신) 뿐이고, HN-C1 의 금지 패키지가 없다 (직접 import 검사) |
@@ -219,6 +219,7 @@ type RunRequest struct {
 |---|---|
 | R13 | 1.2 범위, 3.2~3.5 |
 | R14 | HN-C1, 3.1, 3.6, HN-FR-15, HN-NFR-01, 04 |
+| R17 | 1.2, 2.1, HN-FR-15, HN-NFR-01 |
 | sets ST-FR-19, 35 | HN-C4, HN-FR-21 |
 | sets ST-FR-24, 27, 36 | 3.5 |
 | 자격증명 보호 | HN-C2 |
@@ -231,7 +232,7 @@ type RunRequest struct {
 |---|---|
 | O1 | ~~기본 시스템 프롬프트 문안~~ → 부록 A 로 확정 (사용자) |
 | O2 | pi 에서 가져온 문안(요약 프롬프트, edit 정규화 규칙)의 라이선스 고지 — adapters 스냅샷과 함께 사용자가 나중에 처리 |
-| O3 | `L3_ui/osenv`(Env OS 구현)·`L3_ui/cmd/dr-print` 스펙 — harness 구현 뒤 작성 |
+| O3 | ~~`L3_ui/osenv`·`L3_ui/cmd/dr-print` 스펙~~ → `L2_harness/osenv/SPEC.md`, `L2_harness/agent/SPEC.md`, `L3_ui/cmd/dr-print/SPEC.md` (R17) |
 | O4 | ~~NFKC 와 표준 라이브러리 제약 충돌~~ → `golang.org/x/text` 의존 허용 (사용자) |
 
 ---
@@ -246,6 +247,7 @@ type RunRequest struct {
 | 0.4 | 기본 문안 미정 (pi preamble 초안) | 부록 A: 환경 동작 안내를 더한 문안 | 사용자: "현재 우리 구조에 맞게 개선하여 확정, 영어로 쓰고 번역 별도" |
 | 0.4 | 표준 라이브러리만, NFKC 없음 | `golang.org/x/text` v0.28.0 허용, NFKC 포함 (pi 와 같음) | 사용자 결정 (O4). 최신 v0.42.0 은 Go 1.26 을 요구해 Go 1.23 호환 최신인 v0.28.0 으로 고정. go.work 는 `go 1.23.0` |
 | 0.5 | `Options.Preamble`·`Options.Append`(`prompt.Input` 같은 필드)로 preamble·tools·rules 대체, `<addendum>` 추가 | 편집 필드 없음. 항상 기본 조립. 다른 프롬프트는 `sets.Deps.System` 직접 구성 | 사용자: "코어를 쓰는 개발자는 알아서 수정, 사용자는 시스템 프롬프트를 수정할 필요 없음" → Preamble/Append 제거 (R16) |
+| 0.6 | OS Env·ModelCaller 생성·설정/env 해석·dr-print 는 L3 | OS Env 는 `L2_harness/osenv`, ModelCaller·설정·env 는 `L2_harness/agent`, L3 는 터미널 입출력만. harness 모듈 자체(HN-C1)는 그대로 | R17: L2 부터가 사용자 환경 위의 실제 에이전트 |
 | 0.3 | Env 는 `harness` 패키지 | `harness/env` 패키지 + 별칭 | import 순환 (harness → tools → Env) |
 | 0.3 | read 이미지 판별 = 확장자 | 내용 시그니처 | pi 와 같음 |
 | 0.3 | Preamble 은 preamble 만 대체 | preamble·tools·rules 대체 | pi `customPrompt` 와 같음 |

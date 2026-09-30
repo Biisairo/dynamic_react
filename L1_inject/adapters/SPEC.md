@@ -1,8 +1,8 @@
 # adapters — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.3 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D2, D14, D15, R8, R9, R11, R12)
+- 버전: 0.4 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D2, D14, D15, R8, R9, R11, R12, R17)
 - 의존 명세: `L0_core/contract/SPEC.md`
 - 사용하는 쪽: `L1_inject/sets/SPEC.md`
 
@@ -48,6 +48,7 @@
 - AD-C3. HTTP 는 Go 표준 `net/http` 와 자체 SSE 파서로 구현한다. 이유: Chat Completions 호환 서버의 방언 차이(05 문서 3장)를 SDK 없이 직접 흡수해야 하고, core 와 같은 무의존 원칙을 L1 에도 가능한 한 적용한다. (재검토 가능: 6장 O1)
 - AD-C4. 어댑터는 panic 하거나 스트림 도중 Go error 로 끝나지 않는다. 모든 실패는 contract `error` 이벤트(`CallError` 포함)로 끝낸다 (CT-FR-16).
 - AD-C5. adapters 모듈은 contract 와 Go 표준 라이브러리 외 import 가 없다 (R8, R9). core·inject 를 import 하지 않는다.
+- AD-C6. **사용자 환경을 읽지 않는다** (R17): 테스트가 아닌 코드는 `os` 를 import 하지 않는다 (환경변수·파일 접근 없음). 환경변수 값은 `Options.Getenv`, 설정은 `ParseConfig` 의 바이트로만 받는다. 개발용 생성기 `internal/snapshot` 은 제외.
 
 ---
 
@@ -205,8 +206,8 @@ Chat·Responses 차이 필드 (원본: pi `openai-completions.ts` `detectCompat`
 
 | id | 요구사항 |
 |---|---|
-| AD-FR-48 | `adapters.New(Options{HTTPClient, Getenv, Now, Config}) *Client`. nil 이면 `http.DefaultClient`, `os.Getenv`, `time.Now`. `Client` 는 동시 사용에 안전하다 |
-| AD-FR-49 | `Config` JSON: `{"providers": {name: Profile 필드(부분 덮어쓰기·새 provider)}, "models": {"provider/id": {"contextWindow", "maxOutputTokens", "capabilities"}}}`. `LoadConfig(path)` 는 모르는 키를 에러로 거부한다. 키 **값**을 담는 필드는 없다 (AD-C2, 환경변수 이름만) |
+| AD-FR-48 | `adapters.New(Options{HTTPClient, Getenv, Now, Config}) *Client`. nil 이면 `http.DefaultClient`, 환경을 읽지 않음(모든 이름에 ""), `time.Now` (AD-C6). `Client` 는 동시 사용에 안전하다 |
+| AD-FR-49 | `Config` JSON: `{"providers": {name: Profile 필드(부분 덮어쓰기·새 provider)}, "models": {"provider/id": {"contextWindow", "maxOutputTokens", "capabilities"}}}`. `ParseConfig([]byte)` 는 모르는 키를 에러로 거부한다. 파일을 읽는 함수는 두지 않는다 (AD-C6). 키 **값**을 담는 필드는 없다 (AD-C2, 환경변수 이름만) |
 | AD-FR-50 | 키 환경변수가 비어 있으면 요청을 보내지 않고 `error` 이벤트(`Class: auth`, 메시지에 **환경변수 이름**만)로 끝낸다 |
 | AD-FR-51 | done 이벤트의 Message: `ID` = provider 응답 id(없으면 무작위), `Timestamp` = `Now()`, `Role` assistant, `Usage`·`StopReason` 채움 (contract CT-FR-17). 스트림 도중 받은 블록은 이벤트 `Index` 순서로 Content 가 된다 |
 
@@ -226,6 +227,7 @@ Chat·Responses 차이 필드 (원본: pi `openai-completions.ts` `detectCompat`
 | AD-FR-30 | 표 대조 테스트, AD-C1 코드 검색(구독 엔드포인트·OAuth 환경변수 없음) |
 | AD-C1, C2 | 코드 검색 테스트: OAuth·구독 토큰 경로 없음, 설정 스키마에 키 값 필드 없음 |
 | AD-C5 | `go list -deps` 검사: contract·표준 라이브러리 외 없음 |
+| AD-C6, FR-48 | 테스트 아닌 파일(`internal/` 제외)의 직접 import 에 `os` 없음. `Getenv` nil + 키 필요한 provider → `auth` error 이벤트 (환경변수 이름만) |
 
 ---
 
@@ -259,3 +261,4 @@ Chat·Responses 차이 필드 (원본: pi `openai-completions.ts` `detectCompat`
 | 0.3 | AD-FR-18: reasoning 모델이면 developer | 프로필 값만 | 모델별 판단 근거가 카탈로그 밖에 없음 |
 | 0.3 | AD-FR-39: 원격 카탈로그 조회 안 함 | 4단 출처 (설정 > provider 조회 > models.dev > 내장 스냅샷) | 조회 API 로 창 크기를 알 수 없는 provider 가 많음. 사용자 확정 |
 | 0.3 | AD-C1: API 키만 | + 구독 요금제 엔드포인트 미내장, Anthropic OAuth 환경변수 무시 | 자격증명 보호 |
+| 0.4 | AD-FR-48: `Getenv` nil 이면 `os.Getenv`. AD-FR-49: `LoadConfig(path)` 가 파일을 읽음 | `Getenv` nil 이면 환경을 읽지 않음. `LoadConfig` 삭제 (`ParseConfig` 만). AD-C6 추가 | R17: L1 은 사용자 환경과 무관한 단독 라이브러리. 환경변수·파일 해석은 `L2_harness/agent` |
