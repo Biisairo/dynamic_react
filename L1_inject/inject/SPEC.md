@@ -327,7 +327,7 @@ IN-FR-31~39 는 삭제됐다. 서드파티 세트도 Go FunctionSet 으로 `Bind
 |---|---|---|
 | O1 | ~~StepSpec 소스 형식~~ → **Go 코드** 로 확정 (사용자, impl-01). 허용 신호는 core 의 `AllowedSignals` 를 직접 읽는다 | 확정 |
 | O2 | (폐기, v0.3: 원격 로더 삭제) | — |
-| O3 | IN-FR-11 의 "dispatch 밖 panic" 정책이 서버형 surface(메신저 게이트웨이)에서 허용 가능한지 | surfaces 스펙 작성 시 재검토 |
+| O3 | ~~IN-FR-11 의 "dispatch 밖 panic" 정책이 서버형 surface 에서 허용 가능한지~~ → **유지**. Go 는 다른 goroutine 의 panic 을 잡을 수 없으므로 goroutine 을 만드는 쪽이 recover 한다. surface 콜백은 L2 agent 가 recover 해 그 run 만 failed 로 끝낸다 (R18) | 종결 |
 
 ---
 

@@ -1,8 +1,8 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.6 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17)
+- 버전: 0.7 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
@@ -188,6 +188,76 @@ type RunRequest struct {
 | HN-FR-28 | 여러 run 을 동시에 시작할 수 있다 (세션이 다르면 독립). 같은 세션의 동시 run 은 보장하지 않는다 |
 | HN-FR-29 | `Agent.System() []contract.Block`, `Agent.Tools() sets.ToolRegistry` 로 조립 결과를 조회할 수 있다 (L3 표시용) |
 
+### 3.6a surface 훅 (R18)
+
+agent(`L2_harness/agent`)가 surface 공통 계층을 만들 때 쓰는 훅이다. base·resilient 함수는 `sets.Deps` 가 있는 harness 안에서만 감쌀 수 있으므로(`Bind` 는 step 마다 마지막 함수 하나를 고른다, IN-FR-19) 여기서 `combine.Wrap` 으로 감싼다. 루프(L0)·sets(L1)는 바꾸지 않는다.
+
+```go
+// harness.Options 추가
+OnEvent func(Event)                                            // nil 이면 이벤트를 만들지 않는다
+Gate    func(ctx context.Context, in GateInput) *contract.ToolResult // nil 이면 모두 통과
+
+type GateInput struct {
+    RunID, SessionID string
+    TurnIndex        int
+    InboxConsumed    int // base 공개 상태 inbox.consumed (ST-FR-43): 지금까지 소비한 입력함 메시지 수
+    Call             contract.ToolCall
+}
+
+type EventKind string // 아래 표의 11개
+
+type Event struct {
+    Kind       EventKind
+    RunID      string
+    SessionID  string
+    Message    *contract.Message     // message_*: 부분 또는 확정 메시지, turn_end: 이 턴의 assistant 메시지
+    Delta      *contract.StreamEvent // message_update: 이번 조각
+    Call       *contract.ToolCall    // tool_*, approval
+    Result     *contract.ToolResult  // tool_end
+    Results    []contract.ToolResult // turn_end
+    Output     string                // tool_update: 새로 나온 출력 조각
+    Approval   *Approval             // approval (agent 가 만든다)
+    Error      *contract.CallError   // retry
+    Attempt    int                   // retry: 몇 번째 재시도인지 (1부터)
+    Delay      time.Duration         // retry
+    Phase      string                // compaction: "start" | "end"
+    Err        error                 // compaction end 실패
+    Settle     *core.Settle          // run_end
+}
+
+type Approval struct {
+    Rule     string // 맞은 규칙 (없으면 "")
+    Target   string // bash command 또는 절대 경로 (이름 규칙만 되는 도구는 "")
+    Decision string // "allow" | "allow_session" | "deny" (Approver 의 답) | "rule_deny" (deny 규칙)
+    Reason   string
+}
+```
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-30 | `Gate`: `tool.before` 에서 base 검사(없는 도구·스키마 불일치, ST-FR-38)를 통과한 호출마다 부른다. nil 이 아닌 결과를 돌려주면 그것이 ShortCircuit 결과가 된다(CallID 는 harness 가 채움). ctx 는 dispatch 의 ctx 다 (취소를 따름) |
+| HN-FR-31 | 이벤트 종류와 생성 지점. `OnEvent` 가 nil 이면 감싸지 않는다 |
+
+| Kind | 생성 지점 | 채우는 필드 |
+|---|---|---|
+| `message_start` | `stream.event` 에서 `start` 이벤트 | Message = 그 시점의 Draft |
+| `message_update` | `stream.event` 에서 `text_delta`·`thinking_delta`·`toolcall_start`·`toolcall_delta`·`toolcall_end` | Delta = 그 이벤트, Message = 누적 부분 메시지(`Stream().Draft()`) |
+| `message_end` | `stream.end` | Message = 확정 메시지 (usage 포함) |
+| `tool_start` | `tool.before` 진입 (Gate 전) | Call |
+| `tool_update` | bash 출력 조각 (HN-FR-33) | Call, Output |
+| `tool_end` | `tool.after` 의 결과(절단 뒤) 또는 ShortCircuit 결과 | Call, Result |
+| `approval` | agent 가 만든다 (harness 는 만들지 않음) | Call, Approval |
+| `retry` | resilient `call.error` 가 재시도를 결정했을 때 | Error, Attempt, Delay |
+| `compaction` | 요약기 호출 전·후 | Phase, Err |
+| `turn_end` | `turn.finish` 진입 | Message = 이 턴의 응답, Results |
+| `run_end` | `run.settled` | Settle |
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-32 | 순서 보장: 한 호출(tool call)의 `tool_start` 는 정확히 한 번, `tool_end` 도 정확히 한 번이고 그 사이에만 `tool_update`·`approval` 이 온다. 한 메시지는 `message_start` → `message_update`* → `message_end`. `run_end` 는 그 run 의 마지막 이벤트다. 스트림 도중 에러로 `message_end` 없이 끝날 수 있다 |
+| HN-FR-33 | `tools.WithProgress(ctx, fn func(callID, chunk string)) context.Context`: bash 는 ctx 에 fn 이 있으면 출력 조각을 받을 때마다 부른다. 조각은 UTF-8 문자 경계에서 자른다(끊긴 문자는 다음 조각으로). harness 는 `OnEvent` 가 있으면 `Start` 의 ctx 에 fn 을 실어 `tool_update` 로 바꾼다 |
+| HN-FR-34 | `OnEvent` 호출은 **Agent 전체에서 직렬화**된다 (한 번에 하나, 병렬 도구 실행 중에도). 동기이며, 콜백이 오래 걸리면 run 이 그만큼 늦어진다 (R18: 동기만). dispatch 안에서 부르므로 콜백의 panic 은 그 dispatch 의 에러가 되어 run 이 failed 로 끝난다 (IN-FR-11) |
+
 ### 3.7 비기능
 
 | id | 요구사항 |
@@ -208,6 +278,7 @@ type RunRequest struct {
 | HN-FR-11~16 | 왕복(메시지·편집·상태 → Load), 깨진 마지막 줄 무시, 깨진 중간 줄·모르는 type 에러, 잘못된 sessionID, 호출당 AppendFile 1회, 동시 Append(-race), DefaultDir |
 | HN-FR-17~21 | 골든: 기본 / 컨텍스트 파일 순서(루트 쪽 먼저, git 루트에서 멈춤) / 스킬 우선순위·깨진 frontmatter·home 없음 |
 | HN-FR-22~25 | 가짜 ModelCaller: 요청 모양(System·Previous·MaxTokens·Tools 없음), 직렬화 골든, length·error·빈 텍스트·done 없음 → 에러, 취소 |
+| HN-FR-30~34 | 가짜 ModelCaller·가짜 Env 로: Gate ShortCircuit 결과가 모델에 전달됨, Gate 는 base 검사 실패 호출에는 불리지 않음, 이벤트 순서(텍스트 턴·도구 턴·병렬 도구 2개·스트림 에러), message_update 의 누적본 = 앞 조각들의 합, tool_end 는 절단 뒤 결과, retry 의 Attempt·Delay, compaction start/end, run_end 가 마지막, bash progress 조각 합 = 전체 출력(UTF-8 경계), OnEvent 동시 호출 없음(-race), 콜백 panic → failed |
 | HN-FR-26~29 | New 에러 경로, Start 설정 검사·sessionID 검사, 동시 run 2개 |
 | HN-NFR-02~04 | 종단 시나리오, `go list -deps` |
 
@@ -248,6 +319,7 @@ type RunRequest struct {
 | 0.4 | 표준 라이브러리만, NFKC 없음 | `golang.org/x/text` v0.28.0 허용, NFKC 포함 (pi 와 같음) | 사용자 결정 (O4). 최신 v0.42.0 은 Go 1.26 을 요구해 Go 1.23 호환 최신인 v0.28.0 으로 고정. go.work 는 `go 1.23.0` |
 | 0.5 | `Options.Preamble`·`Options.Append`(`prompt.Input` 같은 필드)로 preamble·tools·rules 대체, `<addendum>` 추가 | 편집 필드 없음. 항상 기본 조립. 다른 프롬프트는 `sets.Deps.System` 직접 구성 | 사용자: "코어를 쓰는 개발자는 알아서 수정, 사용자는 시스템 프롬프트를 수정할 필요 없음" → Preamble/Append 제거 (R16) |
 | 0.6 | OS Env·ModelCaller 생성·설정/env 해석·dr-print 는 L3 | OS Env 는 `L2_harness/osenv`, ModelCaller·설정·env 는 `L2_harness/agent`, L3 는 터미널 입출력만. harness 모듈 자체(HN-C1)는 그대로 | R17: L2 부터가 사용자 환경 위의 실제 에이전트 |
+| 0.7 | surface 훅 없음 | `Options.OnEvent`·`Options.Gate`, `Event` 11종, `tools.WithProgress` (3.6a) | R18: surface 공통 계층을 L2 에, base 감싸기는 Deps 가 있는 harness 에서 |
 | 0.3 | Env 는 `harness` 패키지 | `harness/env` 패키지 + 별칭 | import 순환 (harness → tools → Env) |
 | 0.3 | read 이미지 판별 = 확장자 | 내용 시그니처 | pi 와 같음 |
 | 0.3 | Preamble 은 preamble 만 대체 | preamble·tools·rules 대체 | pi `customPrompt` 와 같음 |

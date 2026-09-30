@@ -1,5 +1,7 @@
-# surfaces — 입출력 (스펙 미작성)
+# surfaces — 입출력 (구체 surface 스펙 미작성)
 
-core 의 run API(`Start`/`Input`/`Wait`)와 Observer 이벤트 위에 올라가는 입출력 어댑터: TUI, print, rpc, 웹, 메신저 게이트웨이. surface 마다 다른 설정(도구 세트, 승인 정책, 인터럽트 방식, 출력 제약)은 바인딩할 함수 세트 조합으로 표현한다 (`hermes_study/analysis/06-build-your-own.md` 3.3).
+완성된 에이전트(`L2_harness/agent`) 위의 입출력: TUI, rpc, 웹, 메신저 게이트웨이 (R17).
 
-스펙은 core·inject 구현 후 작성한다. inject 미결 사항 O3 을 이때 재검토한다.
+surface 공통 계층(도구 세트 상한, 승인 규칙·`Approver`, Abort·Steer·FollowUp, 이벤트, 세션 키·목록, 세션 잠금, 콜백 panic 격리)은 L2 agent 에 있다 (R18, `L2_harness/agent/SPEC.md` 3.4~3.9). surface 는 `Approver` 와 `OnEvent` 를 구현하고, 입력을 `Start`·`Steer`·`FollowUp`·`Abort` 로 잇고, 이벤트를 그린다. 전송 속도 제한·묶기(메신저 편집 제한 등)는 surface 가 콜백 안의 자기 큐로 한다.
+
+inject O3 는 R18 로 종결됐다.
