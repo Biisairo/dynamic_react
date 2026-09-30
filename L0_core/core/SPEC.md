@@ -1,8 +1,8 @@
 # core — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.1 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D1~D13, R1~R6)
+- 버전: 0.2 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D1~D13, R1~R7)
 - 의존 명세: `L0_core/contract/SPEC.md`
 - 사용하는 쪽: `L1_inject/inject/SPEC.md`
 
@@ -100,7 +100,7 @@
 | 16 | `tool.before` | 도구 | `ToolCall` | `BeforeOut{Call ToolCall, ShortCircuit *ToolResult}` |
 | 17 | `tool.execute` | 도구 | `ToolCall` | `ToolResult` |
 | 18 | `tool.after` | 도구 | `ToolCall`, `ToolResult` | `ToolResult` |
-| 19 | `tools.commit` | 턴 | `[]ToolCall`, `[]ToolResult` | 없음 |
+| 19 | `tools.commit` | 턴 | `[]ToolCall`, `[]ToolResult` | `[]Message` 결과마다 tool_result 메시지 하나 (CORE-FR-24a) |
 | 20 | `turn.finish` | 턴 | — | 없음 |
 | 21 | `run.beforeSettle` | run | — | 없음 |
 | 22 | `run.settled` | run | `Settle{Reason, Err}` | 없음 (신호 무시) |
@@ -244,9 +244,10 @@ res := run.Wait()         // res.Reason: completed | stopped | failed | aborted 
 |---|---|
 | CORE-FR-20 | core 는 15 의 `Plan.Groups` 를 **순서대로** 실행한다. 그룹 안의 호출은 최대 `MaxParallel`(0 이하면 1) 개까지 동시에 실행한다 |
 | CORE-FR-21 | 호출 하나는 16 → 17 → 18 순서로 dispatch 한다. 16 의 `ShortCircuit` 이 있으면 17 을 건너뛰고 그 결과로 18 을 dispatch 한다. 16 이 돌려준 `Call`(인자 수정 가능)을 17·18 에 넘긴다 |
-| CORE-FR-22 | Plan 에 응답에 없는 CallID 가 있으면 15 를 `fail` 로 처리한다. **응답의 호출이 Plan 에서 빠진 것은 core 가 막지 않는다** — 짝 검증은 주입 함수의 몫이다 (D9) |
+| CORE-FR-22 | Plan 에 응답에 없는 CallID 가 있거나 같은 CallID 가 두 번 있으면 15 를 `fail` 로 처리한다. **응답의 호출이 Plan 에서 빠진 것은 core 가 막지 않는다** — 짝 검증은 주입 함수의 몫이다 (D9) |
 | CORE-FR-23 | 도구 step 중 하나가 `fail` 이면 core 는 실행 중인 나머지 도구의 context 를 취소하고 run 을 `failed` 로 끝낸다 |
-| CORE-FR-24 | 결과는 Plan 의 순서대로 모아 19 에 넘긴다. 15 가 `skip_tools(results)` 를 내면 도구 step 없이 그 결과로 19 를 dispatch 한다 |
+| CORE-FR-24 | 결과는 Plan 의 순서대로 모아 19 에 넘긴다 (호출은 16 이 돌려준 Call). 15 가 `skip_tools(results)` 를 내면 도구 step 없이 응답의 호출과 그 결과로 19 를 dispatch 한다 |
+| CORE-FR-24a | 19 의 출력은 입력 결과와 같은 개수·순서의 tool_result 메시지여야 한다: 각각 `Role == tool_result`, `Result.CallID` 가 같은 위치 결과의 CallID, `Validate()` 통과. 어기면 `fail`. ID 부여는 주입 함수의 몫이다 |
 
 ### 3.8 선행 실행 (D8)
 
@@ -266,7 +267,7 @@ res := run.Wait()         // res.Reason: completed | stopped | failed | aborted 
 | CORE-FR-29 | View 가 제공하는 사실 (core 가 가진 것만, 가공 없이): RunID, SessionID, Config(raw), 현재 Step, dispatch 순번(Seq), 턴 번호, 호출 번호(턴 안), History(1 의 출력), run 기록(CORE-FR-31a), 이번 턴 추가분(2), 임시 메시지(4), 투영(5), 요청(7), 선택된 모델(8), 스트림 초안(지금까지의 이벤트로 조립한 부분 응답), 현재 이벤트, 응답(11), CallError(12), Plan(15), 이번 턴의 도구 호출·결과(지금까지), 편집 로그, 입력함, 신호 기록, 선행 실행 핸들 상태, 경과 시간 |
 | CORE-FR-30 | 신호 기록은 `{Seq, Step, Unit, Signals, Origin(설명 문자열), Result(효과 적용 결과)}` 의 목록이고, View 에서 **종류별·사유별 횟수**를 셀 수 있어야 한다 (조합 함수가 "같은 사유 재시도 N회" 를 구현하는 데 필요) |
 | CORE-FR-31 | 편집 로그는 run 동안의 `rewrite` 효과를 순서대로 보관한다. 투영(5)에 편집을 반영하는 것은 주입 함수의 몫이다 |
-| CORE-FR-31a | core 는 **run 기록(Transcript)** 을 가진다: `History`(1 의 출력) 뒤에, 2 가 끝나면 그 출력 메시지들을, 14 가 끝나면 11 의 Response 를, 19 가 끝나면 그 턴의 ToolResult 들을 순서대로 붙인다. `restart_turn` 으로 버려진 응답은 14 전이므로 붙지 않는다. core 는 이 기록을 해석하지 않으며(편집 로그도 적용하지 않음) View 로만 제공한다 |
+| CORE-FR-31a | core 는 **run 기록(Transcript)** 을 가진다: `History`(1 의 출력) 뒤에, 2 가 끝나면 그 출력 메시지들을, 14 가 끝나면 11 의 Response 를, 19 가 끝나면 19 의 출력 메시지들을 순서대로 붙인다. `restart_turn` 으로 버려진 응답은 14 전이므로 붙지 않는다. core 는 이 기록을 해석하지 않으며(편집 로그도 적용하지 않음) View 로만 제공한다 |
 
 ### 3.10 취소와 에러
 
@@ -297,7 +298,41 @@ res := run.Wait()         // res.Reason: completed | stopped | failed | aborted 
 | CORE-NFR-01 | core 패키지는 contract 와 표준 라이브러리 외 import 가 없어야 한다 (CI 검사) |
 | CORE-NFR-02 | 같은 Dispatcher 동작(스크립트된 가짜)이면 dispatch 순서가 항상 같아야 한다. 단 그룹 안 병렬 도구의 **완료 순서**는 예외이며, 결과 순서는 CORE-FR-24 로 고정된다 |
 | CORE-NFR-03 | core 는 `-race` 테스트를 통과해야 한다 |
-| CORE-NFR-04 | 공개 API 는 3.5 의 `New`, `Start`, `Input`, `Wait` 와 상수·타입뿐이다. 내부 구현은 `internal/` 에 둔다 |
+| CORE-NFR-04 | 공개 API 는 3.5 의 `New`, `Start`, `Input`, `Wait` 와 상수·타입·View 조회 메서드·표 조회 함수(3.14)뿐이다. 내부 구현은 unexported 로 둔다 (공개 타입과 구현이 서로를 참조하므로 `internal/` 로 나누면 import 순환이 생긴다) |
+
+### 3.14 Go 표현과 경계 규칙
+
+스펙 요구사항을 코드로 옮길 때 정한 표현이다.
+
+```go
+type Dispatcher interface {
+    Dispatch(ctx context.Context, step Step, input any, view View) (Result, error)
+}
+type Result struct { Output any; Signals []Signal; Origin string }
+type Signal struct {
+    Kind    SignalKind
+    Reason  string                // 집계용 사유 (선택)
+    Edit    *contract.ContextEdit // rewrite
+    Message *contract.Message     // inject_input
+    Call    *contract.ToolCall    // start_tool
+    Results []contract.ToolResult // skip_tools
+    Err     error                 // fail (nil 이면 ErrFailSignal)
+}
+```
+
+| id | 요구사항 |
+|---|---|
+| CORE-FR-39 | step 별 입력·출력의 Go 타입: 1 `RunInput` → `RunInit` · 2 → `[]contract.Message` · 3 → nil · 4·5 → `[]contract.Message` · 6 → `contract.Request` · 7·8·9 입력 `contract.Request` → 7 `contract.Request`, 8 `contract.ModelInfo`, 9 `CallStream` · 10 `contract.StreamEvent` → nil · 11 `contract.Message` → `StreamEndOut` · 12 `contract.CallError` → nil · 13·14 → nil · 15 `[]contract.ToolCall` → `Plan` · 16·17 `contract.ToolCall` → `BeforeOut`·`contract.ToolResult` · 18 `ToolAfterInput{Call, Result}` → `contract.ToolResult` · 19 `ToolsCommitInput{Calls, Results}` → `[]contract.Message` · 20·21 → nil · 22 `Settle` → 무시. 입력 없는 step 은 input 이 nil. 출력 없는 step 은 Output 이 nil 이어야 한다 |
+| CORE-FR-40 | 신호 payload: rewrite → Edit(Validate 통과), inject_input → Message(Validate 통과), start_tool → Call(Validate 통과), skip_tools → Results(비어도 됨), fail → Err(선택). 해당 종류가 아닌 payload 필드가 채워져 있으면 규칙 위반(`fail`) |
+| CORE-FR-41 | 표 조회 함수: `Steps()`, `SignalKinds()`, `Step.Valid()`, `SignalKind.Valid()`, `Step.String()`, `Step.Unit()`, `NextOf(step)`(3.3 의 단순 목적지, 없으면 false), `Allowed(step, kind)`, `AllowedSignals(step)`, `SignalKind.IsTransition()`. 패키지 수준 가변 변수로 두지 않는다 (CR-C2) |
+| CORE-FR-42 | 턴 번호는 2 를 dispatch 할 때마다 1 증가한다 (`continue_turn`·`restart_turn` 모두). 호출 번호는 9 를 dispatch 할 때마다 1 증가하고 2 에서 0 으로 돌아간다 |
+| CORE-FR-43 | 종료 이벤트(done·error)도 10 으로 dispatch 하고, 그 10 이 `next` 면 11(done)·12(error)로 간다. 9 의 Go error 와 iterator error 는 이벤트가 없으므로 10 없이 12 로 간다. 스트림이 종료 이벤트 없이 끝나면 `CallError{Class: unknown, Message: "stream ended without terminal event"}` 로 12 를 dispatch 한다. 종료 이벤트 뒤의 이벤트는 꺼내지 않는다. Events iterator 의 panic 은 iterator error 와 같게 처리한다 |
+| CORE-FR-44 | dispatch 가 반환된 뒤 run context 가 취소돼 있으면 그 결과를 버리고 `aborted` 로 끝낸다 |
+| CORE-FR-45 | 선행 실행 핸들이 16·17 중 `fail`·error 로 끝나면, 그 핸들이 재사용될 때만 run 을 `failed` 로 끝낸다 (버려지면 무시). 같은 키로 `start_tool` 이 다시 오면 기존 핸들을 유지하고 신호 기록 결과를 `duplicate` 로 남긴다. core 는 22 전에 모든 핸들·도구 goroutine 이 끝나기를 기다린다 |
+| CORE-FR-46 | 스트림 초안(Draft) 조립: 이벤트 `Index` 별 블록. text_delta·thinking_delta → 해당 블록 Text 에 이어 붙임, toolcall_start → tool_call 블록 생성, toolcall_delta → Args 원문에 이어 붙임, toolcall_end → 완성된 ToolCall 로 교체. Role 은 assistant, ID·Timestamp 는 비움. 10 의 View 는 현재 이벤트까지 반영한 초안을 본다. 블록이 하나도 없으면 초안 없음. 9 마다 초기화 |
+| CORE-FR-47 | Observer 호출은 core 가 직렬화한다 (병렬 도구에서도 한 번에 하나) |
+| CORE-FR-48 | 22 는 전이 수 상한 계산에 들어가지 않는다. 22 의 error·panic 은 Observer 의 `RunSettled` 전에 `StepEnded.Err` 로만 알린다 |
+| CORE-FR-49 | `Settle.Err`: failed → 원인 error (step 문맥 포함, 원인은 `errors.Is` 로 확인 가능), aborted → run context 의 error, guard → `ErrGuard`, completed·stopped → nil. 원인 sentinel: `ErrFailSignal`, `ErrSignalRule`(배열 규칙·허용 표·payload 위반), `ErrOutputType`, `ErrPanic`, `ErrPlan`(CORE-FR-22), `ErrCommit`(CORE-FR-24a) |
 
 ---
 
@@ -326,6 +361,7 @@ res := run.Wait()         // res.Reason: completed | stopped | failed | aborted 
 | CORE-FR-37, 38 | Observer 이벤트 순서 |
 | CORE-NFR-01 | `go list -deps` 검사 |
 | CORE-NFR-03 | `go test -race` |
+| CORE-FR-24a, 39~49 | 단위: 각 행의 정상 / 위반 |
 
 ---
 
@@ -344,3 +380,14 @@ res := run.Wait()         // res.Reason: completed | stopped | failed | aborted 
 | D13 | CR-C4, CORE-FR-01, 08 |
 | R2 | CORE-FR-06, 3.4 표 |
 | R6 | CORE-FR-36 |
+
+---
+
+## 6. 변경 기록
+
+| 버전 | 이전 | 새 동작 | 이유 |
+|---|---|---|---|
+| 0.2 | 19 출력 없음, core 가 ToolResult 를 run 기록에 붙임 | 19 가 tool_result 메시지를 출력하고 core 는 검증 후 그것을 붙임 (CORE-FR-24a) | Transcript 메시지 ID 를 세션 기록과 맞출 수단이 없었음 (ContextEdit 는 ID 로 가리킴). 사용자 확정 |
+| 0.2 | Plan 의 CallID 중복 규칙 없음 | 중복이면 fail (CORE-FR-22) | 결과 순서·선행 실행 키가 CallID 기준이라 정합성 규칙 |
+| 0.2 | 내부 구현은 `internal/` | unexported (CORE-NFR-04) | 공개 타입과 구현의 import 순환 |
+| 0.2 | Go 표현·경계 규칙 미정 | 3.14 추가 | 구현 착수 |

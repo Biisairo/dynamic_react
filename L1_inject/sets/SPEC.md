@@ -105,7 +105,7 @@
 | 16 | tool.before | 등록되지 않은 도구 → ShortCircuit(error "unknown tool: X"). 인자가 도구 스키마에 맞지 않으면 ShortCircuit(error, 검증 메시지) | next |
 | 17 | tool.execute | 도구 레지스트리로 실행 (3.3) | next |
 | 18 | tool.after | 결과 자르기 (3.3 도구별 규칙이 없으면 앞에서 2000줄 / 50KB) | next |
-| 19 | tools.commit | 결과들을 세션에 기록 | next |
+| 19 | tools.commit | 결과마다 tool_result 메시지(새 ID)를 만들어 세션에 기록하고 출력으로 돌려줌 (core CORE-FR-24a) | next |
 | 20 | turn.finish | 이번 턴에 도구 호출이 있었으면 continue_turn, 없으면 settle (R2) | continue_turn / settle |
 | 21 | run.beforeSettle | 아무것도 안 함 | next |
 | 22 | run.settled | 상태 flush | — |
@@ -289,3 +289,4 @@ echo "prompt" | dr-print ...
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
 | 0.2 | 9 model.call = adapters 가 제공한 `ModelCallFn` 을 그대로 바인딩 | sets 가 `adapters.Call` 의 이벤트 시퀀스를 `core.CallStream` 으로 감쌈 | R9: adapters 가 contract 만 의존 |
+| 0.2 | 19 = 결과를 세션에 기록 | 결과 메시지를 만들어 기록하고 출력 | core v0.2 CORE-FR-24a |
