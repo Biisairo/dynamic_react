@@ -1,6 +1,6 @@
 module github.com/Biisairo/dynamic_react/L2_harness/harness
 
-go 1.23
+go 1.23.0
 
 require (
 	github.com/Biisairo/dynamic_react/L0_core/contract v0.0.0
@@ -8,6 +8,8 @@ require (
 	github.com/Biisairo/dynamic_react/L1_inject/inject v0.0.0
 	github.com/Biisairo/dynamic_react/L1_inject/sets v0.0.0
 )
+
+require golang.org/x/text v0.28.0
 
 replace github.com/Biisairo/dynamic_react/L0_core/contract => ../../L0_core/contract
 

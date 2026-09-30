@@ -11,14 +11,14 @@
              ModelCaller setup, terminal, stream display,
              config/env, dr-print test CLI; surfaces
  ─────────────────────────────────────────────────────────────────
- L2_harness  harness: the agent as one function — tool logic,   (spec v0.2)
+ L2_harness  harness: the agent as one function — tool logic,   (spec v0.4)
              JSONL session format, prompt assembly, summarizer
              over Env + ModelCaller interfaces (no real I/O)
  ─────────────────────────────────────────────────────────────────
  L1_inject   user-modifiable layer
              inject    function interfaces, per-step ctx,       (spec v0.3)
                        binding, combinators
-             sets      default function sets: base, resilient   (spec v0.3)
+             sets      default function sets: base, resilient   (spec v0.4)
              adapters  dialects: Anthropic, Chat, Responses;    (spec v0.3)
                        provider profiles, model catalog
  ─────────────────────────────────────────────────────────────────
@@ -49,7 +49,7 @@
 | [`L1_inject/inject/`](L1_inject/inject/SPEC.md) | 함수 주입 프레임워크 + 조합 함수 | 스펙 v0.3, 구현 |
 | [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 기본 함수 세트 (base, resilient) | 스펙 v0.4, 구현 |
 | [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그 | 스펙 v0.3, 구현 |
-| [`L2_harness/`](L2_harness/SPEC.md) | 하네스: 에이전트 함수 (도구 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface | 스펙 v0.2 |
+| [`L2_harness/`](L2_harness/SPEC.md) | 하네스: 에이전트 함수 (도구 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface | 스펙 v0.4, 구현 |
 | [`L3_ui/`](L3_ui/surfaces/README.md) | 실제 입출력: osenv, dr-print(검증용), surfaces | 범위만 |
 | [`docs/`](docs/DECISIONS.md) | 결정 기록, 인계 문서 | — |
 

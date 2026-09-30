@@ -1,7 +1,7 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.2 (초안)
+- 버전: 0.4 (초안)
 - 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L3_ui` (Env 구현·ModelCaller·사용자 입출력을 넣는다), `L3_ui/cmd/dr-print` (검증용)
@@ -64,7 +64,7 @@ L3 가 쓰는 통로: 스트림·생명주기 = `core.Observer`, 사용자 입�
 모듈 의존: harness → contract, core, inject, sets, 표준 라이브러리. **adapters 에 의존하지 않는다** (ModelCaller 는 L3 가 넣음).
 
 ### 2.2 제약
-- HN-C1. **harness 는 실제 입출력을 하지 않는다**: `os`, `os/exec`, `net`, `net/http`, `syscall`, `io/ioutil`, `path/filepath` 의 파일시스템 접근 함수(`Walk`, `Glob`, `Abs`, `EvalSymlinks`)를 쓰지 않는다. 파일·프로세스는 `Env`, 모델은 `ModelCaller` 로만 (R14). 시계·ID 는 `sets.Deps` 와 같이 주입(`Now`, `NewID`)한다
+- HN-C1. **harness 는 실제 입출력을 하지 않는다** (외부 모듈은 `golang.org/x/text` 만, HN-NFR-04): `os`, `os/exec`, `net`, `net/http`, `syscall`, `io/ioutil`, `path/filepath` 의 파일시스템 접근 함수(`Walk`, `Glob`, `Abs`, `EvalSymlinks`)를 쓰지 않는다. 파일·프로세스는 `Env`, 모델은 `ModelCaller` 로만 (R14). 시계·ID 는 `sets.Deps` 와 같이 주입(`Now`, `NewID`)한다
 - HN-C2. API 키 값을 받는 필드가 없고, 세션 파일·에러 문구에 키 값을 쓰지 않는다 (키는 ModelCaller 구현의 몫).
 - HN-C3. 권한 승인이 없다 — `bash`·`write`·`edit` 는 제한 없이 실행된다 (pi 와 같음, sets ST-C2). 경고 표시는 L3 의 몫이다.
 - HN-C4. 시스템 프롬프트는 `New` 에서 한 번 조립하고 바꾸지 않는다 (sets ST-FR-19).
@@ -73,7 +73,9 @@ L3 가 쓰는 통로: 스트림·생명주기 = `core.Observer`, 사용자 입�
 
 ## 3. 상세 요구사항
 
-### 3.1 Env (`harness` 패키지)
+### 3.1 Env (`harness/env` 패키지)
+
+`harness` 가 `tools` 를 import 하므로 import 순환을 피하려고 별도 패키지에 둔다. `harness.Env` 는 `env.Env` 의 별칭이다.
 
 ```go
 type FileInfo struct { Name string; IsDir bool; Size int64 }
@@ -108,13 +110,13 @@ type Env interface {
 | HN-FR-01 | Env 의 경로 인자는 **절대 경로**다. 상대 경로·`~` 해석은 harness 가 한다 (HN-FR-05). 구분자는 `/` |
 | HN-FR-02 | 없는 파일은 `errors.Is(err, fs.ErrNotExist)` 로 판별 가능한 에러여야 한다 (Env 구현 계약) |
 | HN-FR-03 | `AppendFile` 호출 하나는 한 번의 write 로 쓴다 (세션 줄 원자성, HN-FR-12). `Exec` 는 ctx 취소·Timeout 시 **자식 프로세스 전체**를 끝내고 반환한다. Timeout 이면 `TimedOut=true`, 에러 아님. 실행 자체를 못 하면 error (Env 구현 계약) |
-| HN-FR-04 | `harness/envtest` 패키지가 메모리 FileSystem 과 스크립트된 Shell 로 된 가짜 Env 를 제공한다 (테스트용, L3 구현 검증용 계약 테스트 `envtest.Conformance(t, env)` 포함) |
+| HN-FR-04 | `harness/envtest` 패키지가 메모리 FileSystem 과 스크립트된 Shell 로 된 가짜 Env(`envtest.New(cwd, home)`)를 제공한다. 계약 테스트 `envtest.ConformanceFS(t, fs, root)`(HN-FR-02·03 의 FileSystem 부분, 메모리 FS 도 통과)와 `envtest.ConformanceShell(t, sh, dir)`(실제 셸용: 출력 합치기, 종료 코드, Timeout, 취소 시 자식 종료)를 둔다 |
 
 ### 3.2 도구 (`harness/tools`)
 
 | 도구 | 인자 | 동작 |
 |---|---|---|
-| `read` | `path`, `offset?`(1부터), `limit?` | 텍스트: 2000줄 또는 50KB 중 먼저 닿는 곳에서 자르고 "offset 으로 이어 읽어라" 안내. 확장자 png·jpg·jpeg·gif·webp 는 image 블록(MediaType 은 확장자로) |
+| `read` | `path`, `offset?`(1부터), `limit?` | 텍스트: 2000줄 또는 50KB 중 먼저 닿는 곳에서 자르고 "offset 으로 이어 읽어라" 안내. 내용의 시그니처가 png·jpeg·gif·webp 이면 image 블록 (pi `detectSupportedImageMimeType`) |
 | `write` | `path`, `content` | `WriteFile`. 결과: 쓴 바이트 수와 경로 |
 | `edit` | `path`, `edits:[{oldText, newText}]` | pi 알고리즘: BOM 제거·LF 정규화 → 정확 매칭, 없으면 fuzzy(NFKC, 줄 끝 공백, 스마트 따옴표·유니코드 대시·특수 공백 정규화) → 없음·중복·겹침·무변화는 에러 → 모든 편집은 원본 기준 적용 → 원래 줄바꿈(CRLF)·BOM 복원. 결과에 unified diff |
 | `bash` | `command`, `timeout?`(초) | `Exec{Command, Dir: Cwd, Timeout}`. 합친 출력의 **마지막** 2000줄 / 50KB 반환. 넘으면 전체를 `CreateTemp` 파일에 쓰고 경로 안내. 종료 코드 표시, 0 이 아니거나 TimedOut 이면 error 결과 |
@@ -126,7 +128,7 @@ type Env interface {
 | HN-FR-07 | `read`·`bash` 는 자체 절단을 하므로 `Tool.Truncate` 를 항등 함수로 둔다 (sets 18 의 기본 절단이 이중으로 걸리지 않게). `write`·`edit` 는 nil |
 | HN-FR-08 | `InputSchema` 는 sets ST-FR-38 범위(객체·required·최상위 타입)로 검사 가능한 JSON Schema 다 |
 | HN-FR-09 | `tools.All(env)` 는 `read, bash, edit, write` 순서의 `[]sets.Tool`. 도구별 생성자 `tools.Read(env)` 등도 공개한다. 각 도구는 프롬프트용 한 줄 설명(`tools.Snippet(name)`)을 가진다 |
-| HN-FR-10 | 같은 파일에 대한 `write`·`edit` 는 직렬화한다 (pi `file-mutation-queue`, 병렬 도구 대비) |
+| HN-FR-10 | 같은 파일에 대한 `write`·`edit` 는 직렬화한다 (pi `file-mutation-queue`, 병렬 도구 대비). `tools.All` 이 만든 도구들이 큐 하나를 공유하고, 따로 만든 `tools.Write`·`tools.Edit` 는 각자의 큐를 쓴다 |
 
 ### 3.3 세션 (`harness/session`)
 
@@ -134,7 +136,7 @@ type Env interface {
 |---|---|
 | HN-FR-11 | `session.New(fs FileSystem, dir string) (*Store, error)` 는 `sets.Store` 구현이다. dir 는 절대 경로. 세션 파일 `<dir>/<sessionID>.jsonl`, append-only |
 | HN-FR-12 | 줄 종류: `{"type":"message","message":Message}`, `{"type":"edit","edit":ContextEdit}`, `{"type":"state","ns":string,"delta":StateDelta}`. `Append*`·`SaveState` 호출 하나의 줄들은 `AppendFile` 한 번으로 쓴다. `Load` 는 `ReadFile` 후 순서대로 재생해 `sets.Session` 을 만든다 (state 는 delta 를 순서대로 적용). 파일이 없으면 빈 세션 |
-| HN-FR-13 | 마지막 줄이 깨져 있으면(쓰다 중단) `Load` 는 그 줄만 버린다. 중간 줄이 깨져 있거나 모르는 type 이면 에러 |
+| HN-FR-13 | 개행으로 끝나지 않은 마지막 조각(쓰다 중단)이 깨져 있으면 `Load` 는 그것을 버리고 파일을 그 앞까지로 `WriteFile` 해 복구한다 (이후 append 가 깨진 줄 뒤에 붙지 않게). 개행으로 끝나지 않았지만 온전한 줄이면 개행을 붙여 복구한다. 개행으로 끝난 깨진 줄이나 모르는 type 은 에러 |
 | HN-FR-14 | sessionID 는 `[A-Za-z0-9._-]{1,128}` 이고 `.`·`..` 가 아니어야 한다. 어기면 에러 (경로 탈출 방지). `session.NewID(now, rand)` 는 `20060102-150405-<8 hex>` 형식 |
 | HN-FR-15 | `session.DefaultDir(getenv func(string) string, home string) string` = `getenv("DR_SESSION_DIR")` 가 있으면 그것, 없으면 `<home>/.dynamic_react/sessions`. 순수 함수이고 값을 읽어 넘기는 것은 L3 다 |
 | HN-FR-16 | 동시 사용에 안전하다 (같은 Store 값). 프로세스 간 동시 쓰기는 보장하지 않는다 |
@@ -143,8 +145,8 @@ type Env interface {
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-17 | `prompt.Build(Input) []contract.Block` 은 text 블록 하나. 순서: preamble(기본 문안 또는 `Input.Preamble`) → `<tools>` 도구 한 줄 설명 → `<rules>` → `<addendum>`(`Input.Append`, 있으면) → `<project_context>`(컨텍스트 파일, 있으면) → `<skills>`(있으면) → `<cwd>` |
-| HN-FR-18 | 기본 문안은 코드 상수다 (미결 O1: 구현 시 초안, 사용자 확인) |
+| HN-FR-17 | `prompt.Build(Input) []contract.Block` 은 text 블록 하나. 순서: preamble(기본 문안) → `<tools>` 도구 한 줄 설명 → `<rules>` → `<addendum>`(`Input.Append`, 있으면) → `<project_context>`(컨텍스트 파일, 있으면) → `<skills>`(있으면, `read` 도구가 있을 때) → `<cwd>`. 절은 빈 줄로 잇는다. `Input.Preamble` 이 있으면 preamble·tools·rules 를 모두 그것으로 대체한다 (pi `customPrompt`) |
+| HN-FR-18 | 기본 문안은 코드 상수 `prompt.DefaultPreamble` 이고 내용은 부록 A 다 (사용자 확정). 이 환경의 동작(cwd·경로 해석, 출력 절단과 이어 읽기, edit 규칙, aborted 결과, 압축 요약, project_context)을 모델에 알린다 |
 | HN-FR-19 | `prompt.ContextFiles(ctx, fs, cwd)`: cwd 부터 상위로 git 루트(`.git` 이 있는 디렉터리, 없으면 `/`)까지 `AGENTS.md`, `CLAUDE.md` 를 모아 **루트 쪽부터** `[]File{Path, Content}` 로. 한 디렉터리에 둘 다 있으면 `AGENTS.md` 먼저 |
 | HN-FR-20 | `prompt.Skills(ctx, fs, cwd, home)`: `<home>/.agents/skills`, `<cwd>/.agents/skills`, `<home>/.claude/skills`, `<cwd>/.claude/skills` 순서로 `*/SKILL.md` frontmatter(`name`, `description`)를 모은다. 본문은 넣지 않는다 (모델이 `read` 로 읽음). 같은 이름은 먼저 찾은 것이 이긴다. frontmatter 가 없거나 깨진 파일, 없는 디렉터리는 건너뛴다. home 이 ""면 home 경로는 건너뛴다 |
 | HN-FR-21 | 날짜·시각처럼 run 마다 바뀌는 값을 넣지 않는다 (프롬프트 캐시 보호) |
@@ -153,8 +155,8 @@ type Env interface {
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-22 | `summary.New(model sets.ModelCaller)` 는 `sets.Summarizer` 다. 요청: System = 요약 시스템 프롬프트, Messages = user 메시지 하나(`<conversation>` 안에 직렬화한 구간 + `Previous` 가 있으면 `<previous-summary>` + 요약 또는 갱신 프롬프트), Model = `SummaryRequest.Model`, MaxOutputTokens = `SummaryRequest.MaxTokens`, Tools 없음 |
-| HN-FR-23 | 직렬화: `[User]:`·`[Assistant]:`·`[Assistant thinking]:`·`[Assistant tool calls]: name(args)`·`[Tool result]:` 줄. 이미지는 `[image]`, opaque·ProviderData 는 생략 (pi `serializeConversation`) |
+| HN-FR-22 | `summary.New(model sets.ModelCaller, now func() time.Time)` 는 `sets.Summarizer` 다 (now 는 요청 메시지 Timestamp, nil 이면 time.Now). 요청: System = 요약 시스템 프롬프트, Messages = user 메시지 하나(`<conversation>` 안에 직렬화한 구간 + `Previous` 가 있으면 `<previous-summary>` + 요약 또는 갱신 프롬프트), Model = `SummaryRequest.Model`, MaxOutputTokens = `SummaryRequest.MaxTokens`, Tools 없음 |
+| HN-FR-23 | 직렬화: `[User]:`·`[Assistant]:`·`[Assistant thinking]:`·`[Assistant tool calls]: name(args)`·`[Tool result]:` 줄. 이미지는 `[image]`, opaque·ProviderData 는 생략. 도구 결과는 2000자에서 자르고 표시 (pi `serializeConversation`, `TOOL_RESULT_MAX_CHARS`) |
 | HN-FR-24 | done 메시지의 text 블록을 이어 붙여 돌려준다. error 이벤트, iterator error, done 없이 끝남, StopReason `length`·`error`·`aborted`, 빈 텍스트는 에러 (pi `getSummarizationFailure`) |
 | HN-FR-25 | ctx 취소를 따른다. 재시도하지 않는다 (sets ST-FR-27) |
 
@@ -177,14 +179,14 @@ type Options struct {
 type RunRequest struct {
     SessionID string                 // 비면 session.NewID
     Input     []contract.Message
-    Config    sets.Config
+    Config    json.RawMessage        // sets 설정 JSON (L3 가 파일에서 읽은 그대로). sets.Config 값을 쓰지 않는 이유: zero 값 enabled=false 가 압축을 끔
 }
 ```
 
 | id | 요구사항 |
 |---|---|
 | HN-FR-26 | `harness.New(ctx, Options) (*Agent, error)`: 레지스트리(`tools.All(env)` + `Options.Tools`), 세션 Store, 요약기, 시스템 프롬프트(`ContextFiles`·`Skills` 포함)를 한 번 만들고 `inject.BindWith(sets.StateStoreOf(store), sets.Base(deps), sets.Resilient(deps), Extra...)` 로 Dispatcher 를 만든다. Env·Model·SessionDir 누락, Bind 실패, 프롬프트 수집의 Env 에러(없는 파일 제외)는 에러 |
-| HN-FR-27 | `Agent.Start(ctx, RunRequest) (*core.Run, string, error)`: sets.Config 를 JSON 으로 바꿔 `sets.ParseConfig` 로 검사하고(실패하면 run 없이 에러), sessionID 를 검사·생성해 run 을 시작한다. 두 번째 반환값은 쓰인 sessionID |
+| HN-FR-27 | `Agent.Start(ctx, RunRequest) (*core.Run, string, error)`: Config 를 `sets.ParseConfig` 로 검사하고(실패하면 run 없이 에러), sessionID 를 검사·생성해 run 을 시작한다. 두 번째 반환값은 쓰인 sessionID |
 | HN-FR-28 | 여러 run 을 동시에 시작할 수 있다 (세션이 다르면 독립). 같은 세션의 동시 run 은 보장하지 않는다 |
 | HN-FR-29 | `Agent.System() []contract.Block`, `Agent.Tools() sets.ToolRegistry` 로 조립 결과를 조회할 수 있다 (L3 표시용) |
 
@@ -195,7 +197,7 @@ type RunRequest struct {
 | HN-NFR-01 | 모든 테스트는 `envtest` 가짜 Env 로 한다. 실제 파일시스템·프로세스를 쓰지 않는다 (OS 구현의 테스트는 `L3_ui/osenv` 의 몫, `envtest.Conformance` 로) |
 | HN-NFR-02 | 종단 테스트: 가짜 ModelCaller(스크립트된 스트림) + 가짜 Env + 실제 도구·세션·요약기 + `harness.New` 로 "read→edit→bash 라운드 후 종료", "세션 재개(새 Agent, 같은 Env·dir) 시 History·편집 복원", "overflow → 실제 요약기로 압축 → 재호출" |
 | HN-NFR-03 | `go test -race` 통과, `GOWORK=off` 단독 테스트 통과 |
-| HN-NFR-04 | import 는 contract·core·inject·sets·표준 라이브러리뿐이고, HN-C1 의 금지 패키지가 없다 (`go list -deps` + 금지 목록 검사) |
+| HN-NFR-04 | import 는 contract·core·inject·sets·표준 라이브러리와 `golang.org/x/text`(edit 의 NFKC, v0.28.0 = Go 1.23 호환 최신) 뿐이고, HN-C1 의 금지 패키지가 없다 (직접 import 검사) |
 
 ---
 
@@ -229,9 +231,10 @@ type RunRequest struct {
 
 | id | 내용 |
 |---|---|
-| O1 | 기본 시스템 프롬프트 문안 (구현 시 pi preamble 을 참고해 초안 → 사용자 확인) |
+| O1 | ~~기본 시스템 프롬프트 문안~~ → 부록 A 로 확정 (사용자) |
 | O2 | pi 에서 가져온 문안(요약 프롬프트, edit 정규화 규칙)의 라이선스 고지 — adapters 스냅샷과 함께 사용자가 나중에 처리 |
 | O3 | `L3_ui/osenv`(Env OS 구현)·`L3_ui/cmd/dr-print` 스펙 — harness 구현 뒤 작성 |
+| O4 | ~~NFKC 와 표준 라이브러리 제약 충돌~~ → `golang.org/x/text` 의존 허용 (사용자) |
 
 ---
 
@@ -242,4 +245,44 @@ type RunRequest struct {
 | 0.1 | 옛 sets v0.2 의 3.3·3.4·3.5·3.8 | 라이브러리 모듈 하나 + 검증용 CLI | 사용자 (R14 초안) |
 | 0.1 | 세션 줄 `usage` | 제거 | usage 는 assistant 메시지에 있다 (contract CT-FR-01a) |
 | 0.2 | 도구·세션·프롬프트 수집이 파일·프로세스를 직접 접근, 기본 ModelCaller = adapters | 실제 I/O 는 `Env`·`ModelCaller` 로만 받음 (HN-C1), adapters 의존 제거 | 사용자: "실제 입출력도 다 L3, 여기서는 에이전트 함수 하나" — pi 새 harness(`ExecutionEnv`) 구조 채택 (R14, 안 C) |
+| 0.4 | 기본 문안 미정 (pi preamble 초안) | 부록 A: 환경 동작 안내를 더한 문안 | 사용자: "현재 우리 구조에 맞게 개선하여 확정, 영어로 쓰고 번역 별도" |
+| 0.4 | 표준 라이브러리만, NFKC 없음 | `golang.org/x/text` v0.28.0 허용, NFKC 포함 (pi 와 같음) | 사용자 결정 (O4). 최신 v0.42.0 은 Go 1.26 을 요구해 Go 1.23 호환 최신인 v0.28.0 으로 고정. go.work 는 `go 1.23.0` |
+| 0.3 | Env 는 `harness` 패키지 | `harness/env` 패키지 + 별칭 | import 순환 (harness → tools → Env) |
+| 0.3 | read 이미지 판별 = 확장자 | 내용 시그니처 | pi 와 같음 |
+| 0.3 | Preamble 은 preamble 만 대체 | preamble·tools·rules 대체 | pi `customPrompt` 와 같음 |
+| 0.3 | RunRequest.Config = sets.Config | json.RawMessage | zero 값이 압축을 끔 |
+| 0.3 | 깨진 마지막 줄은 읽을 때만 버림 | 파일을 복구 | 복구하지 않으면 다음 append 가 깨진 줄 뒤에 붙어 이후 Load 가 항상 실패 |
+| 0.3 | summary.New(model) | summary.New(model, now) | HN-C1 시계 주입 |
 | 0.2 | dr-print = `L2_harness/cmd/dr-print` | `L3_ui/cmd/dr-print`, OS Env 는 `L3_ui/osenv` | 터미널·OS I/O 를 하므로 L3. L3 → L2 의존 방향 유지 (D16 정정) |
+
+---
+
+## 부록 A. 기본 문안 (HN-FR-18)
+
+`prompt.DefaultPreamble` (모델에 보내는 원문, 영어):
+
+```text
+You are an expert coding assistant operating inside dynamic_react, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files with the tools listed below.
+
+How this environment works:
+- Tools run in the working directory shown in <cwd>. Relative paths resolve against it, and ~ resolves to the home directory.
+- Large tool output is truncated. read tells you the offset to continue from; bash keeps the end of the output and reports the path of a file with the full output.
+- edit replaces exact text: read the file first, copy oldText exactly, and make each oldText unique. All edits in one call apply to the original file.
+- A tool result that says "aborted" was interrupted before it finished. Check the current state before running it again.
+- In long sessions, earlier messages may be replaced by a summary of them. Treat the summary as a reliable record of prior work.
+- <project_context> holds instructions from the project's AGENTS.md and CLAUDE.md files. Follow them for work in this project.
+```
+
+번역 (참고용, 모델에 보내지 않음):
+
+```text
+당신은 코딩 에이전트 하네스인 dynamic_react 안에서 동작하는 숙련된 코딩 어시스턴트다. 아래에 나열된 도구로 파일을 읽고, 명령을 실행하고, 코드를 편집하고, 새 파일을 써서 사용자를 돕는다.
+
+이 환경의 동작 방식:
+- 도구는 <cwd> 에 표시된 작업 디렉터리에서 실행된다. 상대 경로는 그곳을 기준으로, ~ 는 홈 디렉터리로 해석된다.
+- 도구 출력이 크면 잘린다. read 는 이어 읽을 offset 을 알려 주고, bash 는 출력의 끝부분을 남기고 전체 출력을 담은 파일의 경로를 알려 준다.
+- edit 는 정확한 텍스트를 바꾼다: 먼저 파일을 읽고, oldText 를 정확히 복사하고, 각 oldText 가 유일하게 만든다. 한 번의 호출 안의 편집은 모두 원본 파일을 기준으로 적용된다.
+- "aborted" 라고 적힌 도구 결과는 끝나기 전에 중단된 것이다. 다시 실행하기 전에 현재 상태를 확인한다.
+- 긴 세션에서는 앞의 메시지들이 그 요약으로 대체될 수 있다. 요약은 이전 작업의 믿을 만한 기록으로 다룬다.
+- <project_context> 에는 프로젝트의 AGENTS.md·CLAUDE.md 파일에서 온 지시가 들어 있다. 이 프로젝트의 작업에서는 그것을 따른다.
+```
