@@ -41,8 +41,6 @@ type Skill struct {
 }
 
 type Input struct {
-	Preamble     string // 있으면 preamble·tools·rules 를 대체한다 (pi customPrompt)
-	Append       string
 	Tools        []Tool
 	ContextFiles []File
 	Skills       []Skill
@@ -55,13 +53,7 @@ func Build(in Input) []contract.Block {
 	for _, t := range in.Tools {
 		has[t.Name] = true
 	}
-	parts := []string{in.Preamble}
-	if in.Preamble == "" {
-		parts = []string{DefaultPreamble, section("tools", toolsText(in.Tools)), section("rules", rulesText(has))}
-	}
-	if in.Append != "" {
-		parts = append(parts, section("addendum", in.Append))
-	}
+	parts := []string{DefaultPreamble, section("tools", toolsText(in.Tools)), section("rules", rulesText(has))}
 	if len(in.ContextFiles) > 0 {
 		parts = append(parts, section("project_context", contextText(in.ContextFiles)))
 	}

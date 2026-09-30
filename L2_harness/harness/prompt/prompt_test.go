@@ -30,7 +30,6 @@ func TestBuildGolden(t *testing.T) {
 	got := one(t, prompt.Build(prompt.Input{
 		Cwd:          "/w",
 		Tools:        fourTools,
-		Append:       "Extra rule.",
 		ContextFiles: []prompt.File{{Path: "/w/AGENTS.md", Content: "Use tabs."}},
 		Skills:       []prompt.Skill{{Name: "a&b", Description: "does <x>", Path: "/h/.agents/skills/a/SKILL.md"}},
 	}))
@@ -48,10 +47,6 @@ In addition to the tools above, you may have access to other custom tools depend
 - Be concise in your responses
 - Show file paths clearly when working with files
 </rules>
-
-<addendum>
-Extra rule.
-</addendum>
 
 <project_context>
 Project-specific instructions and guidelines:
@@ -86,12 +81,8 @@ When a skill file references a relative path, resolve it against the skill direc
 func TestBuildVariants(t *testing.T) {
 	got := one(t, prompt.Build(prompt.Input{Cwd: "/w"}))
 	if !strings.Contains(got, "<tools>\n(none)\n\nIn addition") || strings.Contains(got, "Use bash") ||
-		strings.Contains(got, "\n<addendum>\n") || strings.Contains(got, "\n<project_context>\n") || strings.Contains(got, "\n<skills>\n") {
+		strings.Contains(got, "\n<project_context>\n") || strings.Contains(got, "\n<skills>\n") {
 		t.Fatalf("minimal:\n%s", got)
-	}
-	got = one(t, prompt.Build(prompt.Input{Cwd: "/w", Preamble: "Custom.", Tools: fourTools}))
-	if !strings.HasPrefix(got, "Custom.\n\n<cwd>") || strings.Contains(got, "\n<tools>\n") || strings.Contains(got, "\n<rules>\n") {
-		t.Fatalf("custom:\n%s", got)
 	}
 	noRead := one(t, prompt.Build(prompt.Input{Cwd: "/w", Tools: []prompt.Tool{{Name: "bash", Snippet: "x"}},
 		Skills: []prompt.Skill{{Name: "s", Description: "d", Path: "/p"}}}))

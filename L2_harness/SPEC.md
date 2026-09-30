@@ -1,7 +1,7 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.4 (초안)
+- 버전: 0.5 (초안)
 - 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L3_ui` (Env 구현·ModelCaller·사용자 입출력을 넣는다), `L3_ui/cmd/dr-print` (검증용)
@@ -145,7 +145,7 @@ type Env interface {
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-17 | `prompt.Build(Input) []contract.Block` 은 text 블록 하나. 순서: preamble(기본 문안) → `<tools>` 도구 한 줄 설명 → `<rules>` → `<addendum>`(`Input.Append`, 있으면) → `<project_context>`(컨텍스트 파일, 있으면) → `<skills>`(있으면, `read` 도구가 있을 때) → `<cwd>`. 절은 빈 줄로 잇는다. `Input.Preamble` 이 있으면 preamble·tools·rules 를 모두 그것으로 대체한다 (pi `customPrompt`) |
+| HN-FR-17 | `prompt.Build(Input) []contract.Block` 은 text 블록 하나. 순서: preamble(기본 문안) → `<tools>` 도구 한 줄 설명 → `<rules>` → `<project_context>`(컨텍스트 파일, 있으면) → `<skills>`(있으면, `read` 도구가 있을 때) → `<cwd>`. 절은 빈 줄로 잇는다. 편집 수단을 두지 않는다 — 다른 프롬프트가 필요한 개발자는 `sets.Deps.System` 을 직접 구성한다 (R16) |
 | HN-FR-18 | 기본 문안은 코드 상수 `prompt.DefaultPreamble` 이고 내용은 부록 A 다 (사용자 확정). 이 환경의 동작(cwd·경로 해석, 출력 절단과 이어 읽기, edit 규칙, aborted 결과, 압축 요약, project_context)을 모델에 알린다 |
 | HN-FR-19 | `prompt.ContextFiles(ctx, fs, cwd)`: cwd 부터 상위로 git 루트(`.git` 이 있는 디렉터리, 없으면 `/`)까지 `AGENTS.md`, `CLAUDE.md` 를 모아 **루트 쪽부터** `[]File{Path, Content}` 로. 한 디렉터리에 둘 다 있으면 `AGENTS.md` 먼저 |
 | HN-FR-20 | `prompt.Skills(ctx, fs, cwd, home)`: `<home>/.agents/skills`, `<cwd>/.agents/skills`, `<home>/.claude/skills`, `<cwd>/.claude/skills` 순서로 `*/SKILL.md` frontmatter(`name`, `description`)를 모은다. 본문은 넣지 않는다 (모델이 `read` 로 읽음). 같은 이름은 먼저 찾은 것이 이긴다. frontmatter 가 없거나 깨진 파일, 없는 디렉터리는 건너뛴다. home 이 ""면 home 경로는 건너뛴다 |
@@ -167,8 +167,6 @@ type Options struct {
     Env        Env                   // 필수
     Model      sets.ModelCaller      // 필수
     SessionDir string                // 필수, 절대 경로
-    Preamble   string                // 기본 문안 대체
-    Append     string
     Tools      []sets.Tool           // 추가·교체 (같은 이름은 덮음)
     Extra      []inject.FunctionSet  // base·resilient 위에 겹칠 세트
     Observer   core.Observer
@@ -208,7 +206,7 @@ type RunRequest struct {
 | HN-FR-01~04 | envtest 자체 테스트, `Conformance` 가 envtest 에서 통과 |
 | HN-FR-05~10 | 도구별 단위: 정상 / 경계(offset 끝, 2000줄·50KB 경계, 빈 파일, 이미지, `~`, cwd 밖) / 실패(없는 파일, 매칭 0·2회, 겹침, 무변화, 타임아웃, 0 아닌 종료 코드, Env 에러, spill). edit fuzzy 정규화 표, CRLF·BOM 복원 |
 | HN-FR-11~16 | 왕복(메시지·편집·상태 → Load), 깨진 마지막 줄 무시, 깨진 중간 줄·모르는 type 에러, 잘못된 sessionID, 호출당 AppendFile 1회, 동시 Append(-race), DefaultDir |
-| HN-FR-17~21 | 골든: 기본 / 대체 / 덧붙임 / 컨텍스트 파일 순서(루트 쪽 먼저, git 루트에서 멈춤) / 스킬 우선순위·깨진 frontmatter·home 없음 |
+| HN-FR-17~21 | 골든: 기본 / 컨텍스트 파일 순서(루트 쪽 먼저, git 루트에서 멈춤) / 스킬 우선순위·깨진 frontmatter·home 없음 |
 | HN-FR-22~25 | 가짜 ModelCaller: 요청 모양(System·Previous·MaxTokens·Tools 없음), 직렬화 골든, length·error·빈 텍스트·done 없음 → 에러, 취소 |
 | HN-FR-26~29 | New 에러 경로, Start 설정 검사·sessionID 검사, 동시 run 2개 |
 | HN-NFR-02~04 | 종단 시나리오, `go list -deps` |
@@ -247,6 +245,7 @@ type RunRequest struct {
 | 0.2 | 도구·세션·프롬프트 수집이 파일·프로세스를 직접 접근, 기본 ModelCaller = adapters | 실제 I/O 는 `Env`·`ModelCaller` 로만 받음 (HN-C1), adapters 의존 제거 | 사용자: "실제 입출력도 다 L3, 여기서는 에이전트 함수 하나" — pi 새 harness(`ExecutionEnv`) 구조 채택 (R14, 안 C) |
 | 0.4 | 기본 문안 미정 (pi preamble 초안) | 부록 A: 환경 동작 안내를 더한 문안 | 사용자: "현재 우리 구조에 맞게 개선하여 확정, 영어로 쓰고 번역 별도" |
 | 0.4 | 표준 라이브러리만, NFKC 없음 | `golang.org/x/text` v0.28.0 허용, NFKC 포함 (pi 와 같음) | 사용자 결정 (O4). 최신 v0.42.0 은 Go 1.26 을 요구해 Go 1.23 호환 최신인 v0.28.0 으로 고정. go.work 는 `go 1.23.0` |
+| 0.5 | `Options.Preamble`·`Options.Append`(`prompt.Input` 같은 필드)로 preamble·tools·rules 대체, `<addendum>` 추가 | 편집 필드 없음. 항상 기본 조립. 다른 프롬프트는 `sets.Deps.System` 직접 구성 | 사용자: "코어를 쓰는 개발자는 알아서 수정, 사용자는 시스템 프롬프트를 수정할 필요 없음" → Preamble/Append 제거 (R16) |
 | 0.3 | Env 는 `harness` 패키지 | `harness/env` 패키지 + 별칭 | import 순환 (harness → tools → Env) |
 | 0.3 | read 이미지 판별 = 확장자 | 내용 시그니처 | pi 와 같음 |
 | 0.3 | Preamble 은 preamble 만 대체 | preamble·tools·rules 대체 | pi `customPrompt` 와 같음 |

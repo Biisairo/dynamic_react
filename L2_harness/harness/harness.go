@@ -27,11 +27,9 @@ import (
 type Env = env.Env
 
 type Options struct {
-	Env        Env              // 필수
-	Model      sets.ModelCaller // 필수
-	SessionDir string           // 필수, 절대 경로
-	Preamble   string           // 기본 문안(preamble·tools·rules) 대체
-	Append     string
+	Env        Env                  // 필수
+	Model      sets.ModelCaller     // 필수
+	SessionDir string               // 필수, 절대 경로
 	Tools      []sets.Tool          // 추가·교체 (같은 이름은 덮음)
 	Extra      []inject.FunctionSet // base·resilient 위에 겹칠 세트
 	Observer   core.Observer
@@ -111,7 +109,7 @@ func buildSystem(ctx context.Context, o Options, reg *sets.Registry) ([]contract
 		}
 		lines = append(lines, prompt.Tool{Name: name, Snippet: snippet})
 	}
-	return prompt.Build(prompt.Input{Preamble: o.Preamble, Append: o.Append, Tools: lines,
+	return prompt.Build(prompt.Input{Tools: lines,
 		ContextFiles: files, Skills: skills, Cwd: o.Env.Cwd()}), nil
 }
 

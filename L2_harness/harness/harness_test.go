@@ -141,7 +141,6 @@ func TestAssembly(t *testing.T) {
 		{Spec: contract.ToolSpec{Name: "mytool", Description: "My tool.\nMore detail.", InputSchema: json.RawMessage(`{"type":"object"}`)}},
 		{Spec: contract.ToolSpec{Name: "read", Description: "replaced", InputSchema: json.RawMessage(`{"type":"object"}`)}},
 	}
-	o.Append = "Appended."
 	a, err := harness.New(context.Background(), o)
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +155,7 @@ func TestAssembly(t *testing.T) {
 	if len(sys) != 1 {
 		t.Fatalf("system %+v", sys)
 	}
-	for _, want := range []string{"- read: Read file contents", "- mytool: My tool.\n", "Project rule X.", "myskill", "Appended.", "<cwd>\n/w\n</cwd>"} {
+	for _, want := range []string{"- read: Read file contents", "- mytool: My tool.\n", "Project rule X.", "myskill", "<cwd>\n/w\n</cwd>"} {
 		if !strings.Contains(sys[0].Text, want) {
 			t.Errorf("system prompt lacks %q", want)
 		}
