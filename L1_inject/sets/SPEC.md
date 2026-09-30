@@ -123,6 +123,7 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 |---|---|
 | ST-FR-03 | `sets.Base(deps)` 는 위 표대로 22개 step 을 모두 채운 FunctionSet(`Name: "base"`)을 돌려준다 |
 | ST-FR-04 | base 의 각 함수는 exported 로 따로 제공해, 사용자가 조합 함수(inject 3.7)로 감쌀 수 있게 한다 (예: `sets.BaseTurnFinish(deps)`). 상태를 쓰는 함수를 다른 세트에서 감싸면 그 세트의 네임스페이스를 쓰므로 base 의 상태와 공유되지 않는다 (inject IN-FR-23). step 간에 공유할 상태는 publish 키로 읽는다 |
+| ST-FR-40 | 1 의 짝 복구는 **마지막 assistant 메시지**(그 뒤에는 그 메시지의 결과만 있는 경우)의 짝 없는 호출만 History 끝에 aborted 결과로 붙이고 Store 에 기록한다 (Store 는 append-only). 그 밖의 짝 없는 호출은 7 이 요청 안에서 그 호출 바로 뒤에 끼운다 |
 | ST-FR-38 | 16 의 스키마 검사 범위: 인자가 객체인지, `required` 키가 있는지, `properties` 에 선언된 최상위 키의 JSON 타입(`string`·`number`·`integer`·`boolean`·`array`·`object`·`null`)이 맞는지. 그 밖의 JSON Schema 키워드는 검사하지 않는다 (표준 라이브러리에 검증기가 없음) |
 
 ### 3.2 resilient 세트 — 덮어쓰는 step
@@ -202,7 +203,7 @@ if used > W - reserve and not blocked and Summarizer != nil:
 |---|---|
 | ST-FR-20 | `EstimateText(s)`: ASCII 면 `(len+3)/4`, 아니면 한중일·한글·가나 글자 수 + 나머지의 `(UTF-8 바이트+3)/4` |
 | ST-FR-21 | 메시지: text·thinking·도구 이름+인자 JSON·도구 결과 텍스트를 합산, 이미지 1개 1200, ProviderData·opaque payload 는 0 (provider usage 로만 가격이 매겨짐) |
-| ST-FR-22 | `EstimateContext(projection, system, tools)`: 투영 안에서 **마지막으로 성공한 응답의 usage** 를 찾고, 그 응답이 **가장 최근 편집보다 뒤**이면 `usage.Total()` + 그 뒤 메시지 추정. 아니면(압축 이전 usage) 전부 추정 + 시스템 프롬프트·도구 스키마 추정 |
+| ST-FR-22 | `EstimateContext(projection, edits, system, tools)`: 투영 안에서 **마지막으로 성공한 응답의 usage** 를 찾고, 그 응답이 **가장 최근 편집보다 뒤**(메시지 Timestamp > 편집 Timestamp)이면 `usage.Total()` + 그 뒤 메시지 추정. 아니면(압축 이전 usage) 전부 추정 + 시스템 프롬프트·도구 스키마 추정 |
 
 ### 3.7 압축 (compact)
 
@@ -289,3 +290,6 @@ if used > W - reserve and not blocked and Summarizer != nil:
 | 0.3 | 16 스키마 검증 범위 미정 | ST-FR-38 | 표준 라이브러리에 JSON Schema 검증기 없음 |
 | 0.3 | 설정 `cwd`·`sessionDir`·`systemPrompt`·`catalog` | 제거 (하네스 설정), `thinking` 추가 | R13 |
 | 0.3 | O2 근거 없음 | pi RetrySettings | 출처 확인 |
+| 0.3 | 1 짝 복구: 결과 없는 호출마다 | 마지막 assistant 메시지만, 나머지는 7 (ST-FR-40) | Store 가 append-only 라 중간에 끼울 수 없음 |
+| 0.3 | ST-FR-22 "편집보다 뒤" 기준 미정 | Timestamp 비교 | 투영만으로는 순서를 알 수 없음 |
+| 0.3 | 재시도 횟수 범위 "이번 호출" | 턴 단위, Class 별 (ST-FR-07) | recall 은 같은 턴 안에서만 일어남 |
