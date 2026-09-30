@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
@@ -37,15 +36,6 @@ type ModelPatch struct {
 	ContextWindow   *int                   `json:"contextWindow,omitempty"`
 	MaxOutputTokens *int                   `json:"maxOutputTokens,omitempty"`
 	Capabilities    *contract.Capabilities `json:"capabilities,omitempty"`
-}
-
-// LoadConfig 는 설정 파일을 읽는다.
-func LoadConfig(path string) (Config, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return Config{}, fmt.Errorf("adapters: config: %w", err)
-	}
-	return ParseConfig(b)
 }
 
 // ParseConfig 는 모르는 키를 거부한다.

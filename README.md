@@ -57,9 +57,9 @@ L0·L1 은 사용자 환경(환경변수·파일)과 무관한 단독 라이브�
 | [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 기본 함수 세트 (base, resilient) | 스펙 v0.4, 구현 |
 | [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그 | 스펙 v0.4, 구현 |
 | [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface | 스펙 v0.6, 구현 |
-| [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.1 |
-| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·env + osenv + adapters → harness | 스펙 v0.1 |
-| [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 검증용 CLI (입출력만) | 스펙 v0.1 |
+| [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.1, 구현 |
+| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·env + osenv + adapters → harness | 스펙 v0.1, 구현 |
+| [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 검증용 CLI (입출력만) | 스펙 v0.1, 구현 |
 | [`L3_ui/surfaces/`](L3_ui/surfaces/README.md) | 본격 입출력 surfaces | 범위만 |
 | [`docs/`](docs/DECISIONS.md) | 결정 기록, 인계 문서 | — |
 
@@ -80,6 +80,6 @@ L0·L1 은 사용자 환경(환경변수·파일)과 무관한 단독 라이브�
 5. `L1_inject/adapters` — httptest SSE 재생 + 골든 테스트 → Anthropic → OpenAI Chat → 카탈로그.
 6. `L1_inject/sets` — 의존 interface·메모리 Store → 추정·압축 절단 → base → resilient → 종단 테스트 (가짜 ModelCaller·도구).
 7. `L2_harness/harness` — Env·ModelCaller 위의 에이전트 조립 (R13, R14).
-8. (다음 단계) `L2_harness/osenv` → `L2_harness/agent` → `L3_ui/cmd/dr-print` 로 실행 가능한 에이전트 (R17).
+8. `L2_harness/osenv` → `L2_harness/agent` → `L3_ui/cmd/dr-print` 로 실행 가능한 에이전트 (R17).
 
 각 단계는 스펙 4장(검증)의 테스트를 먼저 쓰고 실패를 확인한 뒤 구현한다. 스펙과 코드가 충돌하면 멈추고 스펙·DECISIONS 를 먼저 고친다.

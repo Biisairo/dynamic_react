@@ -42,6 +42,19 @@ func TestMissingKey(t *testing.T) {
 	}
 }
 
+// AD-FR-48, AD-C6: Getenv 가 nil 이면 프로세스 환경에 키가 있어도 읽지 않는다.
+func TestNilGetenvReadsNoEnv(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "sk-from-process-env")
+	f := newFake(t)
+	f.sseText("/v1/messages", anthropicReply("end_turn"))
+	cfg, _ := adapters.ParseConfig([]byte(`{"providers":{"anthropic":{"baseUrl":"` + f.URL + `"}}}`))
+	c := adapters.New(adapters.Options{Config: cfg, NoRemoteCatalog: true})
+	ce := failed(t, collect(t, c, simple("anthropic", "m")))
+	if ce.Class != contract.ClassAuth || f.body("/v1/messages") != nil {
+		t.Fatalf("%+v", ce)
+	}
+}
+
 // AD-FR-32, 34: HTTP 에러는 분류되고 키는 가려진다.
 func TestHTTPErrorClassifiedAndMasked(t *testing.T) {
 	f := newFake(t)
@@ -142,7 +155,7 @@ func TestLiveProviders(t *testing.T) {
 			if os.Getenv(env) == "" {
 				t.Skipf("%s not set", env)
 			}
-			c := adapters.New(adapters.Options{})
+			c := adapters.New(adapters.Options{Getenv: os.Getenv})
 			req := simple(p, models[p])
 			req.Messages = []contract.Message{user("u1", "Reply with the single word: ok")}
 			m := done(t, collect(t, c, req))

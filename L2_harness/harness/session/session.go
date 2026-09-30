@@ -45,9 +45,12 @@ func NewID(now time.Time, entropy io.Reader) string {
 	return now.UTC().Format("20060102-150405") + "-" + hex.EncodeToString(b[:])
 }
 
+// DirEnv 는 세션 디렉터리를 바꾸는 환경변수 이름이다 (HN-FR-15).
+const DirEnv = "DR_SESSION_DIR"
+
 // DefaultDir 은 기본 세션 디렉터리다. 값을 읽어 넘기는 것은 호출자다 (HN-FR-15).
 func DefaultDir(getenv func(string) string, home string) string {
-	if d := getenv("DR_SESSION_DIR"); d != "" {
+	if d := getenv(DirEnv); d != "" {
 		return d
 	}
 	return path.Join(home, ".dynamic_react", "sessions")

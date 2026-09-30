@@ -84,6 +84,7 @@ func New(cwd string) (*Env, error)
 | OS-FR-03 | 취소된 ctx → `context.Canceled`, 파일이 만들어지지 않음 |
 | OS-FR-05 | 0600 파일을 WriteFile 로 덮어써도 0600 유지 |
 | OS-FR-08 | 디렉터리를 가리키는 링크 → `IsDir=true`, 깨진 링크 → 포함·`IsDir=false` |
+| OS-FR-11 | 취소·Timeout 뒤 백그라운드 자식 pid 가 죽고 `waitDelay` 전에 반환. 파이프를 잡은 백그라운드 자식(`sleep 3 &`)이 있어도 `waitDelay` 뒤 종료 코드 0 으로 반환 |
 | OS-FR-10 | Dir 비면 Cwd 에서 실행(`pwd`), stdin 이 비어 있음(`cat` 즉시 종료) |
 | OS-FR-12 | `kill -TERM $$` → 143, 취소 → `context.Canceled`, 없는 Dir → error, 없는 셸(`SHELL=/nonexistent`) → error |
 | 공통 | `go test -race -count=3`, `GOWORK=off` 단독 테스트, 뮤테이션 확인 |

@@ -65,11 +65,10 @@ echo "prompt" | dr-print ...
 
 ### 3.1 `-json` 이벤트 형식
 
-`core.ObserverEvent` 하나 = 한 줄. 빈 값·nil 필드는 뺀다.
+`core.ObserverEvent` 하나 = 한 줄. 빈 값·nil 필드는 뺀다 (core 는 `stream_event` 에 step·seq·unit 을 싣지 않으므로 그 줄에는 없다).
 
 ```json
-{"kind":"stream_event","runId":"r1","step":"stream.event","seq":3,"unit":"event",
- "stream":{"kind":"text_delta","index":0,"delta":"hi"}}
+{"kind":"stream_event","runId":"r1","stream":{"kind":"text_delta","index":0,"delta":"hi"}}
 {"kind":"step_ended","runId":"r1","step":"tool.execute","seq":7,"unit":"tool","durationMs":12,
  "signals":[{"kind":"next"}],"err":"..."}
 {"kind":"run_settled","runId":"r1","settle":{"reason":"completed"}}

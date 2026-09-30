@@ -138,7 +138,7 @@ type Env interface {
 | HN-FR-12 | 줄 종류: `{"type":"message","message":Message}`, `{"type":"edit","edit":ContextEdit}`, `{"type":"state","ns":string,"delta":StateDelta}`. `Append*`·`SaveState` 호출 하나의 줄들은 `AppendFile` 한 번으로 쓴다. `Load` 는 `ReadFile` 후 순서대로 재생해 `sets.Session` 을 만든다 (state 는 delta 를 순서대로 적용). 파일이 없으면 빈 세션 |
 | HN-FR-13 | 개행으로 끝나지 않은 마지막 조각(쓰다 중단)이 깨져 있으면 `Load` 는 그것을 버리고 파일을 그 앞까지로 `WriteFile` 해 복구한다 (이후 append 가 깨진 줄 뒤에 붙지 않게). 개행으로 끝나지 않았지만 온전한 줄이면 개행을 붙여 복구한다. 개행으로 끝난 깨진 줄이나 모르는 type 은 에러 |
 | HN-FR-14 | sessionID 는 `[A-Za-z0-9._-]{1,128}` 이고 `.`·`..` 가 아니어야 한다. 어기면 에러 (경로 탈출 방지). `session.NewID(now, rand)` 는 `20060102-150405-<8 hex>` 형식 |
-| HN-FR-15 | `session.DefaultDir(getenv func(string) string, home string) string` = `getenv("DR_SESSION_DIR")` 가 있으면 그것, 없으면 `<home>/.dynamic_react/sessions`. 순수 함수이고 값을 읽어 넘기는 것은 `L2_harness/agent` 다 |
+| HN-FR-15 | `session.DefaultDir(getenv func(string) string, home string) string` = `getenv(session.DirEnv)`(상수 `"DR_SESSION_DIR"`) 가 있으면 그것, 없으면 `<home>/.dynamic_react/sessions`. 순수 함수이고 값을 읽어 넘기는 것은 `L2_harness/agent` 다 |
 | HN-FR-16 | 동시 사용에 안전하다 (같은 Store 값). 프로세스 간 동시 쓰기는 보장하지 않는다 |
 
 ### 3.4 시스템 프롬프트 (`harness/prompt`)

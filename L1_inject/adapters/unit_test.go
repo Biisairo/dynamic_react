@@ -3,6 +3,8 @@ package adapters
 import (
 	"encoding/json"
 	"errors"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"os"
 	"os/exec"
@@ -247,15 +249,6 @@ func TestParseConfig(t *testing.T) {
 			t.Errorf("%s accepted", name)
 		}
 	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, "c.json")
-	os.WriteFile(path, []byte(`{"models": {}}`), 0o600)
-	if _, err := LoadConfig(path); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadConfig(filepath.Join(dir, "missing.json")); err == nil {
-		t.Fatal("missing file accepted")
-	}
 }
 
 func TestProfileOverride(t *testing.T) {
@@ -289,6 +282,28 @@ func TestSnapshotScope(t *testing.T) {
 	for p := range v.Models {
 		if _, ok := ps[p]; !ok {
 			t.Errorf("snapshot provider %q has no profile", p)
+		}
+	}
+}
+
+// AD-C6: 테스트가 아닌 코드는 os 를 import 하지 않는다 (internal/ 생성기 제외).
+func TestNoUserEnvironmentImports(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("glob %v %v", files, err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		pf, err := parser.ParseFile(token.NewFileSet(), f, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, im := range pf.Imports {
+			if im.Path.Value == `"os"` {
+				t.Errorf("%s imports os", f)
+			}
 		}
 	}
 }

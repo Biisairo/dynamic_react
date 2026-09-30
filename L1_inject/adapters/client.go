@@ -14,7 +14,6 @@ import (
 	"io"
 	"iter"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -60,7 +59,7 @@ func New(o Options) *Client {
 		c.http = http.DefaultClient
 	}
 	if c.getenv == nil {
-		c.getenv = os.Getenv
+		c.getenv = func(string) string { return "" } // 환경을 읽지 않는다 (AD-C6)
 	}
 	if c.now == nil {
 		c.now = time.Now
