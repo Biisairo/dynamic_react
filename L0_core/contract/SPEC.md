@@ -1,7 +1,7 @@
 # contract — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.2 (초안)
+- 버전: 0.3 (초안)
 - 상위 근거: `docs/DECISIONS.md`
 - 관련 명세: `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 
@@ -49,7 +49,7 @@ surfaces   sets   adapters
 ### 2.2 제약
 - CT-C1. Go 표준 라이브러리 외 의존성 없음.
 - CT-C2. 모든 타입은 JSON 직렬화가 가능하고, 같은 값은 항상 같은 바이트로 직렬화된다 (캐시·지문용).
-- CT-C3. 모든 타입은 protobuf 로 1:1 대응 가능해야 한다 (D12, 별도 프로세스 경계).
+- CT-C3. 별도 프로세스 경계(D12)는 이 계약의 **결정적 JSON**(CT-C2)을 bytes 로 실어 넘는다. protobuf 는 봉투만 정의한다 (R10). 따라서 모든 타입은 JSON 왕복이 손실 없어야 한다.
 
 ---
 
@@ -178,7 +178,7 @@ surfaces   sets   adapters
 | CT-FR-01a, 29~34, 3.9 Validate 표 | 단위 테스트: 표의 각 행마다 유효 / 경계 / 위반 |
 | CT-FR-26~28 | 단위 테스트: 모르는 enum 값 역직렬화 시 에러 |
 | CT-C2 | 속성 테스트: 같은 값 → 같은 바이트 |
-| CT-C3 | protobuf 정의(inject 레이어)와 필드 대응 표 대조 |
+| CT-C3 | JSON 왕복 테스트 (CT-FR-01~13 과 같음) |
 | CT-NFR-01 | adapters 레이어 스펙에서 수행 (이번 범위 밖) |
 
 ---
@@ -204,3 +204,4 @@ surfaces   sets   adapters
 | 0.2 | usage·stop reason 은 done 이벤트에만 있음 | assistant Message 의 선택 필드 (CT-FR-01a) | core 11 입력이 Message 뿐이라 sets 13 이 stop reason 을 못 봄. 재개 후 usage 가 필요 (ST-FR-22). 사용자 확정 |
 | 0.2 | CacheHint = 메시지 인덱스 | `{Target: system|message, Index}` | sets 7 이 system 끝에 힌트를 걸어야 함. 사용자 확정 |
 | 0.2 | Go 표현 미정 | 3.9 추가 (CT-FR-29~36, Validate 표) | 구현 착수 |
+| 0.3 | CT-C3: protobuf 1:1 대응 | 원격 경계는 결정적 JSON 을 bytes 로 | 계약을 proto 로 중복 정의하지 않음, 모르는 enum 거부(CT-FR-28)가 그대로 적용. 사용자 확정 (R10) |

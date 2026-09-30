@@ -90,3 +90,28 @@ func Rows() []Row {
 		{core.StepRunSettled, "RunSettled", "core.Settle", whole("s", "core.Settle"), "", g15, true},
 	}
 }
+
+// Combinator 는 조합 함수 종류다 (inject 3.7).
+type Combinator string
+
+const (
+	FirstDecisive Combinator = "FirstDecisive"
+	ByKind        Combinator = "ByKind"
+	Pipe          Combinator = "Pipe"
+	Concat        Combinator = "Concat"
+	Wrap          Combinator = "Wrap"
+)
+
+// Combinators 는 step 에 적용할 수 있는 조합이다. Wrap 은 모든 step.
+func Combinators(s core.Step) []Combinator {
+	switch s {
+	case core.StepContextMaintain, core.StepStreamEvent, core.StepCallError,
+		core.StepResponseClassify, core.StepTurnFinish, core.StepRunBeforeSettle:
+		return []Combinator{FirstDecisive, ByKind, Wrap}
+	case core.StepRequestFinalize, core.StepToolAfter:
+		return []Combinator{Pipe, Wrap}
+	case core.StepTurnStart, core.StepContextInject:
+		return []Combinator{Concat, Wrap}
+	}
+	return []Combinator{Wrap}
+}

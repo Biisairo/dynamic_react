@@ -33,6 +33,14 @@ type fake struct{}
 func (fake) Kind() core.SignalKind { return core.SigSettle }
 func (f fake) WithReason(string) inject.TurnFinishSignal { return f }
 var _ inject.TurnFinishSignal = fake{}`,
+	"pipe not applicable to turn.finish": `
+var _ = combine.TurnFinish.Pipe`,
+	"first-decisive not applicable to request.build": `
+var _ = combine.RequestBuild.FirstDecisive`,
+	"concat not applicable to context.project": `
+var _ = combine.ContextProject.Concat`,
+	"combinator of another step": `
+var _ inject.TurnFinishFn = combine.ContextMaintain.FirstDecisive()`,
 	"wrong function signature": `
 var _ = inject.FunctionSet{Name: "x", TurnFinish: func(ctx *inject.TurnFinishCtx) ([]inject.StreamEventSignal, error) { return nil, nil }}`,
 }
@@ -64,8 +72,9 @@ func TestCompileFailures(t *testing.T) {
 		src := "package probe\n\nimport (\n" +
 			"\t\"github.com/Biisairo/dynamic_react/L0_core/contract\"\n" +
 			"\t\"github.com/Biisairo/dynamic_react/L0_core/core\"\n" +
-			"\t\"github.com/Biisairo/dynamic_react/L1_inject/inject\"\n)\n\n" +
-			"var _ contract.Message\nvar _ core.Step\n" + body + "\n"
+			"\t\"github.com/Biisairo/dynamic_react/L1_inject/inject\"\n" +
+			"\t\"github.com/Biisairo/dynamic_react/L1_inject/inject/combine\"\n)\n\n" +
+			"var _ contract.Message\nvar _ core.Step\nvar _ = combine.TurnFinish\n" + body + "\n"
 		os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o644)
 		os.WriteFile(filepath.Join(dir, "p.go"), []byte(src), 0o644)
 		cmd := exec.Command(gobin, "build", "./...")

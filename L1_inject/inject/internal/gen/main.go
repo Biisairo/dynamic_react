@@ -25,6 +25,7 @@ var files = []struct {
 }{
 	{"zz_generated.go", injectTmpl},
 	{filepath.Join("injecttest", "zz_generated.go"), injecttestTmpl},
+	{filepath.Join("combine", "zz_generated.go"), combineTmpl},
 }
 
 func main() {
@@ -119,9 +120,16 @@ type row struct {
 	StubParams   string // injecttest 용: ", _ core.RunInput"
 	StubResults  string // injecttest 용: 신호 타입에 inject. 접두어
 	StubReturn   string
+	CArgs        string          // 인자 이름: ", ev"
+	ResultDecl   string          // "out T, s []inject.XSignal, err error"
+	ResultVars   string          // "out, s, err"
+	PipeType     string          // Pipe 로 흐르는 값의 타입 (마지막 인자)
+	PipeArgs     string          // Pipe 하위 함수 호출 인자: ", call, in"
+	Combos       map[string]bool // 적용 가능한 조합
 }
 
-func (r row) StepConst() string { return r.Const }
+// LastParam 은 마지막 함수 인자의 이름이다 (Pipe 의 시작 값).
+func (r row) LastParam() string { return r.Params[len(r.Params)-1].Name }
 
 func build(rows []stepspec.Row) []row {
 	out := make([]row, len(rows))
@@ -130,10 +138,11 @@ func build(rows []stepspec.Row) []row {
 		for _, k := range core.AllowedSignals(r.Step) {
 			x.Ctors = append(x.Ctors, ctorOf(k))
 		}
-		var params, args, stub []string
+		var params, args, stub, names []string
 		for _, p := range r.Params {
 			params = append(params, p.Name+" "+p.Type)
 			stub = append(stub, "_ "+p.Type)
+			names = append(names, p.Name)
 			if p.Field == "" {
 				args = append(args, "in")
 			} else {
@@ -144,6 +153,14 @@ func build(rows []stepspec.Row) []row {
 			x.FnParams = ", " + strings.Join(params, ", ")
 			x.FnArgs = ", " + strings.Join(args, ", ")
 			x.StubParams = ", " + strings.Join(stub, ", ")
+			x.CArgs = ", " + strings.Join(names, ", ")
+			last := len(names) - 1
+			x.PipeType = r.Params[last].Type
+			x.PipeArgs = ", " + strings.Join(append(append([]string(nil), names[:last]...), "in"), ", ")
+		}
+		x.Combos = map[string]bool{}
+		for _, c := range stepspec.Combinators(r.Step) {
+			x.Combos[string(c)] = true
 		}
 		var res []string
 		if r.Output != "" {
@@ -160,6 +177,19 @@ func build(rows []stepspec.Row) []row {
 			}
 		}
 		x.StubResults = results(res)
+		var decl, vars []string
+		for _, t := range res {
+			name := "err"
+			switch {
+			case strings.HasSuffix(t, "Signal"):
+				name = "s"
+			case t != "error":
+				name = "out"
+			}
+			decl = append(decl, name+" "+t)
+			vars = append(vars, name)
+		}
+		x.ResultDecl, x.ResultVars = strings.Join(decl, ", "), strings.Join(vars, ", ")
 		var zeros []string
 		if r.Output != "" {
 			zeros = append(zeros, zeroOf(r.Output))
@@ -312,3 +342,60 @@ func Fill(s inject.FunctionSet) inject.FunctionSet {
 {{end}}	return s
 }
 `
+
+const combineTmpl = header + `package combine
+
+import (
+	"github.com/Biisairo/dynamic_react/L0_core/contract"
+	"github.com/Biisairo/dynamic_react/L0_core/core"
+	"github.com/Biisairo/dynamic_react/L1_inject/inject"
+)
+{{range .Rows}}
+type {{.Lower}}Combinators struct{}
+
+// {{.Name}} 은 {{.Step}} 의 조합 함수다.
+var {{.Name}} {{.Lower}}Combinators
+{{if .Combos.FirstDecisive}}
+// FirstDecisive 는 결정적 신호를 낸 첫 함수를 채택한다 (IN-FR-55).
+func ({{.Lower}}Combinators) FirstDecisive(fns ...inject.{{.Name}}Fn) inject.{{.Name}}Fn {
+	return func(ctx *inject.{{.Name}}Ctx{{.FnParams}}) {{.StubResults}} {
+		return firstDecisive(len(fns), func(i int) ([]inject.{{.Name}}Signal, error) { return fns[i](ctx{{.CArgs}}) }, ctx.Dropped)
+	}
+}
+
+// ByKind 는 모두 부르고 order 에서 가장 앞선 전이를 낸 함수를 채택한다 (IN-FR-56).
+func ({{.Lower}}Combinators) ByKind(order []core.SignalKind, fns ...inject.{{.Name}}Fn) inject.{{.Name}}Fn {
+	order = append([]core.SignalKind(nil), order...)
+	return func(ctx *inject.{{.Name}}Ctx{{.FnParams}}) {{.StubResults}} {
+		return byKind(order, len(fns), func(i int) ([]inject.{{.Name}}Signal, error) { return fns[i](ctx{{.CArgs}}) }, ctx.Dropped)
+	}
+}
+{{end}}{{if .Combos.Pipe}}
+// Pipe 는 앞 함수의 출력을 다음 함수의 입력으로 넘긴다 (IN-FR-57).
+func ({{.Lower}}Combinators) Pipe(fns ...inject.{{.Name}}Fn) inject.{{.Name}}Fn {
+	return func(ctx *inject.{{.Name}}Ctx{{.FnParams}}) {{.StubResults}} {
+		return pipe(len(fns), func(i int, in {{.PipeType}}) ({{.PipeType}}, []inject.{{.Name}}Signal, error) { return fns[i](ctx{{.PipeArgs}}) }, {{.LastParam}})
+	}
+}
+{{end}}{{if .Combos.Concat}}
+// Concat 은 모두 부르고 출력을 이어 붙인다 (IN-FR-58).
+func ({{.Lower}}Combinators) Concat(fns ...inject.{{.Name}}Fn) inject.{{.Name}}Fn {
+	return func(ctx *inject.{{.Name}}Ctx{{.FnParams}}) {{.StubResults}} {
+		return concat(len(fns), func(i int) ([]contract.Message, []inject.{{.Name}}Signal, error) { return fns[i](ctx{{.CArgs}}) }, ctx.Dropped)
+	}
+}
+{{end}}
+// Wrap 은 inner 앞뒤에 before·after 를 둔다. after 는 결과를 바꿔 돌려줄 수 있다 (IN-FR-59).
+func ({{.Lower}}Combinators) Wrap(inner inject.{{.Name}}Fn, before func(ctx *inject.{{.Name}}Ctx{{.FnParams}}), after func(ctx *inject.{{.Name}}Ctx{{.FnParams}}, {{.ResultDecl}}) {{.StubResults}}) inject.{{.Name}}Fn {
+	return func(ctx *inject.{{.Name}}Ctx{{.FnParams}}) {{.StubResults}} {
+		if before != nil {
+			before(ctx{{.CArgs}})
+		}
+		{{.ResultVars}} := inner(ctx{{.CArgs}})
+		if after != nil {
+			return after(ctx{{.CArgs}}, {{.ResultVars}})
+		}
+		return {{.ResultVars}}
+	}
+}
+{{end}}`
