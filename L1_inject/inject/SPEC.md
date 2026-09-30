@@ -1,7 +1,7 @@
 # inject — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.1 (초안)
+- 버전: 0.2 (초안)
 - 상위 근거: `docs/DECISIONS.md` (D2~D6, D11, D12)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`
 
@@ -173,7 +173,7 @@ func turnFinish(ctx *inject.TurnFinishCtx) ([]inject.TurnFinishSignal, error) {
 |---|---|
 | IN-FR-14 | 조회는 위 그룹·메서드로 닫혀 있다. 추가는 버전을 올려 추가만 한다 (D3) |
 | IN-FR-15 | 한 dispatch 안의 모든 조회는 같은 스냅샷(core CORE-FR-28)을 본다 |
-| IN-FR-16 | 비싼 조회(투영, 신호 집계)는 호출될 때 계산하고 같은 dispatch 안에서 캐시한다 |
+| IN-FR-16 | 조회는 core 가 dispatch 시작 시 만든 스냅샷을 읽으므로 inject 는 별도 캐시를 두지 않는다 (투영은 core 에 이미 계산돼 있고, 신호 집계는 기록을 한 번 훑는다) |
 | IN-FR-17 | 조회 결과로 받은 슬라이스·맵을 함수가 수정해도 스냅샷에 영향이 없어야 한다 (복사 또는 불변 뷰) |
 
 ### 3.5 FunctionSet 과 바인딩
@@ -200,7 +200,7 @@ k := core.New(d, core.Options{})
 
 | id | 요구사항 |
 |---|---|
-| IN-FR-23 | `ctx.State()` 는 **그 함수가 속한 세트의 네임스페이스**만 읽고 쓴다. 키는 문자열, 값은 JSON 직렬화 가능한 값이다 |
+| IN-FR-23 | `ctx.State()` 는 **그 함수가 바인딩된 세트(`Bind` 에서 그 step 을 채운 FunctionSet)의 `Name`** 네임스페이스만 읽고 쓴다. 다른 세트의 함수를 조합해 자기 세트에 넣으면 그 함수도 자기 세트의 네임스페이스를 쓴다. 키는 문자열, 값은 JSON 직렬화 가능한 값이다 |
 | IN-FR-24 | 쓰기는 dispatch 안에서 버퍼링되고, 함수가 에러 없이 반환되고 신호 검증을 통과했을 때만 run 상태에 반영된다 (dispatch 단위 원자성) |
 | IN-FR-25 | 세트는 키를 공개(publish)로 표시할 수 있다. 다른 세트는 `ctx.State().Read(ns, key)` 로 공개 키만 읽을 수 있고 쓸 수 없다 |
 | IN-FR-26 | 상태의 저장·복원은 `Bind` 옵션으로 주입하는 `StateStore` interface(`Load(sessionID)`, `Save(sessionID, ns, delta)`)가 한다. 없으면 run 메모리에만 둔다. 반영된 변경은 그 dispatch 직후 `Save` 로 넘긴다 |
@@ -265,7 +265,24 @@ step 하나에 함수 하나라는 규칙은 유지하고, 여러 기능을 하�
 | IN-FR-42 | dispatch 마다 `{Seq, Step, Set, Duration, Signals, Dropped, Err, StateKeysChanged}` 를 `Tracer` interface(Bind 옵션)로 넘긴다. 없으면 버린다 |
 | IN-FR-43 | inject 는 core.Observer 를 구현하는 분배기를 제공한다. 등록된 여러 sink 에 sink 별 제한된 버퍼로 비동기 전달하고, 버퍼가 차면 그 sink 의 이벤트를 버리고 버린 수를 센다 (루프를 막지 않기 위함). 버퍼 크기는 옵션 |
 
-### 3.11 비기능
+### 3.11 Go 표현
+
+스펙 요구사항을 코드로 옮길 때 정한 표현이다. 이름은 step 이름의 CamelCase(`run.start` → `RunStart`)에서 온다.
+
+| id | 요구사항 |
+|---|---|
+| IN-FR-44 | 생성 대상: `<Step>Fn`(함수 타입), `<Step>Ctx`(ctx), `<Step>Signal`(봉인 interface), `FunctionSet.<Step>`(필드). 함수 시그니처는 core CORE-FR-39 의 입출력을 따른다. 18 은 `(ctx, call, result)`, 19 는 `(ctx, calls, results)` 처럼 입력 구조체를 풀어서 받는다 |
+| IN-FR-45 | `<Step>Signal` 은 `Kind() core.SignalKind`, `WithReason(string) <Step>Signal`, 비공개 표지 메서드를 가진다. 생성자는 그 step 에 허용된 것만 ctx 메서드로 있다: `Next()`, `Recall()`, `Reselect()`, `Rebuild()`, `RestartTurn()`, `ContinueTurn()`, `SkipTools(results)`, `Settle()`, `Stop()`, `Fail(err)`, `Rewrite(edit)`, `InjectInput(msg)`, `StartTool(call)` |
+| IN-FR-46 | 조회 그룹 타입: `Flow`, `Conv`, `Request`, `Stream`, `Output`, `Tools`, `Env`, `State` (3.4 표의 메서드). `Output.LastUsage()` = 현재 Response 의 Usage, 없으면 Transcript 중 이 run 에서 추가된(History 이후) 마지막 assistant 메시지의 Usage. `State` 메서드: `Get(key)`, `Set(key, v) error`(JSON 직렬화), `Delete(key)`, `Publish(key)`, `Read(ns, key)`(공개 키만) |
+| IN-FR-47 | 조회는 core View 를 직접 받지 않고 `ViewSource` interface(core.View 의 조회 메서드 집합)로 받는다. `core.View` 는 이를 그대로 만족한다. 테스트용 가짜 View 는 `inject/injecttest` 가 제공하고(sets ST-NFR-01), 원격 plugin 쪽은 조회 요청으로 구현한다 |
+| IN-FR-48 | 조회 결과의 contract 값은 깊은 복사로 돌려준다 (IN-FR-17) |
+| IN-FR-49 | `ctx.Dropped(sigs...)` 는 채택하지 않은 신호를 트레이스의 `Dropped` 에 남긴다 (IN-FR-29 의 공개 수단) |
+| IN-FR-50 | `Bind(sets...) (*Dispatcher, error)`, `BindWith(BindOptions{StateStore, Tracer}, sets...)`. `*Dispatcher` 는 core.Dispatcher 이고 `DispatchSource(ctx, step, input, ViewSource)` 도 공개한다 |
+| IN-FR-51 | `StateStore`: `Load(ctx, sessionID) (map[ns]NamespaceState, error)`, `Save(ctx, sessionID, ns, StateDelta) error`. `NamespaceState{Values, Published}`, `StateDelta{Set, Delete, Publish}`. Load 는 run 의 1(run.start) dispatch 에서 함수 호출 전에 한 번, run 상태는 22 dispatch 뒤 버린다. Load·Save 에러는 그 dispatch 의 error |
+| IN-FR-52 | inject 에러 sentinel: `ErrExpiredCtx`(panic 값), `ErrForeignSignal`(토큰 불일치, nil 신호), `ErrSignalOrder`(배열 규칙), `ErrInputType`, `ErrPanic`, `ErrBind` |
+| IN-FR-53 | 원격용 protobuf 메시지 생성(IN-FR-03 의 마지막 항목)은 원격 로더 단계에서 한다 |
+
+### 3.12 비기능
 
 | id | 요구사항 |
 |---|---|
@@ -320,3 +337,15 @@ step 하나에 함수 하나라는 규칙은 유지하고, 여러 기능을 하�
 | O1 | ~~StepSpec 소스 형식~~ → **Go 코드** 로 확정 (사용자, impl-01). 허용 신호는 core 의 `AllowedSignals` 를 직접 읽는다 | 확정 |
 | O2 | ~~원격 plugin 관리 라이브러리~~ → **직접 구현** 으로 확정 (사용자, impl-01): os/exec + unix socket 위 gRPC. 외부 의존성은 grpc(Apache-2.0)·protobuf(BSD-3) 만 | 확정 |
 | O3 | IN-FR-11 의 "dispatch 밖 panic" 정책이 서버형 surface(메신저 게이트웨이)에서 허용 가능한지 | surfaces 스펙 작성 시 재검토 |
+
+---
+
+## 7. 변경 기록
+
+| 버전 | 이전 | 새 동작 | 이유 |
+|---|---|---|---|
+| 0.2 | 상태 NS = "함수가 속한 세트" | 바인딩된 세트의 Name (IN-FR-23) | Go 함수 값에는 소속이 없음. 사용자 확정 (함수에 NS 부착안 기각) |
+| 0.2 | ctx 가 core View 를 직접 사용 | `ViewSource` interface (IN-FR-47) | core.View 는 외부에서 만들 수 없음: 가짜 View(sets 테스트)·원격 plugin 에 필요 |
+| 0.2 | O1·O2 미결 | Go 코드 / 직접 구현 | 사용자 확정 |
+| 0.2 | Go 표현 미정 | 3.11 추가 (IN-FR-44~53) | 구현 착수 |
+| 0.2 | 비싼 조회는 dispatch 안에서 캐시 (IN-FR-16) | 캐시 없음 | 스냅샷이 이미 계산돼 있음, dispatch 372ns. 사용자 확정 |

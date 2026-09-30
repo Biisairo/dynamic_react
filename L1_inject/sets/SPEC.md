@@ -113,7 +113,7 @@
 | id | 요구사항 |
 |---|---|
 | ST-FR-03 | `sets.Base(cfg)` 는 위 표대로 22개 step 을 모두 채운 FunctionSet(`Name: "base"`)을 돌려준다 |
-| ST-FR-04 | base 의 각 함수는 exported 로 따로 제공해, 사용자가 조합 함수(inject 3.7)로 감쌀 수 있게 한다 (예: `sets.BaseTurnFinish`) |
+| ST-FR-04 | base 의 각 함수는 exported 로 따로 제공해, 사용자가 조합 함수(inject 3.7)로 감쌀 수 있게 한다 (예: `sets.BaseTurnFinish`). 상태를 쓰는 함수를 다른 세트에서 감싸면 그 세트의 네임스페이스를 쓰므로 base 의 상태와 공유되지 않는다 (inject IN-FR-23). step 간에 공유할 상태는 publish 키로 읽는다 |
 
 ### 3.2 resilient 세트 — 덮어쓰는 step
 
@@ -290,3 +290,4 @@ echo "prompt" | dr-print ...
 |---|---|---|---|
 | 0.2 | 9 model.call = adapters 가 제공한 `ModelCallFn` 을 그대로 바인딩 | sets 가 `adapters.Call` 의 이벤트 시퀀스를 `core.CallStream` 으로 감쌈 | R9: adapters 가 contract 만 의존 |
 | 0.2 | 19 = 결과를 세션에 기록 | 결과 메시지를 만들어 기록하고 출력 | core v0.2 CORE-FR-24a |
+| 0.2 | ST-FR-04 제약 없음 | 감싼 함수의 상태 NS 는 감싼 세트 | inject v0.2 IN-FR-23 |
