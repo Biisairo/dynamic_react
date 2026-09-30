@@ -1,0 +1,58 @@
+{
+  "model": "gpt-5",
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  },
+  "max_completion_tokens": 16384,
+  "reasoning_effort": "medium",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "read",
+        "description": "Read a file",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "developer",
+      "content": "You are a coding agent."
+    },
+    {
+      "role": "user",
+      "content": "config.py 의 DEBUG 값 알려줘"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_abc",
+          "type": "function",
+          "function": {
+            "name": "read",
+            "arguments": "{\"path\":\"config.py\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_abc",
+      "content": "DEBUG = True"
+    }
+  ]
+}

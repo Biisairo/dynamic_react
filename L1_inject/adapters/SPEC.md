@@ -75,6 +75,7 @@
 | AD-FR-11 | thinking 블록은 `{type:"thinking", thinking, signature}` 로 되돌려 보낸다 (signature = 같은 모델의 ProviderData). 가려진 추론은 opaque 블록 → `redacted_thinking{data}` |
 | AD-FR-12 | `Options.CacheHints` 는 가리키는 위치(system 블록 / 메시지)의 **마지막 블록**에 `cache_control:{type:"ephemeral"}` 로 붙인다. 메시지가 여러 방언 블록으로 나뉘면(도구 결과 묶음) 그 메시지에서 나온 마지막 블록 |
 | AD-FR-13 | `Options.Thinking`(level: `low`/`medium`/`high`/`xhigh`/`max`)이 비어 있으면 thinking 관련 필드를 보내지 않는다 (모델 기본값). 있으면: 카탈로그(3.6)가 그 모델의 `capabilities.thinking.types.adaptive` 를 지원한다고 하거나 capability 를 모르면 `thinking:{type:"adaptive"}` + `output_config:{effort: level}`. budget 방식만 지원하면 level 을 토큰 수로 환산하지 않고 `invalid_request` 로 끝낸다 — 그때는 `Options.Extra["thinking"]` 에 원문을 넣는다. 모르는 level 도 `invalid_request`. `Options.Extra` 의 키는 요청 최상위에 그대로 싣는다 (같은 키가 있으면 Extra 가 이긴다) |
+| AD-FR-13a | `max_tokens` 는 필수다: `Options.MaxOutputTokens` 가 0 이면 카탈로그의 MaxOutputTokens, 그것도 0 이면 요청을 보내지 않고 `invalid_request` 로 끝낸다 |
 | AD-FR-14 | 스트림 이벤트 매핑: `message_start` → `start` + usage(입력 쪽), `content_block_start/delta/stop` → `text_delta` / `thinking_delta` / `toolcall_start` / `toolcall_delta`(input_json_delta) / `toolcall_end`(누적 JSON 파싱), `signature_delta` → thinking 의 ProviderData, `message_delta` → 최종 usage·stop reason, `message_stop` → `done` |
 | AD-FR-15 | usage: `input_tokens` → Input(이미 캐시 제외), `cache_read_input_tokens` → CacheRead, `cache_creation_input_tokens` → CacheWrite, `output_tokens` → Output. `message_delta` 에 input 이 없으면 `message_start` 값을 유지 |
 | AD-FR-16 | stop reason: `end_turn`·`stop_sequence`·`pause_turn` → stop, `max_tokens` → length, `tool_use` → tool_use, `refusal` → error. 모르는 값 → error (Raw 보존) |
@@ -84,12 +85,12 @@
 | id | 요구사항 |
 |---|---|
 | AD-FR-17 | 인증 헤더 `Authorization: Bearer <key>`. base URL·키 환경변수 이름은 compat 프로필에서 온다 (3.4) |
-| AD-FR-18 | system 은 `messages[0]` 이다. 역할은 compat 가 `developer` 를 지원하고 모델이 reasoning 모델이면 `developer`, 아니면 `system` |
+| AD-FR-18 | system 은 `messages[0]` 이다. 역할은 프로필 `SupportsDeveloperRole` 이면 `developer`, 아니면 `system` (내장 모델 목록이 없어 reasoning 모델 여부로는 가르지 않는다) |
 | AD-FR-19 | 도구 정의 `{type:"function", function:{name, description, parameters}}`. 도구 호출은 assistant 의 `tool_calls[{id, type:"function", function:{name, arguments(JSON 문자열)}}]` |
 | AD-FR-20 | 도구 결과는 `{role:"tool", tool_call_id, content(문자열)}`. 결과에 이미지가 있고 모델이 vision 이면: 텍스트는 tool 메시지로("(see attached image)" 대체 문구 포함), 이미지는 뒤따르는 user 메시지의 `image_url`(data URL) 로 보낸다 |
 | AD-FR-21 | `stream: true` 와 함께 compat 가 허용하면 `stream_options:{include_usage:true}` 를 보낸다 |
 | AD-FR-22 | 출력 한도 필드는 compat 의 `MaxTokensField`(`max_tokens` / `max_completion_tokens`) |
-| AD-FR-23 | thinking 요청 파라미터는 compat 의 `ThinkingFormat` 으로 보낸다. 1차 지원: `none`, `openai`(`reasoning_effort`), `chat-template`(`chat_template_kwargs.enable_thinking`), `deepseek`(`thinking:{type}`) |
+| AD-FR-23 | thinking 요청 파라미터는 프로필의 `ThinkingFormat` 으로 보낸다 (Thinking 이 비면 아무것도 안 보냄, level 은 그대로 전달 — 모델별 변환 표 없음): `none` · `openai` = `reasoning_effort: level` · `deepseek` = `thinking:{type:"enabled"}` + `reasoning_effort: level` · `zai` = `thinking:{type:"enabled", clear_thinking:false}` · `openrouter`·`ant-ling` = `reasoning:{effort: level}` · `together` = `reasoning:{enabled:true}` · `chat-template` = `chat_template_kwargs:{enable_thinking:true}` (pi `openai-completions.ts` 875~972) |
 | AD-FR-24 | 추론 텍스트 수신 필드는 `reasoning_content`, `reasoning`, `reasoning_text` 를 모두 확인한다. 되돌려 보낼 때는 compat 의 `ReasoningField` 로 assistant 메시지에 싣는다 (없으면 보내지 않음) |
 | AD-FR-25 | 스트림: `choices[0].delta.content` → text_delta, 추론 필드 → thinking_delta, `delta.tool_calls[i]` → index 로 구분해 id·name 은 첫 조각, `arguments` 문자열을 이어 붙이고 finish 시 파싱 → toolcall_end. usage 는 `choices: []` chunk 또는 `choices[0].usage` 에서 |
 | AD-FR-26 | usage: Input = `prompt_tokens − cached − cache_write`, CacheRead = `prompt_tokens_details.cached_tokens` → 없으면 `prompt_cache_hit_tokens` → 없으면 최상위 `cached_tokens`, CacheWrite = `prompt_tokens_details.cache_write_tokens`, Output = `completion_tokens`(추론 포함), Reasoning = `completion_tokens_details.reasoning_tokens` |
@@ -113,7 +114,7 @@
 
 | id | 요구사항 |
 |---|---|
-| AD-FR-29 | provider 는 `Profile` 로 표현한다: `API`(방언), `BaseURL`, `APIKeyEnv`(빈 값이면 인증 헤더 없음: 로컬 서버), `Lookup`(3.6 조회 방식), Chat·Responses 차이 `SupportsDeveloperRole`, `SupportsUsageInStreaming`, `MaxTokensField`, `ThinkingFormat`, `ReasoningField`, `RequiresToolResultName`, `EncryptedReasoning` |
+| AD-FR-29 | provider 는 `Profile` 로 표현한다: `API`(방언), `BaseURL`, `APIKeyEnv`(빈 값이면 인증 헤더 없음: 로컬 서버), `Lookup`(3.6 조회 방식), `CatalogID`(원격 카탈로그 provider 키), Chat·Responses 차이 `SupportsDeveloperRole`, `SupportsUsageInStreaming`, `MaxTokensField`, `ThinkingFormat`, `ReasoningField`, `RequiresToolResultName`, `EncryptedReasoning` |
 | AD-FR-30 | 내장 프로필 = pi 의 provider 중 1차 방언을 API 키로 쓰는 것 + 로컬 서버 (R12). 값의 원본은 pi `providers/*.ts` (base URL·키 환경변수). z.ai 는 일반 API(`https://api.z.ai/api/paas/v4`, 공식 문서 확인) |
 
 | provider | API | base URL | 키 환경변수 | Lookup |
@@ -142,7 +143,24 @@
 | llamacpp | openai-chat | `http://localhost:8080/v1` | (없음) | llamacpp |
 | ollama | openai-chat | `http://localhost:11434/v1` | (없음) | ollama |
 
-Chat·Responses 차이 필드(developer 역할, usage 스트리밍, max tokens 필드, thinking 형식, 추론 필드)의 provider 별 값은 pi `api/openai-completions.ts` 의 compat 판별과 `providers/*.ts` 를 원본으로 삼는다. |
+Chat·Responses 차이 필드 (원본: pi `openai-completions.ts` `detectCompat`. 표에 없는 값은 기본 — developer 역할 no, usage 스트리밍 yes, `max_completion_tokens`, thinking `openai`, 추론 필드 없음, 도구 결과 name 불필요):
+
+| provider | developer 역할 | max tokens 필드 | thinking | 추론 필드(되돌려 보냄) | 기타 |
+|---|---|---|---|---|---|
+| openai (Responses) | yes | — | (Responses) | — | EncryptedReasoning yes |
+| xai (Responses) | no | — | (Responses) | — | EncryptedReasoning no |
+| deepseek | no | `max_tokens` | deepseek | `reasoning_content` | |
+| zai | no | `max_tokens` | zai | | |
+| xiaomi | yes | | openai | | |
+| moonshotai, moonshotai-cn | no | `max_tokens` | none | | |
+| openrouter | no | | openrouter | | |
+| groq, huggingface, baseten | yes | | openai | | |
+| cerebras | no | | openai | | |
+| together | no | `max_tokens` | together | | |
+| nvidia | no | `max_tokens` | none | | |
+| ant-ling | no | `max_tokens` | ant-ling | | |
+| vllm, llamacpp, ollama | no (로컬 chat 템플릿 호환) | `max_tokens` | none | | |
+|
 | AD-FR-31 | 사용자 설정으로 프로필 값을 덮을 수 있다 (없는 provider 추가 포함) |
 
 ### 3.5 에러 분류
@@ -155,13 +173,25 @@ Chat·Responses 차이 필드(developer 역할, usage 스트리밍, max tokens �
 
 ### 3.6 모델 카탈로그 (동적, R11)
 
+값은 **필드 단위**로, 아래 출처를 위에서부터 보고 처음 알려진 값을 쓴다. 어느 출처도 모르면 0(모름)·capability 없음이다.
+
+| 순위 | 출처 | 필드 |
+|---|---|---|
+| 1 | 사용자 설정 `models["provider/id"]` (AD-FR-49) | contextWindow, maxOutputTokens, capabilities |
+| 2 | provider 조회 API (프로필 `Lookup`) | 아래 AD-FR-36 |
+| 3 | 원격 카탈로그 (기본 `https://models.dev/api.json`) | `limit.context`, `limit.output`, `modalities.input` 의 image, `reasoning`, `reasoning_options[].type` |
+| 4 | 내장 스냅샷 (oh-my-pi `packages/catalog/src/models.json` 에서 프로필 provider 만 추린 것, MIT) | `contextWindow`, `maxTokens`, `input` 의 image, `reasoning`, `thinking.mode` |
+
 | id | 요구사항 |
 |---|---|
-| AD-FR-35 | `Client.Lookup(ctx, provider, id) (contract.ModelInfo, bool)` 을 제공한다 |
-| AD-FR-36 | 내장 모델 목록은 없다. Lookup 은 프로필의 `Lookup` 방식으로 provider 의 조회 API 를 부른다: `anthropic` = `GET {base}/v1/models/{id}` (`max_input_tokens` → ContextWindow, `max_tokens` → MaxOutputTokens, `capabilities.image_input` → Vision, `capabilities.thinking` → Thinking, adaptive 여부는 AD-FR-13 에 씀) · `openrouter` = `GET {base}/models` (`context_length`, `top_provider.max_completion_tokens`, `architecture.input_modalities` 에 image, `reasoning` 존재) · `ollama` = `POST {host}/api/show {model}` (`model_info` 의 `*.context_length`, `capabilities` 의 vision·thinking) · `llamacpp` = `GET {host}/props` (`default_generation_settings.n_ctx`) · `vllm` = `GET {base}/models` 의 해당 모델 `max_model_len` (구현 시 문서로 필드 확인) · `none` = 조회하지 않음 |
-| AD-FR-37 | 사용자 설정(파일 경로는 sets 가 넘김)이 조회 결과를 모델 단위로 덮거나 추가한다: `contextWindow`, `maxOutputTokens`, capability. 조회 방식이 `none` 인 provider 의 창 크기는 이것으로만 정해진다 |
-| AD-FR-38 | 조회가 실패하거나 값을 주지 않고 사용자 설정도 없으면 해당 값은 0(모름)이다. 추측하지 않는다 — 기본값 판단은 sets 의 `model.select` 몫이다. 모델이 조회 결과에 없으면 `ok=false` |
-| AD-FR-39 | 조회 결과는 Client 값 안에 (provider, id) 별로 캐시한다. 실패는 캐시하지 않는다 (다음 Lookup 에서 다시 시도). 동시 Lookup 에 안전하다 |
+| AD-FR-35 | `Client.Lookup(ctx, provider, id) (contract.ModelInfo, bool)` 을 제공한다. 어느 출처에든 모델이 있으면 `ok=true` |
+| AD-FR-36 | provider 조회 방식: `anthropic` = `GET {base}/v1/models/{id}` (`max_input_tokens`, `max_tokens`, `capabilities.image_input`, `capabilities.thinking` 과 `types.adaptive`) · `openrouter` = `GET {base}/models` (`context_length`, `top_provider.max_completion_tokens`, `architecture.input_modalities`, `reasoning` 존재) · `ollama` = `POST {host}/api/show {model}` (`model_info` 의 `*.context_length`, `capabilities`) · `llamacpp` = `GET {host}/props` (`default_generation_settings.n_ctx`) · `vllm` = `GET {base}/models` 의 `max_model_len` (구현 시 문서 확인) · `none` = 조회하지 않음 |
+| AD-FR-36a | 원격 카탈로그의 provider 키는 프로필 `CatalogID`(비면 provider 이름)다. thinking 방식: `effort` → adaptive, `budget_tokens` 만 → budget, `toggle` → adaptive 로 보지 않음. 내장 스냅샷의 `thinking.mode`: `anthropic-adaptive`·`effort` → adaptive, `budget`·`anthropic-budget-effort` → budget |
+| AD-FR-36b | 원격 카탈로그는 Client 당 한 번 받아 캐시한다. 실패하면 캐시하지 않고 다음 Lookup 에서 다시 받는다. `Options.RemoteCatalogURL` 로 주소를 바꾸고 `Options.NoRemoteCatalog` 로 끈다. 요청에는 키·대화 내용을 싣지 않는다 (GET 만) |
+| AD-FR-36c | 내장 스냅샷은 바이너리에 포함된 JSON 이고, 생성 도구(`internal/snapshot`)가 원본 파일에서 프로필 provider 의 모델만 필드를 추려 만든다. 데이터만 담는다 |
+| AD-FR-37 | 사용자 설정(파일 경로는 sets 가 넘김)이 모델 단위로 덮거나 추가한다 (1순위) |
+| AD-FR-38 | 추측하지 않는다 — 모든 출처가 모르면 0 이고, 기본값 판단은 sets 의 `model.select` 몫이다 |
+| AD-FR-39 | provider 조회 결과는 Client 안에 (provider, id) 별로 캐시한다. 실패는 캐시하지 않는다. 동시 Lookup 에 안전하다 |
 
 ### 3.7 비기능
 
@@ -191,7 +221,7 @@ Chat·Responses 차이 필드(developer 역할, usage 스트리밍, max tokens �
 | AD-FR-17~28 | 같음 + compat 프로필별 차이(developer 역할, include_usage, max_tokens 필드, thinking 형식, 추론 필드, 이미지 분리) |
 | AD-FR-29~31 | 프로필 덮어쓰기 |
 | AD-FR-32~34 | 상태 코드·본문 표 기반 테스트, 키 마스킹 |
-| AD-FR-35~39 | httptest 조회 서버: 방식별 필드 매핑, 사용자 덮어쓰기, 실패 시 0·재시도, 캐시, 동시 Lookup |
+| AD-FR-35~39 | httptest 조회·원격 카탈로그 서버: 출처별 필드 매핑, 필드 단위 우선순위, 실패 시 다음 출처·재시도, 캐시, 동시 Lookup, 끄기 옵션. 스냅샷: 생성 결과 동기화, 프로필 provider 만 포함 |
 | AD-FR-40~47 | 골든(요청 생성) + httptest SSE 재생 |
 | AD-FR-30 | 표 대조 테스트, AD-C1 코드 검색(구독 엔드포인트·OAuth 환경변수 없음) |
 | AD-C1, C2 | 코드 검색 테스트: OAuth·구독 토큰 경로 없음, 설정 스키마에 키 값 필드 없음 |
@@ -226,4 +256,6 @@ Chat·Responses 차이 필드(developer 역할, usage 스트리밍, max tokens �
 | 0.2 | adapters 가 inject 의 `ModelCallFn` 을 직접 제공하고 `core.CallStream` 을 돌려줌 (contract·core·inject 의존) | `Call(ctx, req) iter.Seq2[contract.StreamEvent, error]`, contract 만 의존 (AD-C5). 감싸기는 sets | R8·R9: 독립 모듈로 단독 사용 가능하게 |
 | 0.3 | 방언 2종, 내장 카탈로그(JSON), 프로필 5종 | 방언 3종(+Responses), 동적 카탈로그, pi 기반 프로필 23종 | 사용자: OpenAI·xAI 는 Responses, 모델은 매번 조회, pi 의 provider 기본 포함 |
 | 0.3 | AD-FR-13: thinking 이면 temperature 제외 | adaptive + effort, budget 전용 모델은 Extra | 현재 Anthropic 모델은 budget_tokens 를 400 으로 거부. 사용자 확정 |
+| 0.3 | AD-FR-18: reasoning 모델이면 developer | 프로필 값만 | 모델별 판단 근거가 카탈로그 밖에 없음 |
+| 0.3 | AD-FR-39: 원격 카탈로그 조회 안 함 | 4단 출처 (설정 > provider 조회 > models.dev > 내장 스냅샷) | 조회 API 로 창 크기를 알 수 없는 provider 가 많음. 사용자 확정 |
 | 0.3 | AD-C1: API 키만 | + 구독 요금제 엔드포인트 미내장, Anthropic OAuth 환경변수 무시 | 자격증명 보호 |

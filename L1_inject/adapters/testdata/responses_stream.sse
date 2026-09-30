@@ -1,0 +1,30 @@
+event: response.created
+data: {"type": "response.created", "response": {"id": "resp_01", "status": "in_progress"}}
+
+event: response.output_item.added
+data: {"type": "response.output_item.added", "output_index": 0, "item": {"type": "reasoning", "id": "rs_01", "summary": []}}
+
+event: response.reasoning_summary_text.delta
+data: {"type": "response.reasoning_summary_text.delta", "item_id": "rs_01", "output_index": 0, "delta": "config.py 를 읽어야 한다."}
+
+event: response.output_item.done
+data: {"type": "response.output_item.done", "output_index": 0, "item": {"type": "reasoning", "id": "rs_01", "summary": [{"type": "summary_text", "text": "config.py 를 읽어야 한다."}], "encrypted_content": "gAAAAABo..."}}
+
+event: response.output_item.added
+data: {"type": "response.output_item.added", "output_index": 1, "item": {"type": "function_call", "id": "fc_01", "call_id": "call_abc", "name": "read", "arguments": ""}}
+
+event: response.function_call_arguments.delta
+data: {"type": "response.function_call_arguments.delta", "item_id": "fc_01", "output_index": 1, "delta": "{\"path\":"}
+
+event: response.function_call_arguments.delta
+data: {"type": "response.function_call_arguments.delta", "item_id": "fc_01", "output_index": 1, "delta": "\"config.py\"}"}
+
+event: response.function_call_arguments.done
+data: {"type": "response.function_call_arguments.done", "item_id": "fc_01", "output_index": 1, "arguments": "{\"path\":\"config.py\"}"}
+
+event: response.output_item.done
+data: {"type": "response.output_item.done", "output_index": 1, "item": {"type": "function_call", "id": "fc_01", "call_id": "call_abc", "name": "read", "arguments": "{\"path\":\"config.py\"}"}}
+
+event: response.completed
+data: {"type": "response.completed", "response": {"id": "resp_01", "status": "completed", "usage": {"input_tokens": 2460, "input_tokens_details": {"cached_tokens": 2048}, "output_tokens": 87, "output_tokens_details": {"reasoning_tokens": 64}, "total_tokens": 2547}}}
+
