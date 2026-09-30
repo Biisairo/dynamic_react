@@ -3,7 +3,7 @@
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
 - 버전: 0.1 (초안)
 - 상위 근거: `docs/DECISIONS.md` (D2~D6, D11, D12)
-- 의존 명세: `contract/SPEC.md`, `core/SPEC.md`
+- 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`
 
 ---
 
@@ -101,7 +101,7 @@ type ToolAfterFn func(ctx *ToolAfterCtx, call contract.ToolCall, res contract.To
 
 | id | 요구사항 |
 |---|---|
-| IN-FR-05 | 22개 step 모두에 대해 core/SPEC.md 3.1 의 입력·출력을 그대로 따르는 함수 타입을 생성한다 |
+| IN-FR-05 | 22개 step 모두에 대해 L0_core/core/SPEC.md 3.1 의 입력·출력을 그대로 따르는 함수 타입을 생성한다 |
 | IN-FR-06 | 신호 반환값은 **그 step 전용 봉인 interface 의 슬라이스**다. 다른 step 의 신호 타입은 대입할 수 없다 (컴파일 에러) |
 | IN-FR-07 | `run.settled` 함수는 신호를 반환하지 않는다: `func(ctx *RunSettledCtx, s core.Settle) error` |
 
@@ -134,7 +134,7 @@ func turnFinish(ctx *inject.TurnFinishCtx) ([]inject.TurnFinishSignal, error) {
 | 그룹 | 접근자 | 메서드 |
 |---|---|---|
 | Flow | `ctx.Flow()` | `Step`, `Seq`, `RunID`, `SessionID`, `TurnIndex`, `CallIndex`, `Elapsed`, `Signals()`(신호 기록), `Count(kind, reason)` |
-| Conversation | `ctx.Conv()` | `History`, `TurnAppended`, `Ephemeral`, `Projection`, `Edits`, `Inbox` |
+| Conversation | `ctx.Conv()` | `History`, `Transcript`(run 기록, CORE-FR-31a), `TurnAppended`, `Ephemeral`, `Projection`, `Edits`, `Inbox` |
 | Request | `ctx.Request()` | `Current()`(확정 요청, 이번 호출 이전이면 zero), `Model()`(마지막으로 선택된 ModelInfo, 없으면 zero) |
 | Stream | `ctx.Stream()` | `Draft()`(부분 응답), `Event()`(현재 이벤트) |
 | Output | `ctx.Output()` | `Response()`, `CallError()`, `LastUsage()`(이 run 에서 마지막으로 완료된 응답의 usage, 없으면 zero) |

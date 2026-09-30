@@ -3,7 +3,7 @@
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
 - 버전: 0.1 (초안)
 - 상위 근거: `docs/DECISIONS.md`
-- 관련 명세: `core/SPEC.md`, `inject/SPEC.md`
+- 관련 명세: `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 
 ---
 
@@ -59,7 +59,7 @@ surfaces   sets   adapters
 
 | id | 요구사항 |
 |---|---|
-| CT-FR-01 | `Message` 는 `Role`(system / user / assistant / tool_result), `Content []Block`, `ID`, `Timestamp` 를 가져야 한다 |
+| CT-FR-01 | `Message` 는 `Role`(system / user / assistant / tool_result), `Content []Block`, `ID`, `Timestamp` 를 가져야 한다. `Role == tool_result` 이면 `Result *ToolResult`(3.2) 가 반드시 있고 `Content` 는 비운다. 다른 역할이면 `Result` 는 nil 이다 |
 | CT-FR-02 | `Block` 은 닫힌 종류 `text` / `image` / `thinking` / `tool_call` / `opaque` 중 하나여야 한다 |
 | CT-FR-03 | `thinking` 블록은 텍스트와 선택적 `ProviderData` 를 가진다. 서명·암호화 reasoning 은 `ProviderData` 에 담는다 |
 | CT-FR-04 | `ProviderData` 는 `{Provider, Model, Payload []byte}` 이다. contract 는 Payload 를 해석하지 않는다. **같은 Provider·Model 로 가는 요청에만 재전송되어야 한다**는 규칙을 타입 문서에 명시한다 |
@@ -112,7 +112,7 @@ surfaces   sets   adapters
 
 | id | 요구사항 |
 |---|---|
-| CT-FR-24 | `ContextEdit` 은 원본 메시지를 바꾸지 않고 투영만 바꾸는 편집이다. 종류는 닫힌 집합 `replace_range`(구간을 메시지들로 대체: 압축) / `hide`(특정 메시지 숨김: 실패 응답 숨김) / `truncate_after`(되돌리기) 다 |
+| CT-FR-24 | `ContextEdit` 은 원본 메시지를 바꾸지 않고 투영만 바꾸는 편집이다. 종류는 닫힌 집합이다: `replace_range{From, To, Messages}`(From~To 구간을 Messages 로 대체: 압축) / `hide{Target}`(특정 메시지 숨김: 실패 응답 숨김) / `truncate_after{Target}`(Target 이후 제외: 되돌리기). 모든 편집은 `ID`, `Timestamp` 를 가진다 |
 | CT-FR-25 | 모든 ContextEdit 은 대상 메시지를 `Message.ID` 로 가리킨다 (인덱스 금지: 저장·재개 후에도 유효해야 함) |
 
 ### 3.8 버전

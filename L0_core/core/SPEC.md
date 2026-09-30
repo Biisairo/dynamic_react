@@ -3,8 +3,8 @@
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
 - 버전: 0.1 (초안)
 - 상위 근거: `docs/DECISIONS.md` (D1~D13, R1~R6)
-- 의존 명세: `contract/SPEC.md`
-- 사용하는 쪽: `inject/SPEC.md`
+- 의존 명세: `L0_core/contract/SPEC.md`
+- 사용하는 쪽: `L1_inject/inject/SPEC.md`
 
 ---
 
@@ -263,9 +263,10 @@ res := run.Wait()         // res.Reason: completed | stopped | failed | aborted 
 | id | 요구사항 |
 |---|---|
 | CORE-FR-28 | core 는 dispatch 마다 읽기 전용 `View` 를 넘긴다. View 는 dispatch 시작 시점의 스냅샷이며, 같은 dispatch 안에서는 바뀌지 않는다 |
-| CORE-FR-29 | View 가 제공하는 사실 (core 가 가진 것만, 가공 없이): RunID, SessionID, Config(raw), 현재 Step, dispatch 순번(Seq), 턴 번호, 호출 번호(턴 안), History(1 의 출력), 이번 턴 추가분(2), 임시 메시지(4), 투영(5), 요청(7), 선택된 모델(8), 스트림 초안(지금까지의 이벤트로 조립한 부분 응답), 현재 이벤트, 응답(11), CallError(12), Plan(15), 이번 턴의 도구 호출·결과(지금까지), 편집 로그, 입력함, 신호 기록, 선행 실행 핸들 상태, 경과 시간 |
+| CORE-FR-29 | View 가 제공하는 사실 (core 가 가진 것만, 가공 없이): RunID, SessionID, Config(raw), 현재 Step, dispatch 순번(Seq), 턴 번호, 호출 번호(턴 안), History(1 의 출력), run 기록(CORE-FR-31a), 이번 턴 추가분(2), 임시 메시지(4), 투영(5), 요청(7), 선택된 모델(8), 스트림 초안(지금까지의 이벤트로 조립한 부분 응답), 현재 이벤트, 응답(11), CallError(12), Plan(15), 이번 턴의 도구 호출·결과(지금까지), 편집 로그, 입력함, 신호 기록, 선행 실행 핸들 상태, 경과 시간 |
 | CORE-FR-30 | 신호 기록은 `{Seq, Step, Unit, Signals, Origin(설명 문자열), Result(효과 적용 결과)}` 의 목록이고, View 에서 **종류별·사유별 횟수**를 셀 수 있어야 한다 (조합 함수가 "같은 사유 재시도 N회" 를 구현하는 데 필요) |
 | CORE-FR-31 | 편집 로그는 run 동안의 `rewrite` 효과를 순서대로 보관한다. 투영(5)에 편집을 반영하는 것은 주입 함수의 몫이다 |
+| CORE-FR-31a | core 는 **run 기록(Transcript)** 을 가진다: `History`(1 의 출력) 뒤에, 2 가 끝나면 그 출력 메시지들을, 14 가 끝나면 11 의 Response 를, 19 가 끝나면 그 턴의 ToolResult 들을 순서대로 붙인다. `restart_turn` 으로 버려진 응답은 14 전이므로 붙지 않는다. core 는 이 기록을 해석하지 않으며(편집 로그도 적용하지 않음) View 로만 제공한다 |
 
 ### 3.10 취소와 에러
 
@@ -318,7 +319,7 @@ res := run.Wait()         // res.Reason: completed | stopped | failed | aborted 
 | CORE-FR-18, 19 | Live 있음/없음/Send 실패 각각의 전달 결과 기록 |
 | CORE-FR-20~24 | 그룹 2개(병렬 3, 순차 1), ShortCircuit, 모르는 CallID, 도구 fail 시 나머지 취소, skip_tools |
 | CORE-FR-25~27 | 선행 실행: 재사용 / Discard / 인자 변경 / 전이 시 취소 |
-| CORE-FR-28~31 | View 스냅샷 불변(같은 dispatch 중 입력 추가해도 안 바뀜), 신호 기록 집계 |
+| CORE-FR-28~31a | View 스냅샷 불변(같은 dispatch 중 입력 추가해도 안 바뀜), 신호 기록 집계, run 기록 누적 시점(2·14·19 뒤)과 restart_turn 시 미누적 |
 | CORE-FR-32, 33 | 스트림·도구 도중 취소 → aborted, 22 는 취소 안 된 context |
 | CORE-FR-34, 35 | Go error, panic → failed |
 | CORE-FR-36 | 무한 continue_turn 스크립트 → guard |
