@@ -40,7 +40,9 @@
 | R1 | 신호를 **전이 신호**(step 을 옮김)와 **효과 신호**(상태에 작용, step 은 안 옮김)로 나눈다. 신호 배열 = 효과 0개 이상 + 전이 최대 1개(마지막). 전이가 없으면 `next` | D5 의 "신호 배열 순차 실행"을 모호함 없이 정의 |
 | R2 | `turn.finish` 와 `call.error` 에서는 `next` 를 허용하지 않는다. 다음 행동(`continue_turn` / `settle` 등)을 함수가 명시해야 한다 | "도구를 실행했으면 계속"이 루프 안의 정책이 되는 것을 막음 (D1) |
 | R3 | overflow 복구 = `[rewrite(edit), rebuild]`. `recall` 은 "같은 요청 재전송"이라 압축이 반영되지 않는다 | 07 문서 초안의 예시 정정 |
-| R4 | 모듈 경로는 구현 시작 시 확정. 스펙에서는 `dynamic_react` 를 가칭으로 쓴다 | 저장소 위치 미정 |
+| R4 | 모듈 경로 접두어 = `github.com/Biisairo/dynamic_react` (구현 시작 시 사용자 확정). 모듈 경로 = 접두어 + 폴더 경로 (예: `github.com/Biisairo/dynamic_react/L0_core/contract`) | 모듈별로 `go get` 가능해야 함 (R8) |
 | R5 | Go 1.23 이상 (`iter.Seq2` 사용) | D8 스트림 표현 |
 | R6 | core 가 루프 무한 반복을 막는 **전이 수 상한**을 생성 인자로 받는다(기본 10,000). 정책이 아니라 안전장치 | 함수 세트 버그로 인한 무한 루프 방지 |
 | R7 | core 가 run 기록(Transcript)을 기계적으로 누적한다 (2·14·19 출력). 해석·편집 적용은 하지 않는다 | sets 스펙 작성 중 발견: 이전 턴 응답·결과를 View 로 볼 수 없어 투영을 만들 수 없었음. 누적은 판단이 아닌 기록이라 D1 과 충돌하지 않음 |
+| R8 | **패키지 폴더마다 독립 Go 모듈**: `L0_core/contract`, `L0_core/core`, `L1_inject/inject`, `L1_inject/adapters`, `L1_inject/sets`, `L1_inject/cmd/dr-print` 가 각자 `go.mod` 를 가진다. 개발은 루트 `go.work` 로 묶는다. 버전 태그는 폴더 접두어(`L0_core/contract/v0.1.0`). 모듈 의존: contract ← core ← inject, contract ← adapters, sets → {contract, core, inject, adapters}, dr-print → sets 이하 | 사용자가 pi·omp 처럼 필요한 모듈만 골라 쓰고 교체할 수 있게. 의존 방향을 `go.mod` 가 강제 (CORE-NFR-01 이 구조로 보장) |
+| R9 | **adapters 는 contract 에만 의존**하는 단독 LLM 클라이언트다: `Call(ctx, req) iter.Seq2[contract.StreamEvent, error]`. 이것을 `ModelCallFn` 으로 감싸 `core.CallStream` 을 만드는 것은 sets 몫이다 | R8: 루프 없이 모델 호출만 쓰려는 사용자가 core·inject 를 받지 않게. 이전: adapters 가 inject 의 `ModelCallFn` 을 직접 제공 |

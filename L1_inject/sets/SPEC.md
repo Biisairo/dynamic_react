@@ -1,8 +1,8 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.1 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, D16, R2, R3, R7)
+- 버전: 0.2 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, D16, R2, R3, R7, R9)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/adapters/SPEC.md`
 
 ---
@@ -95,7 +95,7 @@
 | 6 | request.build | System = 시스템 프롬프트(3.5) · Tools = 설정의 도구 목록의 spec · Messages = 투영 · MaxOutputTokens = 설정값 또는 ModelInfo.MaxOutputTokens | next |
 | 7 | request.finalize | **짝 검증·복구**: 결과 없는 tool call 뒤에 aborted 결과를 끼움. 캐시 힌트: system 끝, 마지막 메시지 | next |
 | 8 | model.select | 설정 model → 카탈로그 조회. 없으면 `ContextWindow 0`(모름), capability 없음으로 ModelInfo 구성 | next |
-| 9 | model.call | adapters.Call | next |
+| 9 | model.call | adapters.Call 을 감싸 `CallStream{Events: adapters.Call(...), Live: nil}` 반환 (R9) | next |
 | 10 | stream.event | 아무것도 안 함 | next |
 | 11 | stream.end | Response = 입력 그대로, Discard = 선행 실행 전부 (base 는 선행 실행을 요청하지 않음) | next |
 | 12 | call.error | 재시도 없음 | fail(CallError) |
@@ -281,3 +281,11 @@ echo "prompt" | dr-print ...
 | O1 | 기본 시스템 프롬프트 문안 (구현 시 초안 작성 후 사용자 확인) |
 | O2 | 재시도 기본값(3회, 2s 기준, 60s 상한)의 근거 확보 또는 사용자 확정 |
 | O3 | 기본 `sessionDir` 경로 |
+
+---
+
+## 7. 변경 기록
+
+| 버전 | 이전 | 새 동작 | 이유 |
+|---|---|---|---|
+| 0.2 | 9 model.call = adapters 가 제공한 `ModelCallFn` 을 그대로 바인딩 | sets 가 `adapters.Call` 의 이벤트 시퀀스를 `core.CallStream` 으로 감쌈 | R9: adapters 가 contract 만 의존 |

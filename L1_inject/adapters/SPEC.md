@@ -1,9 +1,9 @@
 # adapters — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.1 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D2, D14, D15)
-- 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
+- 버전: 0.2 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D2, D14, D15, R8, R9)
+- 의존 명세: `L0_core/contract/SPEC.md`
 - 사용하는 쪽: `L1_inject/sets/SPEC.md`
 
 ---
@@ -29,7 +29,7 @@
 
 ```text
  sets: model.select ──► Catalog.Lookup(ref) -> ModelInfo
- sets: model.call   ──► adapters.Call(ctx, req) -> core.CallStream
+ sets: model.call   ──► adapters.Call(ctx, req) -> iter.Seq2[StreamEvent, error]
                              │ route by req.Model.API
                              ├──► anthropic-messages
                              └──► openai-chat  (+ compat profile per provider)
@@ -38,13 +38,14 @@
                                  provider endpoint
 ```
 
-- 어댑터는 inject 의 `ModelCallFn` 시그니처를 따르는 함수를 제공한다. sets 는 그 함수를 그대로 바인딩하거나 감싼다.
+- 어댑터는 contract 만 보는 단독 LLM 클라이언트다 (R9). `ModelCallFn` 으로 감싸 `core.CallStream` 을 만드는 것은 sets 몫이다.
 
 ### 2.2 제약
 - AD-C1. provider 인증은 **API 키만** 지원한다. 구독 계정(Claude Pro/Max, ChatGPT 등)의 로그인·OAuth 토큰을 쓰는 경로를 구현하지 않는다. 키는 코드·로그·에러 메시지·트레이스에 노출하지 않는다.
 - AD-C2. API 키는 환경변수 또는 설정의 **환경변수 이름 참조**로만 받는다 (설정 파일에 키 값을 직접 쓰는 형식을 지원하지 않는다).
 - AD-C3. HTTP 는 Go 표준 `net/http` 와 자체 SSE 파서로 구현한다. 이유: Chat Completions 호환 서버의 방언 차이(05 문서 3장)를 SDK 없이 직접 흡수해야 하고, core 와 같은 무의존 원칙을 L1 에도 가능한 한 적용한다. (재검토 가능: 6장 O1)
 - AD-C4. 어댑터는 panic 하거나 스트림 도중 Go error 로 끝나지 않는다. 모든 실패는 contract `error` 이벤트(`CallError` 포함)로 끝낸다 (CT-FR-16).
+- AD-C5. adapters 모듈은 contract 와 Go 표준 라이브러리 외 import 가 없다 (R8, R9). core·inject 를 import 하지 않는다.
 
 ---
 
@@ -140,6 +141,7 @@
 | AD-FR-32~34 | 상태 코드·본문 표 기반 테스트, 키 마스킹 |
 | AD-FR-35~39 | 내장·사용자 덮어쓰기·없는 모델 |
 | AD-C1, C2 | 코드 검색 테스트: OAuth·구독 토큰 경로 없음, 설정 스키마에 키 값 필드 없음 |
+| AD-C5 | `go list -deps` 검사: contract·표준 라이브러리 외 없음 |
 
 ---
 
@@ -160,3 +162,11 @@
 |---|---|
 | O1 | 공식 Go SDK(anthropic-sdk-go, openai-go) 사용 여부. 1차는 net/http 직접 구현 (AD-C3) |
 | O2 | 내장 카탈로그의 초기 모델 목록 (구현 시 사용자에게 확인) |
+
+---
+
+## 7. 변경 기록
+
+| 버전 | 이전 | 새 동작 | 이유 |
+|---|---|---|---|
+| 0.2 | adapters 가 inject 의 `ModelCallFn` 을 직접 제공하고 `core.CallStream` 을 돌려줌 (contract·core·inject 의존) | `Call(ctx, req) iter.Seq2[contract.StreamEvent, error]`, contract 만 의존 (AD-C5). 감싸기는 sets | R8·R9: 독립 모듈로 단독 사용 가능하게 |

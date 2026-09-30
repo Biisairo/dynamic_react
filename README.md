@@ -22,7 +22,17 @@
              contract  shared data types                        (spec v0.1)
 ```
 
-의존 방향은 위 → 아래만. `L0_core/core` 는 contract 와 표준 라이브러리만 본다.
+의존 방향은 위 → 아래만. 폴더마다 독립 Go 모듈이다 (R8, 경로 `github.com/Biisairo/dynamic_react/<폴더>`). 개발은 루트 `go.work` 로 묶는다.
+
+```text
+ contract ◄── core ◄── inject
+    ▲                     ▲
+    └── adapters          │
+           ▲              │
+           └──── sets ────┘  ◄── cmd/dr-print
+```
+
+`L0_core/core` 는 contract 와 표준 라이브러리만, `L1_inject/adapters` 는 contract 와 표준 라이브러리만 본다 (R9).
 
 ## 폴더
 
@@ -46,7 +56,7 @@
 
 ## 구현 순서 (D15: L0 + L1 전체)
 
-1. `go.mod` (모듈 경로 확정, R4), Go 1.23+.
+1. 모듈 6개의 `go.mod` + 루트 `go.work` (R4, R8), Go 1.23+.
 2. `L0_core/contract` — 타입 + Validate + JSON 왕복. 테스트 먼저.
 3. `L0_core/core` — 스크립트된 가짜 Dispatcher 로 테스트 먼저 → 구현. `-race`.
 4. `L1_inject/inject` — StepSpec + 생성기 → 컴파일 실패 테스트 → Dispatcher → 조합 → 원격 로더.

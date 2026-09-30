@@ -5,7 +5,7 @@
 `dynamic_react` 에서 `README.md` 의 **"구현 순서" 1~7** 을 순서대로 진행한다. 기준 문서는 `docs/DECISIONS.md` 와 다섯 스펙(모두 v0.1)이다:
 `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/adapters/SPEC.md`, `L1_inject/sets/SPEC.md`.
 
-1. `go.mod` 생성. **모듈 경로는 사용자에게 먼저 묻는다** (R4). Go 1.23+ (R5). 단일 모듈, 패키지 경로는 폴더 구조를 따른다 (`.../L0_core/core`, `.../L1_inject/inject` 등).
+1. `go.mod` 생성. **모듈 경로는 사용자에게 먼저 묻는다** (R4). Go 1.23+ (R5). ~~단일 모듈~~ → 폴더마다 독립 모듈로 변경됨 (R8, R9 — impl-01 세션에서 사용자 확정).
 2. contract → 3. core → 4. inject → 5. adapters → 6. sets → 7. `L1_inject/cmd/dr-print`.
 
 단계마다: 스펙 4장의 테스트를 먼저 쓰고 **실패를 확인**한 뒤 구현, 통과 확인 후 사용자에게 보고하고 다음 단계. 커밋은 사용자 확인 후에만.
