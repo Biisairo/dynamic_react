@@ -1,7 +1,7 @@
 # contract — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.3 (초안)
+- 버전: 0.4 (초안)
 - 상위 근거: `docs/DECISIONS.md`
 - 관련 명세: `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 
@@ -49,7 +49,7 @@ surfaces   sets   adapters
 ### 2.2 제약
 - CT-C1. Go 표준 라이브러리 외 의존성 없음.
 - CT-C2. 모든 타입은 JSON 직렬화가 가능하고, 같은 값은 항상 같은 바이트로 직렬화된다 (캐시·지문용).
-- CT-C3. 별도 프로세스 경계(D12)는 이 계약의 **결정적 JSON**(CT-C2)을 bytes 로 실어 넘는다. protobuf 는 봉투만 정의한다 (R10). 따라서 모든 타입은 JSON 왕복이 손실 없어야 한다.
+- CT-C3. 모든 타입은 JSON 왕복이 손실 없어야 한다 (세션 저장·상태 저장이 이 형식을 쓴다).
 
 ---
 
@@ -126,11 +126,11 @@ surfaces   sets   adapters
 
 ### 3.9 Go 표현과 Validate 규칙
 
-스펙 요구사항을 코드로 옮길 때 정한 표현이다. 모두 CT-C2·C3 (결정적 JSON, protobuf 1:1)을 따른다.
+스펙 요구사항을 코드로 옮길 때 정한 표현이다. 모두 CT-C2·C3 (결정적 JSON, 손실 없는 왕복)을 따른다.
 
 | id | 요구사항 |
 |---|---|
-| CT-FR-29 | JSON 필드 이름은 camelCase, 선택 필드는 `omitempty`. 합 타입(Block, StreamEvent, ContextEdit)은 interface 가 아니라 `Kind` + 종류별 필드를 가진 구조체다 (protobuf oneof 대응). 종류에 속하지 않는 필드는 비어 있어야 한다 |
+| CT-FR-29 | JSON 필드 이름은 camelCase, 선택 필드는 `omitempty`. 합 타입(Block, StreamEvent, ContextEdit)은 interface 가 아니라 `Kind` + 종류별 필드를 가진 구조체다 (직렬화 형식과 1:1). 종류에 속하지 않는 필드는 비어 있어야 한다 |
 | CT-FR-30 | 닫힌 종류는 `string` 기반 타입이고 `Valid() bool` 을 가진다. JSON 역직렬화·직렬화 모두 모르는 값(빈 문자열 포함)이면 에러 (CT-FR-28) |
 | CT-FR-31 | 시각은 `time.Time`(JSON RFC 3339), 기간은 `time.Duration`(JSON 나노초 정수), 바이너리는 `[]byte`(JSON base64), 원문 JSON 은 `json.RawMessage` |
 | CT-FR-32 | image 블록은 `Image{MediaType, Data []byte}` 이다. opaque 블록은 `Opaque{Provider, Kind, Payload}` 이다 |
@@ -187,7 +187,7 @@ surfaces   sets   adapters
 
 | 결정 | 요구사항 |
 |---|---|
-| D2, D12 | CT-C2, CT-C3 |
+| D2 | CT-C2, CT-C3 |
 | 07 문서 C1 | CT-FR-01~13 |
 | C2 | CT-FR-14~17 |
 | C3~C5 | CT-FR-18~21 |
@@ -205,3 +205,4 @@ surfaces   sets   adapters
 | 0.2 | CacheHint = 메시지 인덱스 | `{Target: system|message, Index}` | sets 7 이 system 끝에 힌트를 걸어야 함. 사용자 확정 |
 | 0.2 | Go 표현 미정 | 3.9 추가 (CT-FR-29~36, Validate 표) | 구현 착수 |
 | 0.3 | CT-C3: protobuf 1:1 대응 | 원격 경계는 결정적 JSON 을 bytes 로 | 계약을 proto 로 중복 정의하지 않음, 모르는 enum 거부(CT-FR-28)가 그대로 적용. 사용자 확정 (R10) |
+| 0.4 | CT-C3: 원격 경계는 결정적 JSON | JSON 왕복 무손실 (저장용) | D12 정정: 원격 경계 없음 |

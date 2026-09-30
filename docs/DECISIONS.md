@@ -25,7 +25,7 @@
 | D9 | 짝 없는 tool call | 복구 방식은 주입, 기본값은 aborted 결과 채우기. 요청 직전 짝 검증도 기본 함수(교체 가능). 검증을 빼면 provider 거부가 드러남 |
 | D10 | 서브에이전트 실행기 | 주입, 기본값 같은 프로세스 goroutine, 별도 프로세스도 가능. → 루프는 전역 상태 없는 값 |
 | D11 | 함수 세트의 상태 | 세션 저장소에 네임스페이스로, `ctx` 로만 접근, 재개·브랜치 시 함께 복원. 저장 방식은 주입 |
-| D12 | 서드파티 | 1차부터 지원. 로더를 주입 가능하게 두고 둘 다 구현: 직접 만든 세트 = 같은 프로세스(Go 컴파일 시점 강제), 서드파티 = 별도 프로세스(gRPC). 조회·신호·ctx 는 직렬화 가능 |
+| D12 | 서드파티 | ~~별도 프로세스(gRPC) 로더~~ → **서드파티도 같은 프로세스의 Go FunctionSet** 이다. 사용자는 세트를 고치거나 새로 만들어 `Bind` 로 겹친다. 런타임 격리·RPC 는 목표가 아니다 (impl-01 에서 사용자 정정) |
 | D13 | step 목록 | 고정하되 22개로 세분화 (L0_core/core/SPEC.md 3.1) |
 | D14 | 레이어 묶음 | `L0_core/{contract, core}` · `L1_inject/{inject, sets, adapters}` · `L2_ui/{surfaces}`. 주입(프레임워크 포함)은 사용자가 수정하는 영역이라 L1 |
 | D15 | 1차 구현 범위 | **L0 + L1 전체 = 실행 가능한 에이전트.** sets 는 `base` + `resilient`, adapters 는 Anthropic Messages + OpenAI Chat Completions |
@@ -46,4 +46,4 @@
 | R7 | core 가 run 기록(Transcript)을 기계적으로 누적한다 (2·14·19 출력). 해석·편집 적용은 하지 않는다 | sets 스펙 작성 중 발견: 이전 턴 응답·결과를 View 로 볼 수 없어 투영을 만들 수 없었음. 누적은 판단이 아닌 기록이라 D1 과 충돌하지 않음 |
 | R8 | **패키지 폴더마다 독립 Go 모듈**: `L0_core/contract`, `L0_core/core`, `L1_inject/inject`, `L1_inject/adapters`, `L1_inject/sets`, `L1_inject/cmd/dr-print` 가 각자 `go.mod` 를 가진다. 개발은 루트 `go.work` 로 묶는다. 버전 태그는 폴더 접두어(`L0_core/contract/v0.1.0`). 모듈 의존: contract ← core ← inject, contract ← adapters, sets → {contract, core, inject, adapters}, dr-print → sets 이하. 모듈 간 require 는 공개 전까지 `v0.0.0` + `replace => ../상대경로` (모듈 단독 `go mod tidy` 가능, replace 는 소비자에게 적용되지 않음). 공개 시 태그 버전으로 교체 | 사용자가 pi·omp 처럼 필요한 모듈만 골라 쓰고 교체할 수 있게. 의존 방향을 `go.mod` 가 강제 (CORE-NFR-01 이 구조로 보장) |
 | R9 | **adapters 는 contract 에만 의존**하는 단독 LLM 클라이언트다: `Call(ctx, req) iter.Seq2[contract.StreamEvent, error]`. 이것을 `ModelCallFn` 으로 감싸 `core.CallStream` 을 만드는 것은 sets 몫이다 | R8: 루프 없이 모델 호출만 쓰려는 사용자가 core·inject 를 받지 않게. 이전: adapters 가 inject 의 `ModelCallFn` 을 직접 제공 |
-| R10 | 원격 세트(gRPC) 경계는 contract 의 결정적 JSON 을 bytes 로 싣는다. proto 는 봉투(Invoke/Query/Result/Signal)만 정의 | 계약 이중 정의 방지. CT-C3 수정 |
+| R10 | ~~원격 경계는 결정적 JSON~~ → 폐기 (D12 정정으로 원격 경계가 없음) | — |

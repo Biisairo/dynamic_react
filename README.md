@@ -10,8 +10,8 @@
  L2_ui       surfaces: TUI / rpc / web / messenger              (scope only, later)
  ─────────────────────────────────────────────────────────────────
  L1_inject   user-modifiable layer
-             inject    function interfaces, per-step ctx,       (spec v0.1)
-                       binding, combinators, remote loader
+             inject    function interfaces, per-step ctx,       (spec v0.3)
+                       binding, combinators
              sets      default function sets: base, resilient   (spec v0.1)
              adapters  model dialects: Anthropic, OpenAI Chat   (spec v0.1)
              cmd       dr-print: minimal CLI for verification    (in sets spec 3.8)
@@ -51,7 +51,7 @@
 - **step 22개 고정** (core 3.1). 루프는 step 을 순서대로 진행하고 각 step 을 주입 함수에 맡긴다.
 - **신호** = 주입 함수가 반환하는 제어 약속어. 전이 10종 + 효과 3종 (core 3.2). step 별 허용 표 (core 3.4).
 - **조회** = ctx 의 읽기 메서드. 그룹 8종, step 별 사용 가능 표 (inject 3.4).
-- **ctx 는 dispatch 마다 새로 만들고 반환 후 폐기.** 허용되지 않은 신호·조회는 컴파일 에러(봉인 interface), 재사용은 런타임 에러, 서드파티는 별도 프로세스 (inject 2.2).
+- **ctx 는 dispatch 마다 새로 만들고 반환 후 폐기.** 허용되지 않은 신호·조회는 컴파일 에러(봉인 interface), 재사용은 런타임 에러 (inject 2.2). 서드파티도 Go FunctionSet 으로 `Bind` 에 겹친다 (D12).
 - **step 당 함수 하나.** 여러 기능은 조합 함수로 합친다 (inject 3.7). 기본 동작은 sets 가 제공한다.
 
 ## 구현 순서 (D15: L0 + L1 전체)
@@ -59,7 +59,7 @@
 1. 모듈 6개의 `go.mod` + 루트 `go.work` (R4, R8), Go 1.23+.
 2. `L0_core/contract` — 타입 + Validate + JSON 왕복. 테스트 먼저.
 3. `L0_core/core` — 스크립트된 가짜 Dispatcher 로 테스트 먼저 → 구현. `-race`.
-4. `L1_inject/inject` — StepSpec + 생성기 → 컴파일 실패 테스트 → Dispatcher → 조합 → 원격 로더.
+4. `L1_inject/inject` — StepSpec + 생성기 → 컴파일 실패 테스트 → Dispatcher → 조합.
 5. `L1_inject/adapters` — httptest SSE 재생 + 골든 테스트 → Anthropic → OpenAI Chat → 카탈로그.
 6. `L1_inject/sets` — 도구 → 세션 저장 → 추정·압축 → base → resilient → 종단 테스트.
 7. `L1_inject/cmd/dr-print` — 실행 확인.
