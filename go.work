@@ -6,5 +6,6 @@ use (
 	./L1_inject/adapters
 	./L1_inject/inject
 	./L1_inject/sets
-	./L2_harness/cmd/dr-print
+	./L2_harness/harness
+	./L3_ui/cmd/dr-print
 )

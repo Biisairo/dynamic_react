@@ -7,10 +7,13 @@
 ## 레이어 (D14)
 
 ```text
- L3_ui       surfaces: TUI / rpc / web / messenger              (scope only, later)
+ L3_ui       all real I/O: osenv (files, processes),            (scope only, later)
+             ModelCaller setup, terminal, stream display,
+             config/env, dr-print test CLI; surfaces
  ─────────────────────────────────────────────────────────────────
- L2_harness  session store, tools, prompt assembly,             (scope only, next)
-             summarizer, config file, dr-print CLI
+ L2_harness  harness: the agent as one function — tool logic,   (spec v0.2)
+             JSONL session format, prompt assembly, summarizer
+             over Env + ModelCaller interfaces (no real I/O)
  ─────────────────────────────────────────────────────────────────
  L1_inject   user-modifiable layer
              inject    function interfaces, per-step ctx,       (spec v0.3)
@@ -32,7 +35,7 @@
     ▲                     ▲
     └── adapters          │
            ▲              │
-           └── (harness) ─┘     sets ──► inject, core, contract
+           └── (L3) ──► harness ──► sets ──► inject, core, contract
 ```
 
 `L0_core/core` 는 contract 와 표준 라이브러리만, `L1_inject/adapters` 는 contract 와 표준 라이브러리만 본다 (R9).
@@ -44,10 +47,10 @@
 | [`L0_core/contract/`](L0_core/contract/SPEC.md) | 공유 데이터 계약 | 스펙 v0.4, 구현 |
 | [`L0_core/core/`](L0_core/core/SPEC.md) | 루프 본체 | 스펙 v0.2, 구현 |
 | [`L1_inject/inject/`](L1_inject/inject/SPEC.md) | 함수 주입 프레임워크 + 조합 함수 | 스펙 v0.3, 구현 |
-| [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 기본 함수 세트 (base, resilient) | 스펙 v0.3 |
+| [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 기본 함수 세트 (base, resilient) | 스펙 v0.4, 구현 |
 | [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그 | 스펙 v0.3, 구현 |
-| [`L2_harness/`](L2_harness/README.md) | 하네스: 세션 저장, 도구, 프롬프트, 요약기, CLI | 범위만 |
-| [`L3_ui/surfaces/`](L3_ui/surfaces/README.md) | 입출력 | 범위만 |
+| [`L2_harness/`](L2_harness/SPEC.md) | 하네스: 에이전트 함수 (도구 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface | 스펙 v0.2 |
+| [`L3_ui/`](L3_ui/surfaces/README.md) | 실제 입출력: osenv, dr-print(검증용), surfaces | 범위만 |
 | [`docs/`](docs/DECISIONS.md) | 결정 기록, 인계 문서 | — |
 
 ## 핵심 개념 (한 장 요약)
@@ -66,6 +69,6 @@
 4. `L1_inject/inject` — StepSpec + 생성기 → 컴파일 실패 테스트 → Dispatcher → 조합.
 5. `L1_inject/adapters` — httptest SSE 재생 + 골든 테스트 → Anthropic → OpenAI Chat → 카탈로그.
 6. `L1_inject/sets` — 의존 interface·메모리 Store → 추정·압축 절단 → base → resilient → 종단 테스트 (가짜 ModelCaller·도구).
-7. (다음 단계) `L2_harness` — 도구·세션·프롬프트·요약기·dr-print 로 실행 가능한 에이전트 (R13).
+7. (다음 단계) `L2_harness/harness` — Env·ModelCaller 위의 에이전트 함수 (R13, R14). 이어서 `L3_ui/osenv` + `L3_ui/cmd/dr-print` 로 실행 가능한 에이전트.
 
 각 단계는 스펙 4장(검증)의 테스트를 먼저 쓰고 실패를 확인한 뒤 구현한다. 스펙과 코드가 충돌하면 멈추고 스펙·DECISIONS 를 먼저 고친다.
