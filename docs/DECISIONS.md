@@ -27,9 +27,9 @@
 | D11 | 함수 세트의 상태 | 세션 저장소에 네임스페이스로, `ctx` 로만 접근, 재개·브랜치 시 함께 복원. 저장 방식은 주입 |
 | D12 | 서드파티 | ~~별도 프로세스(gRPC) 로더~~ → **서드파티도 같은 프로세스의 Go FunctionSet** 이다. 사용자는 세트를 고치거나 새로 만들어 `Bind` 로 겹친다. 런타임 격리·RPC 는 목표가 아니다 (impl-01 에서 사용자 정정) |
 | D13 | step 목록 | 고정하되 22개로 세분화 (L0_core/core/SPEC.md 3.1) |
-| D14 | 레이어 묶음 | `L0_core/{contract, core}` · `L1_inject/{inject, sets, adapters}` · `L2_ui/{surfaces}`. 주입(프레임워크 포함)은 사용자가 수정하는 영역이라 L1 |
-| D15 | 1차 구현 범위 | **L0 + L1 전체 = 실행 가능한 에이전트.** sets 는 `base` + `resilient`, adapters 는 Anthropic Messages + OpenAI Chat Completions + **OpenAI Responses** (impl-01 에서 Responses 추가, 사용자) |
-| D16 | 실행 진입점 | L2 전이라 검증용 최소 print CLI 를 L1 예제로 둔다 (`L1_inject/cmd/dr-print`). 본격 UI 는 L2 |
+| D14 | 레이어 묶음 | `L0_core/{contract, core}` · `L1_inject/{inject, sets, adapters}` · `L2_harness` · `L3_ui/{surfaces}`. 주입(프레임워크 포함)은 사용자가 수정하는 영역이라 L1. 하네스(세션 저장, 도구 구현, 프롬프트 조립, 요약기, 설정 파일, CLI)는 L2 (R13, impl-01 에서 정정) |
+| D15 | 1차 구현 범위 | **L0 + L1 = 주입으로 동작하는 루프 라이브러리.** sets 는 `base` + `resilient`(메모리 상태, 도구·저장소·프롬프트·요약기는 interface), adapters 는 Anthropic Messages + OpenAI Chat Completions + OpenAI Responses. 실행 가능한 에이전트는 L2_harness 에서 (R13) |
+| D16 | 실행 진입점 | 검증용 최소 print CLI 는 하네스의 일부다 (`L2_harness/cmd/dr-print`). 본격 UI 는 L3 (R13) |
 
 ## 3. 스펙 작성 중 확정한 세부 (R)
 
@@ -44,8 +44,9 @@
 | R5 | Go 1.23 이상 (`iter.Seq2` 사용) | D8 스트림 표현 |
 | R6 | core 가 루프 무한 반복을 막는 **전이 수 상한**을 생성 인자로 받는다(기본 10,000). 정책이 아니라 안전장치 | 함수 세트 버그로 인한 무한 루프 방지 |
 | R7 | core 가 run 기록(Transcript)을 기계적으로 누적한다 (2·14·19 출력). 해석·편집 적용은 하지 않는다 | sets 스펙 작성 중 발견: 이전 턴 응답·결과를 View 로 볼 수 없어 투영을 만들 수 없었음. 누적은 판단이 아닌 기록이라 D1 과 충돌하지 않음 |
-| R8 | **패키지 폴더마다 독립 Go 모듈**: `L0_core/contract`, `L0_core/core`, `L1_inject/inject`, `L1_inject/adapters`, `L1_inject/sets`, `L1_inject/cmd/dr-print` 가 각자 `go.mod` 를 가진다. 개발은 루트 `go.work` 로 묶는다. 버전 태그는 폴더 접두어(`L0_core/contract/v0.1.0`). 모듈 의존: contract ← core ← inject, contract ← adapters, sets → {contract, core, inject, adapters}, dr-print → sets 이하. 모듈 간 require 는 공개 전까지 `v0.0.0` + `replace => ../상대경로` (모듈 단독 `go mod tidy` 가능, replace 는 소비자에게 적용되지 않음). 공개 시 태그 버전으로 교체 | 사용자가 pi·omp 처럼 필요한 모듈만 골라 쓰고 교체할 수 있게. 의존 방향을 `go.mod` 가 강제 (CORE-NFR-01 이 구조로 보장) |
+| R8 | **패키지 폴더마다 독립 Go 모듈**: `L0_core/contract`, `L0_core/core`, `L1_inject/inject`, `L1_inject/adapters`, `L1_inject/sets`, `L2_harness/cmd/dr-print` 가 각자 `go.mod` 를 가진다. 개발은 루트 `go.work` 로 묶는다. 버전 태그는 폴더 접두어(`L0_core/contract/v0.1.0`). 모듈 의존: contract ← core ← inject, contract ← adapters, sets → {contract, core, inject}, L2_harness → L1 이하. 모듈 간 require 는 공개 전까지 `v0.0.0` + `replace => ../상대경로` (모듈 단독 `go mod tidy` 가능, replace 는 소비자에게 적용되지 않음). 공개 시 태그 버전으로 교체 | 사용자가 pi·omp 처럼 필요한 모듈만 골라 쓰고 교체할 수 있게. 의존 방향을 `go.mod` 가 강제 (CORE-NFR-01 이 구조로 보장) |
 | R9 | **adapters 는 contract 에만 의존**하는 단독 LLM 클라이언트다: `Call(ctx, req) iter.Seq2[contract.StreamEvent, error]`. 이것을 `ModelCallFn` 으로 감싸 `core.CallStream` 을 만드는 것은 sets 몫이다 | R8: 루프 없이 모델 호출만 쓰려는 사용자가 core·inject 를 받지 않게. 이전: adapters 가 inject 의 `ModelCallFn` 을 직접 제공 |
 | R10 | ~~원격 경계는 결정적 JSON~~ → 폐기 (D12 정정으로 원격 경계가 없음) | — |
 | R11 | 모델 수치는 필드 단위로 **사용자 설정 > provider 조회 API > 원격 카탈로그(models.dev) > 내장 스냅샷(oh-my-pi models.json 발췌)** 순으로 채운다. 모두 모르면 0(모름) | 사용자: 수동 고정을 피하고 조회 우선, 조회로 알 수 없는 provider 가 많아 원격·스냅샷을 뒤에 둠 |
 | R12 | 내장 provider 프로필 = pi 의 provider 중 1차 방언 + API 키 방식인 것 + 로컬 서버. 구독 요금제 엔드포인트는 제외 | 사용자: pi 에 있는 것 기본 포함, claude·openai·z.ai·deepseek·xiaomi·minimax 필수 |
+| R13 | **pi 식 레이어 분리**: L1 sets 는 22 step 기본 함수와 정책(재시도, overflow 복구, 임계치 압축 판정, follow-up)만 둔다. 세션 JSONL 저장, 도구 4종, 시스템 프롬프트 조립(AGENTS.md·스킬), 요약 프롬프트·요약기 구현, 설정 파일, dr-print 는 L2_harness. sets 는 adapters 에 의존하지 않고 `ModelCaller` interface 를 받는다 | 사용자: 하네스는 루프+주입보다 위의 레이어. pi 의 ai / agent-core / coding-agent 분리와 같음 |

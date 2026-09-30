@@ -4,7 +4,7 @@ use (
 	./L0_core/contract
 	./L0_core/core
 	./L1_inject/adapters
-	./L1_inject/cmd/dr-print
 	./L1_inject/inject
 	./L1_inject/sets
+	./L2_harness/cmd/dr-print
 )
