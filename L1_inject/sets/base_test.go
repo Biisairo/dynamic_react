@@ -82,7 +82,9 @@ func TestRunStartStoreError(t *testing.T) {
 
 type failingStore struct{}
 
-func (failingStore) Load(context.Context, string) (sets.Session, error) { return sets.Session{}, errors.New("disk") }
+func (failingStore) Load(context.Context, string) (sets.Session, error) {
+	return sets.Session{}, errors.New("disk")
+}
 func (failingStore) AppendMessages(context.Context, string, []contract.Message) error {
 	return errors.New("disk")
 }
@@ -182,7 +184,10 @@ func TestToolSteps(t *testing.T) {
 	boom := sets.Tool{Spec: contract.ToolSpec{Name: "boom", InputSchema: json.RawMessage(`{}`)},
 		Run: func(ctx context.Context, c contract.ToolCall) contract.ToolResult { panic("tool bug") }}
 	own := sets.Tool{Spec: contract.ToolSpec{Name: "own", InputSchema: json.RawMessage(`{}`)},
-		Truncate: func(r contract.ToolResult) contract.ToolResult { r.Content = []contract.Block{text("custom")}; return r }}
+		Truncate: func(r contract.ToolResult) contract.ToolResult {
+			r.Content = []contract.Block{text("custom")}
+			return r
+		}}
 	d := deps(&fakeModel{}, echoTool(&runs), big, boom, own)
 	set := inject.FunctionSet{Name: "base", ToolBefore: sets.BaseToolBefore(d), ToolExecute: sets.BaseToolExecute(d), ToolAfter: sets.BaseToolAfter(d)}
 	before := func(name, args string) core.BeforeOut {

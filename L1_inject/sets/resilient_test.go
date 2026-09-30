@@ -69,7 +69,9 @@ func TestOverflowOnlyOncePerTurn(t *testing.T) {
 
 func TestOverflowWithoutSummarizer(t *testing.T) {
 	m := infoW(100000)
-	m.script = func(n int, req contract.Request) []contract.StreamEvent { return errEv(contract.CallError{Class: contract.ClassOverflow}) }
+	m.script = func(n int, req contract.Request) []contract.StreamEvent {
+		return errEv(contract.CallError{Class: contract.ClassOverflow})
+	}
 	if s := agent(t, deps(m), true, wide, user("u1", "x")); s.Reason != core.SettleFailed || len(m.requests()) != 1 {
 		t.Fatalf("settle %s", s.Reason)
 	}
@@ -117,13 +119,17 @@ func TestRetryExhaustedAndBackoff(t *testing.T) {
 func TestNonRetryableAndCanceledWait(t *testing.T) {
 	for _, class := range []contract.ErrorClass{contract.ClassAuth, contract.ClassInvalidRequest, contract.ClassPayloadTooLarge, contract.ClassPermanent, contract.ClassUnknown} {
 		m := infoW(0)
-		m.script = func(n int, req contract.Request) []contract.StreamEvent { return errEv(contract.CallError{Class: class}) }
+		m.script = func(n int, req contract.Request) []contract.StreamEvent {
+			return errEv(contract.CallError{Class: class})
+		}
 		if s := agent(t, deps(m), true, cfgJSON, user("u1", "x")); s.Reason != core.SettleFailed || len(m.requests()) != 1 {
 			t.Errorf("%s: %s calls %d", class, s.Reason, len(m.requests()))
 		}
 	}
 	m := infoW(0)
-	m.script = func(n int, req contract.Request) []contract.StreamEvent { return errEv(contract.CallError{Class: contract.ClassOverloaded}) }
+	m.script = func(n int, req contract.Request) []contract.StreamEvent {
+		return errEv(contract.CallError{Class: contract.ClassOverloaded})
+	}
 	d := deps(m)
 	d.Sleep = func(ctx context.Context, dd time.Duration) error { return context.Canceled }
 	if s := agent(t, d, true, cfgJSON, user("u1", "x")); s.Reason != core.SettleFailed || len(m.requests()) != 1 {
