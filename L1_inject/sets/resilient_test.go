@@ -11,6 +11,7 @@ import (
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L0_core/core"
 	"github.com/Biisairo/dynamic_react/L1_inject/inject"
+	"github.com/Biisairo/dynamic_react/L1_inject/inject/injecttest"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 )
 
@@ -74,6 +75,49 @@ func TestOverflowWithoutSummarizer(t *testing.T) {
 	}
 	if s := agent(t, deps(m), true, wide, user("u1", "x")); s.Reason != core.SettleFailed || len(m.requests()) != 1 {
 		t.Fatalf("settle %s", s.Reason)
+	}
+}
+
+// ST-FR-44: overflow 복구 표시는 같은 run·같은 턴에만 적용된다.
+func TestOverflowRecoveredMarkScope(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		mark string
+		want string
+	}{
+		{"same run and turn", `{"run":"r1","turn":1}`, "[fail]"},
+		{"other turn", `{"run":"r1","turn":2}`, "[rewrite rebuild]"},
+		{"other run", `{"run":"r0","turn":1}`, "[rewrite rebuild]"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := sets.NewMemoryStore()
+			store.SaveState(ctx, "s1", "resilient", inject.StateDelta{Set: map[string]json.RawMessage{"recovered": json.RawMessage(c.mark)}})
+			d := deps(infoW(100000))
+			d.Summarizer = &fakeSummarizer{}
+			set := injecttest.Fill(inject.FunctionSet{Name: "resilient", CallError: sets.ResilientCallError(d),
+				RunStart: func(*inject.RunStartCtx, core.RunInput) (core.RunInit, []inject.RunStartSignal, error) {
+					return core.RunInit{}, nil, nil
+				}})
+			disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(store)}, set)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := injecttest.Facts{RunID: "r1", SessionID: "s1", Config: json.RawMessage(wide), Step: core.StepRunStart}
+			if _, err := disp.DispatchSource(ctx, core.StepRunStart, core.RunInput{SessionID: "s1"}, f.View()); err != nil {
+				t.Fatal(err)
+			}
+			f.Step, f.TurnIndex = core.StepCallError, 1
+			f.Transcript = []contract.Message{long("u1", 50), long("u2", 50), long("u3", 50)}
+			f.Model = &contract.ModelInfo{ContextWindow: 100000}
+			res, err := disp.DispatchSource(ctx, core.StepCallError, contract.CallError{Class: contract.ClassOverflow}, f.View())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kinds(res.Signals) != c.want {
+				t.Fatalf("signals %s", kinds(res.Signals))
+			}
+		})
 	}
 }
 

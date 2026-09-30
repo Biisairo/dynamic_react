@@ -91,6 +91,11 @@ func TestEstimateContext(t *testing.T) {
 	if got := sets.EstimateContext(proj, []contract.ContextEdit{edit}, sys, tools); got != full {
 		t.Fatalf("untrusted = %d, want %d", got, full)
 	}
+	// 응답과 같은 시각의 편집 → "뒤" 가 아니므로 전부 추정
+	edit.Timestamp = later
+	if got := sets.EstimateContext(proj, []contract.ContextEdit{edit}, sys, tools); got != full {
+		t.Fatalf("edit at usage time = %d, want %d", got, full)
+	}
 	// 응답보다 앞의 편집 → 신뢰
 	edit.Timestamp = ts
 	if got := sets.EstimateContext(proj, []contract.ContextEdit{edit}, sys, tools); got != 1102 {

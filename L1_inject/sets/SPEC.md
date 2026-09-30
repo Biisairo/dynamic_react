@@ -1,7 +1,7 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.3 (초안)
+- 버전: 0.4 (초안)
 - 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 - 사용하는 쪽: `L2_harness` (도구·저장소·프롬프트·요약기 구현을 주입)
@@ -230,6 +230,44 @@ if used > W - reserve and not blocked and Summarizer != nil:
 | ST-NFR-03 | (이동: L2_harness — 실제 provider 종단 테스트) |
 | ST-NFR-04 | sets 모듈은 contract·core·inject·표준 라이브러리 외 import 가 없다 |
 
+### 3.10 Go 표현
+
+스펙 요구사항을 코드로 옮길 때 정한 표현이다.
+
+```go
+type ModelCaller interface {
+    Call(ctx context.Context, req contract.Request) iter.Seq2[contract.StreamEvent, error]
+    Lookup(ctx context.Context, provider, id string) (contract.ModelInfo, bool)
+}
+type Tool struct {
+    Spec     contract.ToolSpec
+    Run      func(ctx context.Context, call contract.ToolCall) contract.ToolResult
+    Truncate func(contract.ToolResult) contract.ToolResult
+}
+type ToolRegistry interface { Get(name string) (Tool, bool); Names() []string }
+type Session struct { Messages []contract.Message; Edits []contract.ContextEdit; State map[string]inject.NamespaceState }
+type Store interface {
+    Load(ctx context.Context, sessionID string) (Session, error)
+    AppendMessages(ctx context.Context, sessionID string, msgs []contract.Message) error
+    AppendEdits(ctx context.Context, sessionID string, edits []contract.ContextEdit) error
+    SaveState(ctx context.Context, sessionID, ns string, d inject.StateDelta) error
+}
+type SummaryRequest struct { Model contract.ModelRef; Messages []contract.Message; Previous string; MaxTokens int }
+type Summarizer interface { Summarize(ctx context.Context, r SummaryRequest) (string, error) }
+type Deps struct {
+    Model ModelCaller; Tools ToolRegistry; Store Store; System []contract.Block; Summarizer Summarizer
+    Sleep func(ctx context.Context, d time.Duration) error; Now func() time.Time; NewID func() string
+}
+```
+
+| id | 요구사항 |
+|---|---|
+| ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base(Deps)`, `Resilient(Deps)`, step 별 생성자 `Base<Step>(Deps)`(22개)·`Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)` |
+| ST-FR-42 | `Base`·`Resilient` 는 Deps 의 nil 을 한 번만 기본값으로 채워 모든 step 이 같은 값을 쓴다 (nil Store → 메모리 Store 하나). step 별 생성자를 따로 부르면 각자 채운다 |
+| ST-FR-43 | base 상태 키: `input`(초기 입력, 2 가 한 번 준 뒤 삭제), `inbox.consumed`(int, publish), `edits.saved`(Store 에 기록한 편집 수). 1 이 run 마다 다시 쓴다 (상태는 Store 로 run 을 넘어 복원되므로) |
+| ST-FR-44 | resilient 상태는 run 을 넘어 복원되므로 RunID 를 함께 저장하고, RunID 가 다르면 초기 상태로 본다: `retry`{run, turn, class 별 횟수}(턴이 바뀌면 리셋), `recovered`{run, turn}(12·13 의 압축 복구), `compaction`{run, pending, invalid}, `compaction.blocked`(publish, `true`, 다른 run 에서는 삭제) |
+| ST-FR-45 | 해석 (스펙 공백): ① `compaction.enabled=false` 는 3·12·13 의 모든 압축 분기를 끈다 (pi `_checkCompaction` 와 같음). ② 무효 압축 판정은 pending 일 때 다음 3 에서 `LastUsage().Prompt() >= W − reserve`. ③ 절단 구간이 이전 요약 메시지 하나뿐이면 압축하지 않는다. ④ 설정 `tools` 의 없는 이름은 무시한다. ⑤ 17 은 결과의 CallID 를 호출 ID 로 맞춘다. ⑥ 18 의 기본 절단은 text 블록마다 적용한다. ⑦ 요약 메시지 = user 역할, 고정 머리말 + 요약 텍스트. ⑧ 1·7 의 aborted 결과는 text 블록 하나("aborted")를 담는다 |
+
 ---
 
 ## 4. 검증
@@ -249,6 +287,7 @@ if used > W - reserve and not blocked and Summarizer != nil:
 | ST-FR-23~27 | 절단점이 tool_result 에 걸리지 않음, Previous 전달, 요약 한도, 실패 시 포기 |
 | ST-NFR-02 | 종단 시나리오 4개 |
 | ST-NFR-04 | `go list -deps` 검사 |
+| ST-FR-41~45 | 테스트가 공개 API 로만 동작을 검사, 복구 표시의 run·턴 범위(같은 run·턴 / 다른 턴 / 다른 run) |
 
 ---
 
@@ -293,3 +332,4 @@ if used > W - reserve and not blocked and Summarizer != nil:
 | 0.3 | 1 짝 복구: 결과 없는 호출마다 | 마지막 assistant 메시지만, 나머지는 7 (ST-FR-40) | Store 가 append-only 라 중간에 끼울 수 없음 |
 | 0.3 | ST-FR-22 "편집보다 뒤" 기준 미정 | Timestamp 비교 | 투영만으로는 순서를 알 수 없음 |
 | 0.3 | 재시도 횟수 범위 "이번 호출" | 턴 단위, Class 별 (ST-FR-07) | recall 은 같은 턴 안에서만 일어남 |
+| 0.4 | Go 표현 미정 | 3.10 (ST-FR-41~45) | 구현 착수. 상태가 Store 로 run 을 넘어 복원되므로 run 범위 상태에 RunID 를 둠 |
