@@ -92,5 +92,5 @@ agent 관련: `agent.go` `New`(AG-FR-09 순서) — `agentConfig(fc.Agent, o.Mod
 | R20 | 테스트·구현 (착수 블록) |
 | L3 | 실제 TTY 수동 확인 (raw mode, 시그널) |
 | L2 O2 | ~~라이선스 고지~~ → `THIRD_PARTY_NOTICES.md` (impl-05) |
-| adapters | vLLM `max_model_len` 문서 확인 못 함, Xiaomi base URL 은 pi 값 |
+| adapters | ~~vLLM `max_model_len` 문서 확인 못 함, Xiaomi base URL 은 pi 값~~ → impl-05 에서 확인: vLLM 소스 `ModelCard.max_model_len` (`vllm/entrypoints/serve/engine/protocol.py`, main `ac9126e`), Xiaomi 공식 문서 `https://api.xiaomimimo.com/v1` |
 | agent | `NoRemoteCatalog` 전달 뮤턴트 관측 불가 (외부 네트워크) |

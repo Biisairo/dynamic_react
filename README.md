@@ -9,22 +9,24 @@
 ```text
  L3_ui       input/output over the finished agent: terminal,
              stream display, signals, exit codes
-             cmd/dr-print  test CLI                             (spec v0.1)
-             surfaces                                           (scope only, later)
+             surfaces/terminal  interactive terminal library    (spec v0.3)
+             cmd/dr        interactive entry point              (spec v0.3)
+             cmd/dr-print  non-interactive test CLI             (spec v0.2)
  ─────────────────────────────────────────────────────────────────
  L2_harness  the real agent on the user's environment (R17)
-             harness   agent assembly over Env + ModelCaller:   (spec v0.6)
+             harness   agent assembly over Env + ModelCaller:   (spec v0.9)
                        tool logic, JSONL sessions, prompt,
                        summarizer (no real I/O itself)
-             osenv     Env on the OS: files, $SHELL, groups     (spec v0.1)
-             agent     config file + env + osenv + adapters     (spec v0.1)
-                       -> harness.New (the finished agent)
+             osenv     Env on the OS: files, shell, groups      (spec v0.2)
+             agent     config + auth.json + osenv + adapters    (spec v0.5)
+                       -> harness.New (the finished agent),
+                       surface layer: approval, steer, models
  ─────────────────────────────────────────────────────────────────
  L1_inject   user-modifiable layer
              inject    function interfaces, per-step ctx,       (spec v0.3)
                        binding, combinators
-             sets      default function sets: base, resilient   (spec v0.4)
-             adapters  dialects: Anthropic, Chat, Responses;    (spec v0.4)
+             sets      default function sets: base, resilient   (spec v0.5)
+             adapters  dialects: Anthropic, Chat, Responses;    (spec v0.6)
                        provider profiles, model catalog
  ─────────────────────────────────────────────────────────────────
  L0_core     the core
@@ -33,7 +35,7 @@
              contract  shared data types                        (spec v0.4)
 ```
 
-L0·L1 은 사용자 환경(환경변수·파일)과 무관한 단독 라이브러리이고, L2 부터가 사용자 환경 위의 실제 에이전트다 (R17). 의존 방향은 위 → 아래만. 폴더마다 독립 Go 모듈이다 (R8, 경로 `github.com/Biisairo/dynamic_react/<폴더>`). 개발은 루트 `go.work` 로 묶는다.
+L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L2 부터가 사용자 환경 위의 실제 에이전트다 (R17). 환경변수는 어느 레이어도 읽지 않는다 — 모든 값은 설정 파일에서 온다 (R21). 의존 방향은 위 → 아래만. 폴더마다 독립 Go 모듈이다 (R8, 경로 `github.com/Biisairo/dynamic_react/<폴더>`). 개발은 루트 `go.work` 로 묶는다.
 
 ```text
  contract ◄── core ◄── inject
@@ -42,7 +44,8 @@ L0·L1 은 사용자 환경(환경변수·파일)과 무관한 단독 라이브�
            ▲              │
            └── agent ──► harness ──► sets ──► inject, core, contract
                  ▲  └──► osenv ──► harness/env
-             dr-print (L3)
+                 ├── dr-print (L3)
+                 └── terminal (L3) ◄── dr (L3)
 ```
 
 `L0_core/core` 는 contract 와 표준 라이브러리만, `L1_inject/adapters` 는 contract 와 표준 라이브러리만 본다 (R9).
@@ -54,14 +57,44 @@ L0·L1 은 사용자 환경(환경변수·파일)과 무관한 단독 라이브�
 | [`L0_core/contract/`](L0_core/contract/SPEC.md) | 공유 데이터 계약 | 스펙 v0.4, 구현 |
 | [`L0_core/core/`](L0_core/core/SPEC.md) | 루프 본체 | 스펙 v0.2, 구현 |
 | [`L1_inject/inject/`](L1_inject/inject/SPEC.md) | 함수 주입 프레임워크 + 조합 함수 | 스펙 v0.3, 구현 |
-| [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 기본 함수 세트 (base, resilient) | 스펙 v0.4, 구현 |
-| [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그 | 스펙 v0.4, 구현 |
-| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface | 스펙 v0.6, 구현 |
-| [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.1, 구현 |
-| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·env + osenv + adapters → harness | 스펙 v0.1, 구현 |
-| [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 검증용 CLI (입출력만) | 스펙 v0.1, 구현 |
-| [`L3_ui/surfaces/`](L3_ui/surfaces/README.md) | 본격 입출력 surfaces | 범위만 |
+| [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 기본 함수 세트 (base, resilient) | 스펙 v0.5, 구현 |
+| [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그 | 스펙 v0.6, 구현 |
+| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface | 스펙 v0.9, 구현 |
+| [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.2, 구현 |
+| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키) | 스펙 v0.5, 구현 |
+| [`L3_ui/surfaces/terminal/`](L3_ui/surfaces/terminal/SPEC.md) | 대화형 터미널 surface 라이브러리 | 스펙 v0.3, 구현 |
+| [`L3_ui/cmd/dr/`](L3_ui/cmd/dr/SPEC.md) | 대화형 진입점 | 스펙 v0.3, 구현 |
+| [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 비대화형 검증용 CLI (입출력만) | 스펙 v0.2, 구현 |
 | [`docs/`](docs/DECISIONS.md) | 결정 기록, 인계 문서 | — |
+
+## 실행
+
+```sh
+cd L3_ui/cmd/dr && go run .                    # 대화형 (TTY 필요, 아니면 종료 코드 2)
+cd L3_ui/cmd/dr-print && go run . "질문"        # 비대화형 (stdin 도 받음, -json 은 이벤트 JSON 줄)
+```
+
+- 처음 실행하면 모델이 없으므로 모델 선택 화면이 뜬다. 키가 필요한 provider 는 `/login <provider>` 로 키를 넣어야 목록에 나온다. 고른 모델은 설정 파일에 저장된다.
+- dr 플래그: `-model provider/id`(이번 실행만, 저장 안 함) · `-cwd` · `-config` · `-session <id>` / `-c`(최근 세션) / `-r`(세션 목록) · `-no-color`.
+- 명령: `/model [provider/id]` · `/login [provider]` · `/logout [provider]` · `/sessions` · `/resume [번호|id]` · `/new` · `/compact` · `/help` · `/quit`. 키: Enter 전송(실행 중 steer), Alt+Enter follow-up, Shift+Enter·Ctrl+J 줄바꿈, Esc·Ctrl+C 실행 중 중단.
+
+| 파일 | 내용 |
+|---|---|
+| `~/.dynamic_react/config.json` | 사용자 설정: `sessionDir`·`shellPath`(기본 `/bin/bash`)·`agent`(모델·thinking·tools·compaction·retry)·`providers`·`models`·`permissions`. 키 필드는 없다 |
+| `~/.dynamic_react/auth.json` | API 키 (`{"<provider>": {"type": "api_key", "key": "…"}}`, 0600). `/login` 이 쓴다. 저장소에 넣지 않는다 |
+| `~/.dynamic_react/sessions/` | 세션 JSONL (기본 위치) |
+| `<cwd>/.dynamic_react/config.json` | 프로젝트 설정: `permissions` 만 |
+
+```json
+{
+  "agent": {"model": {"provider": "deepseek", "id": "deepseek-flash"}, "thinking": "medium"},
+  "providers": {"mine": {"api": "openai-chat", "baseUrl": "http://localhost:8000/v1"}},
+  "models": {"mine/qwen": {"contextWindow": 32768}},
+  "permissions": {"allow": ["read", "bash(go test *)"], "ask": ["bash(git push *)"]}
+}
+```
+
+인증은 API 키만 지원한다. 구독 계정(Claude Pro/Max, ChatGPT 플랜)의 로그인·OAuth 경로는 넣지 않는다 (AD-C1).
 
 ## 핵심 개념 (한 장 요약)
 
@@ -73,7 +106,7 @@ L0·L1 은 사용자 환경(환경변수·파일)과 무관한 단독 라이브�
 
 ## 구현 순서 (D15: L0 + L1 전체)
 
-1. 모듈 6개의 `go.mod` + 루트 `go.work` (R4, R8), Go 1.23+.
+1. 폴더마다 `go.mod` (지금 11개) + 루트 `go.work` (R4, R8), Go 1.23+.
 2. `L0_core/contract` — 타입 + Validate + JSON 왕복. 테스트 먼저.
 3. `L0_core/core` — 스크립트된 가짜 Dispatcher 로 테스트 먼저 → 구현. `-race`.
 4. `L1_inject/inject` — StepSpec + 생성기 → 컴파일 실패 테스트 → Dispatcher → 조합.
@@ -81,6 +114,7 @@ L0·L1 은 사용자 환경(환경변수·파일)과 무관한 단독 라이브�
 6. `L1_inject/sets` — 의존 interface·메모리 Store → 추정·압축 절단 → base → resilient → 종단 테스트 (가짜 ModelCaller·도구).
 7. `L2_harness/harness` — Env·ModelCaller 위의 에이전트 조립 (R13, R14).
 8. `L2_harness/osenv` → `L2_harness/agent` → `L3_ui/cmd/dr-print` 로 실행 가능한 에이전트 (R17).
+9. surface 공통 계층(R18) → `L3_ui/surfaces/terminal` → `L3_ui/cmd/dr` (R19), 모델 미설정 실행·앱 안 모델 선택 (R20), 환경변수 제거·키 파일 (R21).
 
 각 단계는 스펙 4장(검증)의 테스트를 먼저 쓰고 실패를 확인한 뒤 구현한다. 스펙과 코드가 충돌하면 멈추고 스펙·DECISIONS 를 먼저 고친다.
 

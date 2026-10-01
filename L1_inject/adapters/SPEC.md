@@ -116,7 +116,7 @@
 | id | 요구사항 |
 |---|---|
 | AD-FR-29 | provider 는 `Profile` 로 표현한다: `API`(방언), `BaseURL`, `RequiresKey`(false 면 키 없이 보낸다: 로컬 서버. 키가 있으면 어느 쪽이든 인증 헤더를 붙인다), `Lookup`(3.6 조회 방식), `CatalogID`(원격 카탈로그 provider 키), Chat·Responses 차이 `SupportsDeveloperRole`, `SupportsUsageInStreaming`, `MaxTokensField`, `ThinkingFormat`, `ReasoningField`, `RequiresToolResultName`, `EncryptedReasoning` |
-| AD-FR-30 | 내장 프로필 = pi 의 provider 중 1차 방언을 API 키로 쓰는 것 + 로컬 서버 (R12). 값의 원본은 pi `providers/*.ts` (base URL, 키 필요 = pi 에 키 환경변수가 있음). z.ai 는 일반 API(`https://api.z.ai/api/paas/v4`, 공식 문서 확인) |
+| AD-FR-30 | 내장 프로필 = pi 의 provider 중 1차 방언을 API 키로 쓰는 것 + 로컬 서버 (R12). 값의 원본은 pi `providers/*.ts` (base URL, 키 필요 = pi 에 키 환경변수가 있음). z.ai 는 일반 API(`https://api.z.ai/api/paas/v4`, 공식 문서 확인). xiaomi 는 종량제 실시간 추론 OpenAI 호환 주소(`https://api.xiaomimimo.com/v1`, 공식 문서 mimo.mi.com "First API Call" 확인. 공식 예시가 OpenAI SDK 의 `api_key` 를 쓰므로 Bearer 인증) |
 
 | provider | API | base URL | 키 필요 | Lookup |
 |---|---|---|---|---|
@@ -186,7 +186,7 @@ Chat·Responses 차이 필드 (원본: pi `openai-completions.ts` `detectCompat`
 | id | 요구사항 |
 |---|---|
 | AD-FR-35 | `Client.Lookup(ctx, provider, id) (contract.ModelInfo, bool)` 을 제공한다. 어느 출처에든 모델이 있으면 `ok=true` |
-| AD-FR-36 | provider 조회 방식: `anthropic` = `GET {base}/v1/models/{id}` (`max_input_tokens`, `max_tokens`, `capabilities.image_input`, `capabilities.thinking` 과 `types.adaptive`) · `openrouter` = `GET {base}/models` (`context_length`, `top_provider.max_completion_tokens`, `architecture.input_modalities`, `reasoning` 존재) · `ollama` = `POST {host}/api/show {model}` (`model_info` 의 `*.context_length`, `capabilities`) · `llamacpp` = `GET {host}/props` (`default_generation_settings.n_ctx`) · `vllm` = `GET {base}/models` 의 `max_model_len` (구현 시 문서 확인) · `none` = 조회하지 않음 |
+| AD-FR-36 | provider 조회 방식: `anthropic` = `GET {base}/v1/models/{id}` (`max_input_tokens`, `max_tokens`, `capabilities.image_input`, `capabilities.thinking` 과 `types.adaptive`) · `openrouter` = `GET {base}/models` (`context_length`, `top_provider.max_completion_tokens`, `architecture.input_modalities`, `reasoning` 존재) · `ollama` = `POST {host}/api/show {model}` (`model_info` 의 `*.context_length`, `capabilities`) · `llamacpp` = `GET {host}/props` (`default_generation_settings.n_ctx`) · `vllm` = `GET {base}/models` 의 `data[].max_model_len` (vLLM 소스 `ModelCard.max_model_len`, `vllm/entrypoints/serve/engine/protocol.py` main `ac9126e` 확인) · `none` = 조회하지 않음 |
 | AD-FR-36a | 원격 카탈로그의 provider 키는 프로필 `CatalogID`(비면 provider 이름)다. thinking 방식: `effort` → adaptive, `budget_tokens` 만 → budget, `toggle` → adaptive 로 보지 않음. 내장 스냅샷의 `thinking.mode`: `anthropic-adaptive`·`effort` → adaptive, `budget`·`anthropic-budget-effort` → budget |
 | AD-FR-36b | 원격 카탈로그는 Client 당 한 번 받아 캐시한다. 실패하면 캐시하지 않고 다음 Lookup 에서 다시 받는다. `Options.RemoteCatalogURL` 로 주소를 바꾸고 `Options.NoRemoteCatalog` 로 끈다. 요청에는 키·대화 내용을 싣지 않는다 (GET 만) |
 | AD-FR-36c | 내장 스냅샷은 바이너리에 포함된 JSON 이고, 생성 도구(`internal/snapshot`)가 원본 파일에서 프로필 provider 의 모델만 필드를 추려 만든다. 데이터만 담는다 |
