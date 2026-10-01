@@ -1,7 +1,7 @@
 # agent — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.2 (초안)
+- 버전: 0.3 (초안)
 - 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18)
 - 의존 명세: `L2_harness/SPEC.md`, `L2_harness/osenv/SPEC.md`, `L1_inject/adapters/SPEC.md`, `L1_inject/sets/SPEC.md` (설정 JSON)
 - 사용하는 쪽: `L3_ui/cmd/dr-print`, 이후 L3 surfaces
@@ -14,7 +14,7 @@
 사용자 환경 위에서 바로 도는 **완성된 에이전트**다 (R17). 설정 파일·환경변수를 해석하고, `osenv`(OS Env)와 `adapters`(ModelCaller)를 만들어 `harness.New` 에 넣는다. L3 는 이 모듈만 쓰고 입출력만 한다.
 
 ### 1.2 범위
-- 포함 (모듈 `L2_harness/agent`, 패키지 `agent`): 설정 파일 읽기·검증, `-model` 덮어쓰기, sessionDir 해석, API 키 존재 확인, 조립, run 시작. **surface 공통 계층** (R18): 도구 세트 상한, 승인 규칙·Approver, Abort·Steer·FollowUp, 이벤트, 세션 키·목록, 세션 잠금, surface 콜백 panic 격리 — 3.4~3.9
+- 포함 (모듈 `L2_harness/agent`, 패키지 `agent`): 설정 파일 읽기·검증, `-model` 덮어쓰기, sessionDir 해석, API 키 존재 확인, 조립, run 시작. **surface 공통 계층** (R18): 도구 세트 상한, 승인 규칙·Approver, Abort·Steer·FollowUp, 이벤트, 세션 키·목록, 세션 잠금, surface 콜백 panic 격리 — 3.4~3.9. 히스토리 조회·수동 압축 — 3.10~3.11 (impl-04)
 - 제외: 터미널 입출력·시그널·종료 코드 (L3), 키 값 저장 (AD-C2: 키는 환경변수로만), 시스템 프롬프트 편집 (R16)
 
 ### 1.3 참조
@@ -196,7 +196,32 @@ type Decision struct {
 }
 ```
 
-### 3.10 비기능
+### 3.10 히스토리 (impl-04 ⑥)
+
+```go
+func (a *Agent) History(ctx context.Context, sessionID string) (History, error)
+
+type History struct {
+    Messages []contract.Message // 투영 중 원본 메시지만, 순서대로
+    Omitted  int                // 투영에서 빠진 원본 메시지 수 (압축 등)
+}
+```
+
+| id | 요구사항 |
+|---|---|
+| AG-FR-30 | `History`: sessionID 가 `session.CheckID` 를 통과하지 않으면 에러. 세션 Store 의 `Load` 결과에 `sets.ApplyEdits(Messages, Edits)` 를 적용한 투영에서 **원본 Messages 에 있는 ID 의 메시지만** 남긴다 (편집으로 들어온 메시지 — 압축 요약 — 는 뺀다). `Omitted` = 원본 메시지 수 − 남은 메시지 수. 파일이 없으면 빈 결과, 깨진 파일은 에러. 세션 잠금을 잡지 않는다 (읽기 전용, 실행 중인 세션도 읽음) |
+
+### 3.11 수동 압축 (impl-04 ⑦)
+
+```go
+func (a *Agent) Compact(ctx context.Context, sessionID string) (bool, error)
+```
+
+| id | 요구사항 |
+|---|---|
+| AG-FR-31 | `Compact`: sessionID 가 비면 에러. AG-FR-22 와 같은 세션 잠금을 잡는다 (잡혀 있으면 `ErrSessionBusy`) — 잠금 중이라 그 세션의 run 과 겹치지 않는다. `harness.Agent.Compact(ctx, sessionID, AG-FR-04 의 raw 설정)` 의 결과를 그대로 돌려주고 잠금을 푼다. compaction 이벤트는 harness 가 낸다 (HN-FR-36) |
+
+### 3.12 비기능
 
 | id | 요구사항 |
 |---|---|
@@ -226,6 +251,8 @@ type Decision struct {
 | AG-FR-26 | OnEvent·Approver·Observer panic → 그 run 만 failed(ErrPanic), 동시에 돌던 다른 세션 run 은 completed |
 | AG-FR-27 | approval·run_end 가 이벤트 순서에 맞게 옴 (연쇄 run 마다 run_end) |
 | AG-FR-28~29 | SessionKey 결정성·CheckID 통과, Sessions 의 Title(80 rune)·Updated·Messages·정렬·깨진 파일 건너뜀·없는 dir |
+| AG-FR-30 | 압축된 세션 → 요약 메시지 없음·Omitted = 대체된 원본 수·나머지 순서, hide 편집, 편집 없는 세션 = 원본 전부, 없는 파일 → 빈 결과, 깨진 파일·잘못된 ID → 에러, 실행 중인 세션도 읽음 |
+| AG-FR-31 | 긴 세션(작은 keepRecentTokens) → true·세션 파일에 edit 줄 하나·다음 run 요청에 요약 메시지·edit 줄 중복 없음, 짧은 세션 → false, 실행 중인 세션 → ErrSessionBusy, 빈 ID → 에러, compaction 이벤트 start/end |
 
 ---
 
@@ -251,4 +278,5 @@ type Decision struct {
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
 | 0.1 | 설정·env 해석, ModelCaller 생성은 L3 (R14) | `L2_harness/agent` | R17 |
+| 0.3 | 히스토리·수동 압축 없음 | `History`(투영 중 원본 메시지 + Omitted), `Compact`(세션 잠금 + harness 수동 압축) | impl-04 터미널 surface: 이어갈 때 지난 대화 다시 그리기(편집 적용 뒤, 요약은 걸러냄), `/compact` 즉시 압축 |
 | 0.2 | `Start` → `(*core.Run, string, error)`, surface 기능 없음 | `Start` → `(*Run, error)` (Steer·FollowUp·Abort·Wait·SessionID), 승인 규칙·Approver, 도구 상한, 이벤트, 세션 키·목록, 세션 잠금, 콜백 panic 격리 (3.4~3.9) | R18 |

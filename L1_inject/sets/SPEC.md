@@ -1,7 +1,7 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.4 (초안)
+- 버전: 0.5 (초안)
 - 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 - 사용하는 쪽: `L2_harness` (도구·저장소·프롬프트·요약기 구현을 주입)
@@ -262,7 +262,7 @@ type Deps struct {
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base(Deps)`, `Resilient(Deps)`, step 별 생성자 `Base<Step>(Deps)`(22개)·`Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)` |
+| ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base(Deps)`, `Resilient(Deps)`, step 별 생성자 `Base<Step>(Deps)`(22개)·`Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식) |
 | ST-FR-42 | `Base`·`Resilient` 는 Deps 의 nil 을 한 번만 기본값으로 채워 모든 step 이 같은 값을 쓴다 (nil Store → 메모리 Store 하나). step 별 생성자를 따로 부르면 각자 채운다 |
 | ST-FR-43 | base 상태 키: `input`(초기 입력, 2 가 한 번 준 뒤 삭제), `inbox.consumed`(int, publish), `edits.saved`(Store 에 기록한 편집 수). 1 이 run 마다 다시 쓴다 (상태는 Store 로 run 을 넘어 복원되므로) |
 | ST-FR-44 | resilient 상태는 run 을 넘어 복원되므로 RunID 를 함께 저장하고, RunID 가 다르면 초기 상태로 본다: `retry`{run, turn, class 별 횟수}(턴이 바뀌면 리셋), `recovered`{run, turn}(12·13 의 압축 복구), `compaction`{run, pending, invalid}, `compaction.blocked`(publish, `true`, 다른 run 에서는 삭제) |
@@ -333,3 +333,4 @@ type Deps struct {
 | 0.3 | ST-FR-22 "편집보다 뒤" 기준 미정 | Timestamp 비교 | 투영만으로는 순서를 알 수 없음 |
 | 0.3 | 재시도 횟수 범위 "이번 호출" | 턴 단위, Class 별 (ST-FR-07) | recall 은 같은 턴 안에서만 일어남 |
 | 0.4 | Go 표현 미정 | 3.10 (ST-FR-41~45) | 구현 착수. 상태가 Store 로 run 을 넘어 복원되므로 run 범위 상태에 RunID 를 둠 |
+| 0.5 | reserve 식은 비공개 | `ReserveTokens` 공개 (동작 같음) | harness 수동 압축(HN-FR-36)이 같은 식을 쓰도록 — 식을 두 곳에 두지 않기 위함 |
