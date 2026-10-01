@@ -9,7 +9,7 @@
 3. 아래 계층부터 한 단계씩. **각 단계는 테스트를 먼저 쓰고 실패(RED)를 눈으로 본 뒤 구현한다** (직전 세션은 terminal `run_test.go` 를 구현 뒤에 써서 RED 를 못 봤다 — 반복하지 말 것).
    - ① adapters `Client.Models() []ModelRef` (`type ModelRef struct{ Provider, ID string }`) — 설정 `models` 키 + 내장 스냅샷(`c.snap`), 프로필에 없는 provider 제외, 중복 없이 Provider→ID 정렬, 네트워크 없음.
    - ② agent: `ErrNoModel`, `ModelChoice`, `Models()`, `Model() (string, error)`, `SetModel(ctx, ref) error` + `New` 가 모델 없음·모르는 provider·키 없음에서 **실패하지 않게**, `Start` 는 모델 문제면 run·잠금 없이 그 에러. `SetModel` 은 사용자 설정 파일(AG-FR-01 경로, 기본 경로에 없으면 생성)의 `agent.model` 만 바꿔 쓰고 다른 키는 원문 보존(들여쓰기 2칸 + 끝 줄바꿈, 0644, 상위 디렉터리 0755), 쓰기 실패면 아무것도 안 바꿈, `Options.Model` 보다 이김. 동시 호출 안전(-race).
-   - ③ terminal: 모델 선택 상태(필터 입력 `모델: `, 낱말 AND·대소문자 무시, 최대 10개 + `  … +N개`/`  (일치하는 모델 없음)`, `▶ ` 하이라이트, KeyMissing 흐리게 ` (키 없음: ENV)`, ↑↓ 창 이동, Enter → KeyMissing 거부 / SetModel → `── 모델 <ref> (저장됨)`, Esc·Ctrl+C 취소), 시작 시 모델 문제면 `⚠ <문제>`(ErrNoModel 은 `⚠ 모델이 설정되지 않았습니다`) 후 선택 상태 (Pick 이 있으면 그 뒤), `/model [ref]` (대기 중만), Start 에러 시 모델 문제면 ` (/model)` 덧붙임, `/help` 에 `/model`.
+   - ③ terminal: 모델 선택 상태(필터 입력 `모델: `, 낱말 AND·대소문자 무시, 최대 10개 + `  … +N개`/`  (일치하는 모델 없음)`, `▶ ` 하이라이트, ~~KeyMissing 흐리게 ` (키 없음: ENV)`~~ (R21: 키 없는 provider 의 모델은 목록에서 뺌), ↑↓ 창 이동, Enter → SetModel → `── 모델 <ref> (저장됨)`, Esc·Ctrl+C 취소), 시작 시 모델 문제면 `⚠ <문제>`(ErrNoModel 은 `⚠ 모델이 설정되지 않았습니다`) 후 선택 상태 (Pick 이 있으면 그 뒤), `/model [ref]` (대기 중만), Start 에러 시 모델 문제면 ` (/model)` 덧붙임, `/help` 에 `/model`.
    - ④ dr: 코드 변경은 거의 없다 (agent.New 가 더 이상 모델 문제로 실패하지 않음). 모델 없는 설정으로 dr 이 0 으로 끝나는(/quit) 테스트를 더한다.
    - 기존 테스트 중 "모델 없음·키 없음 → New 에러" 를 기대하는 것(agent `TestModelOverride`·`TestAPIKey` 등, dr-print 키 없음 테스트)은 새 동작(Model()/Start 에러)으로 바꾼다. dr-print 는 Start 에러로 여전히 종료 코드 1 이어야 한다 (DP-FR-04).
 4. 각 단계 뒤: `gofmt -l`, `go vet`, `go test -race -count=3`, `GOWORK=off GOTOOLCHAIN=local go mod tidy && GOWORK=off go test`, 커버리지, **뮤테이션 확인**(살아남은 뮤턴트는 동치면 코드 단순화, 아니면 테스트 보강), 사용자 보고. 커밋은 사용자 확인 후.
@@ -75,7 +75,7 @@ agent 관련: `agent.go` `New`(AG-FR-09 순서) — `agentConfig(fc.Agent, o.Mod
 - 사용자가 요청하지 않은 병렬 서브에이전트 팬아웃 금지.
 - 심볼 탐색·수정: LSP → Serena → CLI. 이름 변경은 Serena `rename_symbol` (`initial_instructions` → `activate_project(path, session_id)` 먼저).
 - 모듈 간 require 는 `v0.0.0` + `replace`. 새 모듈은 go.mod 와 go.work 에 둘 다. `go 1.23.0`. 외부 의존: x/text(harness·terminal), x/term(terminal 만, R19). 새 외부 의존은 사용자 결정.
-- API 키는 환경변수로만 (설정 파일에 키 값 필드 없음), 구독 요금제 엔드포인트·OAuth 경로 금지.
+- 키를 코드·대화·문서·이미지에 노출하지 않음, 구독 요금제 엔드포인트·OAuth 경로 금지. **(R21 로 정정)** 키는 환경변수가 아니라 `<home>/.dynamic_react/auth.json`(0600, agent `SetKey`·`RemoveKey`, 터미널 `/login`·`/logout`)에만 둔다. 설정 파일·프로젝트 설정에는 키 필드가 없다.
 
 ## 사용자 결정 중 유효한 것
 
@@ -83,7 +83,7 @@ agent 관련: `agent.go` `New`(AG-FR-09 순서) — `agentConfig(fc.Agent, o.Mod
 - R19 (대화형 터미널): 형태 B(raw mode REPL), terminal + dr 모듈, 키(Enter=Start/Steer, Alt+Enter=FollowUp, Shift+Enter·Ctrl+J 줄바꿈, Esc·Ctrl+C(실행 중)=Abort, 대기 Ctrl+C 지우기/두 번 종료, Ctrl+D 빈 줄 종료), 승인 y/a/n+사유, 렌더링 권장안, 세션 이어가기 시 편집 적용 투영 전부 다시 그림(요약은 걸러내고 `이전 N개 압축됨`), `/compact` 즉시, 비TTY 종료 코드 2.
 - R20 (이번 작업): 구조 a(앱 안에서 설정, agent.New 는 실패 안 함), 저장 a(설정 파일 `agent.model`), 목록 a(설정 models + 내장 카탈로그, 키 상태 표시, 원격 제외), UI a(필터 + 하이라이트 최대 10개).
 - R20 스펙 때 내가 정해 "검토 부탁" 으로 보고했고 사용자가 "좋아" 로 진행시킨 세부: 원격 카탈로그 제외, `/model provider/id` 직접 입력은 목록에 없는 id 도 받음(provider·키만 검증), `-model` 은 저장 안 함·SetModel 이 이김, `-model` 형식 오류는 여전히 New 에러, 모델 없을 때 `/compact` 는 에러 줄.
-- 라이선스 고지는 마지막 정리 때.
+- 라이선스 고지는 마지막 정리 때. **(impl-05 에서 완료: `THIRD_PARTY_NOTICES.md`)**
 
 ## 남은 미결
 
@@ -91,6 +91,6 @@ agent 관련: `agent.go` `New`(AG-FR-09 순서) — `agentConfig(fc.Agent, o.Mod
 |---|---|
 | R20 | 테스트·구현 (착수 블록) |
 | L3 | 실제 TTY 수동 확인 (raw mode, 시그널) |
-| L2 O2 | 라이선스 고지 — 마지막 정리 때 |
+| L2 O2 | ~~라이선스 고지~~ → `THIRD_PARTY_NOTICES.md` (impl-05) |
 | adapters | vLLM `max_model_len` 문서 확인 못 함, Xiaomi base URL 은 pi 값 |
 | agent | `NoRemoteCatalog` 전달 뮤턴트 관측 불가 (외부 네트워크) |

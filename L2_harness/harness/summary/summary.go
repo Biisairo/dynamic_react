@@ -14,7 +14,7 @@ import (
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 )
 
-// 문안 출처: pi coding-agent core/compaction (utils.ts SUMMARIZATION_SYSTEM_PROMPT, compaction.ts SUMMARIZATION_PROMPT·UPDATE_SUMMARIZATION_PROMPT). 고지는 O2.
+// 문안 출처: pi coding-agent core/compaction (utils.ts SUMMARIZATION_SYSTEM_PROMPT, compaction.ts SUMMARIZATION_PROMPT·UPDATE_SUMMARIZATION_PROMPT). 고지는 THIRD_PARTY_NOTICES.md.
 const SystemPrompt = `You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.
 
 Do NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary.`

@@ -315,7 +315,7 @@ func (a *Agent) Compact(ctx context.Context, sessionID string, config json.RawMe
 | id | 내용 |
 |---|---|
 | O1 | ~~기본 시스템 프롬프트 문안~~ → 부록 A 로 확정 (사용자) |
-| O2 | pi 에서 가져온 문안(요약 프롬프트, edit 정규화 규칙)의 라이선스 고지 — adapters 스냅샷과 함께 사용자가 나중에 처리 |
+| O2 | ~~pi 에서 가져온 문안(요약 프롬프트, edit 정규화 규칙)의 라이선스 고지~~ → 루트 `THIRD_PARTY_NOTICES.md` (pi-mono·oh-my-pi MIT, x/text·x/term·x/sys BSD-3-Clause 전문, adapters 스냅샷 포함) |
 | O3 | ~~`L3_ui/osenv`·`L3_ui/cmd/dr-print` 스펙~~ → `L2_harness/osenv/SPEC.md`, `L2_harness/agent/SPEC.md`, `L3_ui/cmd/dr-print/SPEC.md` (R17) |
 | O4 | ~~NFKC 와 표준 라이브러리 제약 충돌~~ → `golang.org/x/text` 의존 허용 (사용자) |
 
@@ -325,6 +325,7 @@ func (a *Agent) Compact(ctx context.Context, sessionID string, config json.RawMe
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.9 | O2 라이선스 고지 미결 | `THIRD_PARTY_NOTICES.md` 로 종결 | 사용자: 마지막 정리 때 처리 → impl-05 "전부 진행" |
 | 0.9 | `session.DefaultDir(getenv, home)` 가 `DR_SESSION_DIR`(`session.DirEnv`)를 먼저 봄 | `session.DefaultDir(home)`, `DirEnv` 삭제 | R21 |
 | 0.1 | 옛 sets v0.2 의 3.3·3.4·3.5·3.8 | 라이브러리 모듈 하나 + 검증용 CLI | 사용자 (R14 초안) |
 | 0.1 | 세션 줄 `usage` | 제거 | usage 는 assistant 메시지에 있다 (contract CT-FR-01a) |

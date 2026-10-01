@@ -83,3 +83,7 @@ L0·L1 은 사용자 환경(환경변수·파일)과 무관한 단독 라이브�
 8. `L2_harness/osenv` → `L2_harness/agent` → `L3_ui/cmd/dr-print` 로 실행 가능한 에이전트 (R17).
 
 각 단계는 스펙 4장(검증)의 테스트를 먼저 쓰고 실패를 확인한 뒤 구현한다. 스펙과 코드가 충돌하면 멈추고 스펙·DECISIONS 를 먼저 고친다.
+
+## 서드파티 고지
+
+pi-mono·oh-my-pi 에서 가져온 문안·데이터와 외부 Go 의존의 라이선스는 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) 에 있다.
