@@ -1,8 +1,8 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.5 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13)
+- 버전: 0.6 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 - 사용하는 쪽: `L2_harness` (도구·저장소·프롬프트·요약기 구현을 주입)
 
@@ -174,6 +174,30 @@ if used > W - reserve and not blocked and Summarizer != nil:
 | ST-FR-07 | resilient 는 위 네 step 만 채운다. 재시도·복구 횟수는 `ctx.State()` 에 사유별로 기록한다 (D11) |
 | ST-FR-08 | 모든 대기·요약 호출은 ctx 취소를 따른다 |
 
+### 3.2a verify 세트 — 자기검증 (R24)
+
+`sets.Verify(deps, opts)` 는 `Name: "verify"` 이고 **20 turn.finish 만** 채운다. 기본 세트 위에 겹쳐 쓴다: `Bind(Base, Resilient, verify)` (harness `Sets` 주입).
+
+```go
+type CheckResult struct { OK bool; Report string }
+type VerifyOptions struct {
+    Check       func(ctx context.Context) (CheckResult, error) // 필수
+    MaxAttempts int                 // 0 이하 → 3
+    Tools       []string            // nil → write, edit, bash (빈 슬라이스 = 변경 도구 없음 → 실패 뒤 재검증만)
+    Next        inject.TurnFinishFn // nil → BaseTurnFinish(deps)
+}
+var ErrVerifyFailed = errors.New("verify: checks still failing")
+func Verify(d Deps, o VerifyOptions) (inject.FunctionSet, error) // Check nil → 에러 "sets: verify: Check is required"
+```
+
+| id | 요구사항 |
+|---|---|
+| ST-FR-46 | turn.finish 는 먼저 `Next(ctx)` 를 부른다. 에러면 그 에러, 신호 중 `settle` 이 없으면 그 신호를 그대로 돌려준다. `settle` 이 있으면 ST-FR-47 로 검증할지 정하고, 하지 않으면 그대로 돌려준다 |
+| ST-FR-47 | 검증 조건: ① 마지막 검증 뒤(이 run 에서 아직 검증하지 않았으면 이 run 의 처음 = `len(Conv().History())` 부터 — Transcript 는 History 로 시작한다, core CORE-FR-31a) `Conv().Transcript()` 에 들어온 tool_result 메시지 중 `Status: ok` 이고 호출 이름(같은 Transcript 의 assistant `tool_call` 블록에서 CallID 로 찾음)이 `Tools` 에 있는 것이 있거나 ② 이 run 의 직전 검증이 실패였으면 검증한다. "마지막 검증 뒤" 의 기준은 검증 시점의 Transcript 길이다 |
+| ST-FR-48 | 검증 = `Check(ctx.Context())`. error 면 `fail(fmt.Errorf("verify: check: %w", err))`. `OK` 면 `Next` 의 신호를 그대로 돌려준다. 아니면 이 run 의 실패 수를 1 늘리고, 실패 수 < MaxAttempts 면 `Next` 의 신호에서 `settle` 을 뺀 것 + `inject_input(보고 메시지)` + `continue_turn`, 실패 수 = MaxAttempts 면 `fail(fmt.Errorf("%w after %d attempts: %s", ErrVerifyFailed, n, 보고의 첫 비지 않은 줄(앞뒤 공백 제거)))` |
+| ST-FR-49 | 보고 메시지: user 역할, ID = `d.NewID()`, Timestamp = `d.Now()`, text 블록 하나 = `Verification failed (attempt <k> of <N>). Fix the problems below, then finish.\n\n<보고>`. 보고는 `Report` 끝의 줄바꿈들을 뗀 뒤 **끝** 2000줄 / 50KB(온전한 줄, 마지막 한 줄이 50KB 를 넘으면 그 끝 50KB — bash 도구와 같은 방향)이고 잘리면 앞에 `[earlier output truncated]\n` 을 붙인다. 비면 `(no output)`. base 2 turn.start 가 입력함에서 꺼내 세션에 저장한다 |
+| ST-FR-50 | 상태 (네임스페이스 `verify`, 키 `progress`): `{run, checked, failures, lastFailed}`. run 을 넘어 복원되므로 RunID 가 다르면 초기값(`checked` = History 길이, 나머지 0·false)으로 본다 (ST-FR-44 와 같은 방식). 검증할 때 `checked` = 그때의 Transcript 길이 |
+
 ### 3.3 도구 레지스트리
 
 | id | 요구사항 |
@@ -262,7 +286,7 @@ type Deps struct {
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base(Deps)`, `Resilient(Deps)`, step 별 생성자 `Base<Step>(Deps)`(22개)·`Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식) |
+| ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base(Deps)`, `Resilient(Deps)`, step 별 생성자 `Base<Step>(Deps)`(22개)·`Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식), `Verify`·`VerifyOptions`·`CheckResult`·`ErrVerifyFailed`(3.2a) |
 | ST-FR-42 | `Base`·`Resilient` 는 Deps 의 nil 을 한 번만 기본값으로 채워 모든 step 이 같은 값을 쓴다 (nil Store → 메모리 Store 하나). step 별 생성자를 따로 부르면 각자 채운다 |
 | ST-FR-43 | base 상태 키: `input`(초기 입력, 2 가 한 번 준 뒤 삭제), `inbox.consumed`(int, publish), `edits.saved`(Store 에 기록한 편집 수). 1 이 run 마다 다시 쓴다 (상태는 Store 로 run 을 넘어 복원되므로) |
 | ST-FR-44 | resilient 상태는 run 을 넘어 복원되므로 RunID 를 함께 저장하고, RunID 가 다르면 초기 상태로 본다: `retry`{run, turn, class 별 횟수}(턴이 바뀌면 리셋), `recovered`{run, turn}(12·13 의 압축 복구), `compaction`{run, pending, invalid}, `compaction.blocked`(publish, `true`, 다른 run 에서는 삭제) |
@@ -287,6 +311,7 @@ type Deps struct {
 | ST-FR-23~27 | 절단점이 tool_result 에 걸리지 않음, Previous 전달, 요약 한도, 실패 시 포기 |
 | ST-NFR-02 | 종단 시나리오 4개 |
 | ST-NFR-04 | `go list -deps` 검사 |
+| ST-FR-46~50 | 가짜 ModelCaller·도구로 종단: 변경 도구 없이 끝남 → Check 안 부름, write 성공 뒤 끝남 → Check 1회·OK 면 completed, 실패 → 다음 요청에 보고 메시지(attempt 1 of N)·세션에 저장, 실패 뒤 변경 없이 끝남 → 재검증, MaxAttempts 번째 실패 → failed·`errors.Is(ErrVerifyFailed)`·첫 줄, error 결과의 변경 도구는 세지 않음, Tools 에 없는 도구는 세지 않음, 빈 Tools, 보고 끝 절단·빈 보고, Check error → failed, Next 주입(continue 신호는 그대로), 다른 run 은 상태 초기화, Check nil → 에러 |
 | ST-FR-41~45 | 테스트가 공개 API 로만 동작을 검사, 복구 표시의 run·턴 범위(같은 run·턴 / 다른 턴 / 다른 run) |
 
 ---
@@ -320,6 +345,7 @@ type Deps struct {
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.6 | 세트 base·resilient | verify 세트 (3.2a) 추가. 기존 세트 동작 변화 없음 | R24 |
 | 0.2 | 9 model.call = adapters 가 제공한 `ModelCallFn` 을 그대로 바인딩 | sets 가 `adapters.Call` 의 이벤트 시퀀스를 `core.CallStream` 으로 감쌈 | R9: adapters 가 contract 만 의존 |
 | 0.2 | 19 = 결과를 세션에 기록 | 결과 메시지를 만들어 기록하고 출력 | core v0.2 CORE-FR-24a |
 | 0.2 | ST-FR-04 제약 없음 | 감싼 함수의 상태 NS 는 감싼 세트 | inject v0.2 IN-FR-23 |

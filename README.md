@@ -25,7 +25,7 @@
  L1_inject   user-modifiable layer
              inject    function interfaces, per-step ctx,       (spec v0.3)
                        binding, combinators
-             sets      default function sets: base, resilient   (spec v0.5)
+             sets      function sets: base, resilient, verify (spec v0.6)
              adapters  dialects: Anthropic, Chat, Responses;    (spec v0.6)
                        provider profiles, model catalog
  ─────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
            └── agent ──► harness ──► sets ──► inject, core, contract
                  ▲  └──► osenv ──► harness/env
                  ├── dr-print (L3)
-                 ├── examples/inject
+                 ├── examples/inject, examples/verify
                  └── terminal (L3) ◄── dr (L3)
 ```
 
@@ -58,7 +58,7 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 | [`L0_core/contract/`](L0_core/contract/SPEC.md) | 공유 데이터 계약 | 스펙 v0.4, 구현 |
 | [`L0_core/core/`](L0_core/core/SPEC.md) | 루프 본체 | 스펙 v0.2, 구현 |
 | [`L1_inject/inject/`](L1_inject/inject/SPEC.md) | 함수 주입 프레임워크 + 조합 함수 | 스펙 v0.3, 구현 |
-| [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 기본 함수 세트 (base, resilient) | 스펙 v0.5, 구현 |
+| [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 함수 세트 (기본 base·resilient, 주입용 verify) | 스펙 v0.6, 구현 |
 | [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그 | 스펙 v0.6, 구현 |
 | [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 7종 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입 | 스펙 v1.1, 구현 |
 | [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.3, 구현 |
@@ -67,6 +67,7 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 | [`L3_ui/cmd/dr/`](L3_ui/cmd/dr/SPEC.md) | 대화형 진입점 | 스펙 v0.3, 구현 |
 | [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 비대화형 검증용 CLI (입출력만) | 스펙 v0.2, 구현 |
 | [`examples/inject/`](examples/inject/SPEC.md) | 주입 예시: 매 턴 규칙 덧붙이기 + `rm -rf` 차단 | 스펙 v0.1, 구현 |
+| [`examples/verify/`](examples/verify/SPEC.md) | 자기검증 세트 예시: 변경 뒤 끝낼 때 셸 명령으로 검증, 실패하면 출력을 모델에 돌려줌 | 스펙 v0.1, 구현 |
 | [`docs/`](docs/DECISIONS.md) | 결정 기록, 주입 가이드([`INJECT.md`](docs/INJECT.md)), 22 step 표현 검증, 인계 문서 | — |
 
 ## 실행
@@ -132,7 +133,7 @@ a, err := agent.New(ctx, agent.Options{
 
 - 승인 규칙·Approver·이벤트는 사용자 세트가 무엇이든 유지된다. base 의 기본 검사는 base 를 감싸지 않고 바꾸면 빠진다 (사용자 책임).
 - 추가 도구도 도구 상한·설정 `agent.tools`·이름 규칙의 대상이다. 패턴 규칙은 `bash`·`read`·`write`·`edit`·`grep`·`find`·`ls` 에만 쓴다.
-- 실행 가능한 전체 예시: [`examples/inject`](examples/inject/main.go) (`cd examples/inject && go run . "질문"`).
+- 실행 가능한 전체 예시: [`examples/inject`](examples/inject/main.go) (`cd examples/inject && go run . "질문"`). 자기검증: [`examples/verify`](examples/verify/main.go) (`go run . -check "go test ./..." "질문"`).
 - 자세한 규칙(만드는 순서, 세트 이름과 상태, 저장소 계약, 사용자 책임): [`docs/INJECT.md`](docs/INJECT.md).
 
 ## 핵심 개념 (한 장 요약)
