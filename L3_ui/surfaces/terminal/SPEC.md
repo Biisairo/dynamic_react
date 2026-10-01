@@ -1,9 +1,9 @@
 # terminal — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.1 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19)
-- 의존 명세: `L2_harness/agent/SPEC.md` v0.3 (3.4~3.11), `L2_harness/SPEC.md` v0.8 (3.6a Event)
+- 버전: 0.2 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20)
+- 의존 명세: `L2_harness/agent/SPEC.md` v0.4 (3.4~3.12), `L2_harness/SPEC.md` v0.8 (3.6a Event)
 - 사용하는 쪽: `L3_ui/cmd/dr` (`L3_ui/cmd/dr/SPEC.md`)
 
 ---
@@ -124,7 +124,7 @@ var ErrNotTerminal error
 
 ### 3.3 상태와 키 동작
 
-상태: **대기**(run 없음), **실행 중**(`Start` 한 run 의 `Wait` 가 아직 안 끝남), **승인**(Approve 대기), **압축**(`/compact` 진행), **선택**(세션 번호 입력).
+상태: **대기**(run 없음), **실행 중**(`Start` 한 run 의 `Wait` 가 아직 안 끝남), **승인**(Approve 대기), **압축**(`/compact` 진행), **선택**(세션 번호 입력), **모델 선택**(3.9).
 
 | id | 요구사항 |
 |---|---|
@@ -133,7 +133,7 @@ var ErrNotTerminal error
 | TM-FR-13 | 실행 중: Enter = `Run.Steer`, Alt+Enter = `Run.FollowUp` (TM-FR-15). Esc·Ctrl+C = `Run.Abort` (입력 줄 유지). Ctrl+D = 입력 줄이 비어 있으면 `Abort` 후 run 이 끝나면 **종료**, 아니면 무시. 입력이 비었으면 Enter·Alt+Enter 는 무시 |
 | TM-FR-14 | 종료 = `Run` 이 `nil` 을 돌려주는 것 (TM-FR-03 정리 포함) |
 | TM-FR-15 | 전송: 앞뒤 공백을 뺀 입력이 비면 무시. `/` 로 시작하면 명령(3.6)이고 모델에 보내지 않는다. `//` 로 시작하면 앞 `/` 하나를 떼고 보낸다. 보낼 메시지 = `contract.Message{Role: user, Content: [text 블록 = 원문(앞뒤 공백 제거)], ID: crypto/rand 16 byte hex, Timestamp: Now()}`. 보낸 입력은 기록(TM-FR-11)에 더하고 입력 줄을 비운다. 출력에 user 줄(TM-FR-23)을 덧붙이고, Steer 면 끝에 ` (steer)`, FollowUp 이면 ` (follow-up)` 을 붙인다 |
-| TM-FR-16 | 대기 중 전송 = `Agent.Start(ctx, 현재 세션, [메시지])`. 현재 세션이 없으면 `""`. 성공하면 상태는 실행 중, 현재 세션 = `Run.SessionID()` 이고 그것이 새로 생긴 ID 면 `── 세션 <id>` 줄을 덧붙인다. 에러면 `✗ <에러>` 줄 (상태 대기 유지) |
+| TM-FR-16 | 대기 중 전송 = `Agent.Start(ctx, 현재 세션, [메시지])`. 현재 세션이 없으면 `""`. 성공하면 상태는 실행 중, 현재 세션 = `Run.SessionID()` 이고 그것이 새로 생긴 ID 면 `── 세션 <id>` 줄을 덧붙인다. 에러면 `✗ <에러>` 줄 (상태 대기 유지), 그때 `Agent.Model()` 이 모델 문제를 돌려주면 줄 끝에 ` (/model)` 을 붙인다 |
 | TM-FR-17 | 실행 중 `Steer`·`FollowUp` 이 `agent.ErrRunDone` 이면(run 이 막 끝난 경합) 그 run 의 `Wait` 가 끝나기를 기다린 뒤 같은 메시지로 `Start` 한다 |
 | TM-FR-18 | `Wait` 가 돌아오면 상태는 대기. FollowUp 대기 수는 0 |
 
@@ -191,7 +191,17 @@ var ErrNotTerminal error
 | TM-FR-44 | `/sessions`: 목록(TM-FR-39)을 덧붙인다. 어느 상태에서나. `/resume <번호>` = 그 시점 `Sessions()` 순서의 번호, `/resume <id>` = 번호가 아니면 ID 로 보고 `Sessions()` 에 있어야 한다(없으면 `✗ 없는 세션: <id>`). `/resume` 인자 없음 = 선택 상태(TM-FR-40). `/new` = 현재 세션 없음 + `── 새 세션` 줄 |
 | TM-FR-45 | `/compact`: 대기 상태에서만(아니면 `✗ 실행 중에는 압축할 수 없습니다`). 현재 세션이 없으면 `✗ 압축할 세션이 없습니다`. 상태 압축으로 바꾸고 `Agent.Compact(cctx, 현재 세션)` 을 부른다(cctx 는 Esc·Ctrl+C 로 취소). `(false, nil)` → `압축할 구간이 없습니다`, 에러 → ctx 취소면 `■ 압축 취소`, 그 밖은 `✗ <에러>` (진행 표시는 compaction 이벤트가 TM-FR-31 로 그림). 끝나면 대기 |
 | TM-FR-46 | `/quit`·`/exit`: 대기 중이면 종료, 실행 중이면 `Abort` 후 run 이 끝나면 종료 |
+| TM-FR-47a | `/model`: 대기 상태에서만(아니면 `✗ 실행 중에는 모델을 바꿀 수 없습니다`). 인자가 있으면 `Agent.SetModel(ctx, 인자)` — 성공 `── 모델 <ref> (저장됨)`, 에러 `✗ <에러>`. 인자가 없으면 모델 선택 상태(3.9) |
 | TM-FR-47 | 그 밖의 `/…`: `✗ 알 수 없는 명령: /<이름> (/help)` |
+
+### 3.9 모델 선택 (R20)
+
+| id | 요구사항 |
+|---|---|
+| TM-FR-48 | 시작: 세션 시작(TM-FR-38) 뒤 `Agent.Model()` 이 모델 문제를 돌려주면 `⚠ <문제>` 줄(`ErrNoModel` 이면 `⚠ 모델이 설정되지 않았습니다`)을 덧붙이고 모델 선택 상태로 들어간다. 세션 선택(`Pick`)이 있으면 그것이 끝난 뒤에 들어간다 |
+| TM-FR-49 | 모델 선택 상태: 목록 = 들어갈 때의 `Agent.Models()`. 입력 줄 프롬프트 `모델: ` 의 입력이 필터다 — 공백으로 나눈 낱말이 모두 `provider/id` 에 (대소문자 무시) 들어 있는 항목. 다시 그리는 영역의 상태 줄과 입력 줄 사이에 일치 항목을 최대 **10개** 그리고, 더 있으면 `  … +N개`, 하나도 없으면 `  (일치하는 모델 없음)`. 항목 줄 = 하이라이트면 `▶ `, 아니면 `  ` + `provider/id`, KeyMissing 이면 뒤에 흐리게 ` (키 없음: <KeyEnv>)`. 줄은 `Width()` 로 자른다. 상태 줄 = `모델 선택 · ↑↓ 이동 · Enter 선택 · Esc 취소` |
+| TM-FR-50 | 키: 문자·붙여넣기·Backspace 등 = 필터 편집(TM-FR-11, 줄바꿈·기록 없음)이고 편집하면 하이라이트는 첫 항목. ↑↓ = 일치 목록 안에서 하이라이트 이동 (끝에서 멈춤, 화면의 10개 밖으로 가면 보이는 창을 옮김). Enter = 일치 항목이 없으면 무시, 하이라이트 항목이 KeyMissing 이면 `✗ missing API key: set <KeyEnv>` 줄(상태 유지), 아니면 `SetModel` — 성공 `── 모델 <ref> (저장됨)` 후 대기, 에러 `✗ <에러>`(상태 유지). Esc·Ctrl+C = 대기로 (모델 그대로) |
+| TM-FR-51 | 모델 선택 중 Approve·이벤트는 오지 않는다 (대기 상태에서만 들어가므로) |
 
 ---
 
@@ -206,6 +216,7 @@ var ErrNotTerminal error
 | TM-FR-34~37 | 실제 agent + httptest 모델 서버(dr-print 테스트와 같은 방식, `NoRemoteCatalog`)로 bash 호출 → 가짜 In 에 y / a(다음 같은 호출은 묻지 않음) / n+사유(모델 다음 요청에 `denied: <사유>`) / Esc(run aborted) / 동시 승인 2개 직렬 |
 | TM-FR-12~18 | 같은 종단 환경: 전송 → Start·`── 세션`, 실행 중 Enter → 다음 요청에 steer 메시지, Alt+Enter → 연쇄 run, Esc·Ctrl+C → `── 중단됨`, 대기 Ctrl+C 두 번·Ctrl+D·In EOF → Run nil, ctx 취소 → Run 이 ctx.Err() 와 해제 시퀀스, `//x` → 모델에 `/x` |
 | TM-FR-38~42 | 세션 파일 둘을 만든 sessionDir 로: Continue → 최근 것 헤더 + History, Pick → 번호 2 선택·잘못된 번호·Enter 새 세션, 압축된 세션 → `이전 N개 메시지 압축됨` 과 요약 본문 없음 |
+| TM-FR-47a~51 | 모델 없는 설정으로 시작 → `⚠ 모델이 설정되지 않았습니다` + 선택 화면, 필터 낱말 AND·대소문자, 10개 상한과 `+N개`, 일치 없음, ↑↓ 창 이동, KeyMissing 거부, Enter → 설정 파일 갱신 + `── 모델` 줄 + 다음 전송이 그 모델로, Esc 취소 후 전송 → `✗ no model configured (/model)`, `/model <ref>`, 실행 중 `/model` 거부 |
 | TM-FR-43~47 | 각 명령, 실행 중 `/resume`·`/compact` 거부, `/compact` 짧은 세션 → `압축할 구간이 없습니다`, 긴 세션(작은 keepRecentTokens) → compaction 줄, 알 수 없는 명령 |
 | TM-FR-01 | `Open` 에 일반 파일 → ErrNotTerminal (TTY 성공 경로는 수동 검증) |
 | TM-FR-02~06 | Start 플래그 둘 → 에러, Run 두 번 → 에러, Run 밖 OnEvent·Approve, Resize 뒤 새 폭 |
@@ -237,4 +248,5 @@ var ErrNotTerminal error
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.2 | 모델 문제면 dr 이 시작하지 못함, `/model` 없음 | 시작 시 모델 선택 화면, `/model` (3.9, TM-FR-47a) | R20 |
 | 0.1 | 구체 surface 없음 (`surfaces/README.md` 만) | 대화형 터미널 surface 라이브러리 | 사용자: "대화형 터미널 해보자" (impl-04) |

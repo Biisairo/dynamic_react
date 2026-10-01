@@ -1,7 +1,7 @@
 # adapters — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.4 (초안)
+- 버전: 0.5 (초안)
 - 상위 근거: `docs/DECISIONS.md` (D2, D14, D15, R8, R9, R11, R12, R17)
 - 의존 명세: `L0_core/contract/SPEC.md`
 - 사용하는 쪽: `L1_inject/sets/SPEC.md`
@@ -209,6 +209,7 @@ Chat·Responses 차이 필드 (원본: pi `openai-completions.ts` `detectCompat`
 | AD-FR-48 | `adapters.New(Options{HTTPClient, Getenv, Now, Config}) *Client`. nil 이면 `http.DefaultClient`, 환경을 읽지 않음(모든 이름에 ""), `time.Now` (AD-C6). `Client` 는 동시 사용에 안전하다 |
 | AD-FR-49 | `Config` JSON: `{"providers": {name: Profile 필드(부분 덮어쓰기·새 provider)}, "models": {"provider/id": {"contextWindow", "maxOutputTokens", "capabilities"}}}`. `ParseConfig([]byte)` 는 모르는 키를 에러로 거부한다. 파일을 읽는 함수는 두지 않는다 (AD-C6). 키 **값**을 담는 필드는 없다 (AD-C2, 환경변수 이름만) |
 | AD-FR-50 | 키 환경변수가 비어 있으면 요청을 보내지 않고 `error` 이벤트(`Class: auth`, 메시지에 **환경변수 이름**만)로 끝낸다 |
+| AD-FR-52 | `Client.Models() []ModelRef` (`type ModelRef struct{ Provider, ID string }`): 사용자 설정 `models` 의 키(`provider/id`, 첫 `/` 에서 나눔)와 내장 스냅샷의 모델을 합친 목록. provider 가 프로필(내장 + 설정 `providers`)에 없는 항목은 뺀다. 중복 없이 Provider → ID 사전순. 네트워크를 쓰지 않는다 (provider 조회·원격 카탈로그 제외, R20) |
 | AD-FR-51 | done 이벤트의 Message: `ID` = provider 응답 id(없으면 무작위), `Timestamp` = `Now()`, `Role` assistant, `Usage`·`StopReason` 채움 (contract CT-FR-17). 스트림 도중 받은 블록은 이벤트 `Index` 순서로 Content 가 된다 |
 
 ---
@@ -261,4 +262,5 @@ Chat·Responses 차이 필드 (원본: pi `openai-completions.ts` `detectCompat`
 | 0.3 | AD-FR-18: reasoning 모델이면 developer | 프로필 값만 | 모델별 판단 근거가 카탈로그 밖에 없음 |
 | 0.3 | AD-FR-39: 원격 카탈로그 조회 안 함 | 4단 출처 (설정 > provider 조회 > models.dev > 내장 스냅샷) | 조회 API 로 창 크기를 알 수 없는 provider 가 많음. 사용자 확정 |
 | 0.3 | AD-C1: API 키만 | + 구독 요금제 엔드포인트 미내장, Anthropic OAuth 환경변수 무시 | 자격증명 보호 |
+| 0.5 | 모델 목록 API 없음 (id 로 Lookup 만) | `Client.Models()` (AD-FR-52) | R20: 등록한 모델 중에서 고르기 — 목록 원천은 L1, 키 상태·선택은 L2 |
 | 0.4 | AD-FR-48: `Getenv` nil 이면 `os.Getenv`. AD-FR-49: `LoadConfig(path)` 가 파일을 읽음 | `Getenv` nil 이면 환경을 읽지 않음. `LoadConfig` 삭제 (`ParseConfig` 만). AD-C6 추가 | R17: L1 은 사용자 환경과 무관한 단독 라이브러리. 환경변수·파일 해석은 `L2_harness/agent` |

@@ -1,7 +1,7 @@
 # agent — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.3 (초안)
+- 버전: 0.4 (초안)
 - 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18)
 - 의존 명세: `L2_harness/SPEC.md`, `L2_harness/osenv/SPEC.md`, `L1_inject/adapters/SPEC.md`, `L1_inject/sets/SPEC.md` (설정 JSON)
 - 사용하는 쪽: `L3_ui/cmd/dr-print`, 이후 L3 surfaces
@@ -14,7 +14,7 @@
 사용자 환경 위에서 바로 도는 **완성된 에이전트**다 (R17). 설정 파일·환경변수를 해석하고, `osenv`(OS Env)와 `adapters`(ModelCaller)를 만들어 `harness.New` 에 넣는다. L3 는 이 모듈만 쓰고 입출력만 한다.
 
 ### 1.2 범위
-- 포함 (모듈 `L2_harness/agent`, 패키지 `agent`): 설정 파일 읽기·검증, `-model` 덮어쓰기, sessionDir 해석, API 키 존재 확인, 조립, run 시작. **surface 공통 계층** (R18): 도구 세트 상한, 승인 규칙·Approver, Abort·Steer·FollowUp, 이벤트, 세션 키·목록, 세션 잠금, surface 콜백 panic 격리 — 3.4~3.9. 히스토리 조회·수동 압축 — 3.10~3.11 (impl-04)
+- 포함 (모듈 `L2_harness/agent`, 패키지 `agent`): 설정 파일 읽기·검증, `-model` 덮어쓰기, sessionDir 해석, API 키 존재 확인, 조립, run 시작. **surface 공통 계층** (R18): 도구 세트 상한, 승인 규칙·Approver, Abort·Steer·FollowUp, 이벤트, 세션 키·목록, 세션 잠금, surface 콜백 panic 격리 — 3.4~3.9. 히스토리 조회·수동 압축 — 3.10~3.11 (impl-04). 모델 선택 — 3.12 (R20)
 - 제외: 터미널 입출력·시그널·종료 코드 (L3), 키 값 저장 (AD-C2: 키는 환경변수로만), 시스템 프롬프트 편집 (R16)
 
 ### 1.3 참조
@@ -67,7 +67,7 @@
 | AG-FR-01 | 경로: `Options.ConfigPath` 가 있으면 그것(상대 경로면 Cwd 기준), 없으면 `<home>/.dynamic_react/config.json`. **기본 경로에 파일이 없으면 빈 설정** `{}`, 명시한 경로에 없으면 에러 |
 | AG-FR-02 | 최상위 키는 `sessionDir`·`agent`·`providers`·`models`·`permissions` 뿐이다. 모르는 키, JSON 이 아닌 내용, 뒤따르는 데이터는 에러 |
 | AG-FR-03 | `providers`·`models` 는 `{"providers":…, "models":…}` 로 묶어 `adapters.ParseConfig` 로 검사한다 (모르는 키 에러는 adapters 가 낸다) |
-| AG-FR-04 | `agent` 는 sets 설정 JSON 이다 (없으면 `{}`). `Options.Model` 이 있으면 `agent.model` 을 `{"provider", "id"}` 로 덮는다. 합친 결과를 `New` 에서 `sets.ParseConfig` 로 검사하고(모델 없음 등은 여기서 에러) **raw JSON 그대로** Start 때 넘긴다 (sets.Config 값을 쓰지 않음, HN-FR-27) |
+| AG-FR-04 | `agent` 는 sets 설정 JSON 이다 (없으면 `{}`). `Options.Model` 이 있으면 `agent.model` 을 `{"provider", "id"}` 로 덮는다. 합친 결과를 `New` 에서 검사한다: **모델이 없으면 에러가 아니라 모델 문제(`ErrNoModel`, AG-FR-32)** 로 기록하고, 그 밖의 `sets.ParseConfig` 에러는 `New` 에러다. **raw JSON 그대로** Start 때 넘긴다 (sets.Config 값을 쓰지 않음, HN-FR-27) |
 | AG-FR-05 | `Options.Model` 형식은 `provider/id` 다. **첫** `/` 에서 나눈다 (id 에 `/` 허용, 예: `openrouter/anthropic/claude-x`). 어느 쪽이 비면 에러 |
 
 ### 3.2 환경
@@ -76,7 +76,7 @@
 |---|---|
 | AG-FR-06 | `Options.Getenv` nil 이면 `os.Getenv`. `Options.Cwd` 비면 `os.Getwd()`, 상대 경로면 `os.Getwd()` 기준 절대 경로. home 은 `osenv.Env.Home()` |
 | AG-FR-07 | sessionDir 우선순위: 환경변수 `DR_SESSION_DIR` > 설정 `sessionDir` > `<home>/.dynamic_react/sessions`. `~` 또는 `~/` 로 시작하면 home 으로 바꾼다. 결과가 절대 경로가 아니면 에러 (home 이 "" 인데 필요할 때 포함). 디렉터리는 미리 만들지 않는다 (세션 첫 쓰기의 `AppendFile` 이 만듦, R17 보호 없음) |
-| AG-FR-08 | 모델 provider 를 `adapters.Client.Profile` 로 찾는다. 없으면 에러 `unknown provider "<name>"`. 프로필의 `APIKeyEnv` 가 비어 있지 않은데 `Getenv` 값이 비면 에러 `missing API key: set <ENV>` (값은 출력하지 않음) |
+| AG-FR-08 | 모델 provider 를 `adapters.Client.Profile` 로 찾는다. 없으면 모델 문제 `unknown provider "<name>"`. 프로필의 `APIKeyEnv` 가 비어 있지 않은데 `Getenv` 값이 비면 모델 문제 `missing API key: set <ENV>` (값은 출력하지 않음). 모델 문제는 `New` 를 실패시키지 않는다 (R20, AG-FR-32) |
 
 ### 3.3 조립·실행
 
@@ -98,7 +98,7 @@ func (a *Agent) SessionDir() string
 | id | 요구사항 |
 |---|---|
 | AG-FR-09 | `New` 순서: Cwd → `osenv.New` → 설정 파일(AG-FR-01~05) → sessionDir(AG-FR-07) → `adapters.New(Options{Getenv, Config, NoRemoteCatalog})` → 키 확인(AG-FR-08) → `harness.New(ctx, harness.Options{Env, Model, SessionDir, Observer})`. 어느 단계든 실패하면 에러 (앞 단계 이름을 접두어로: `agent: config: …`) |
-| AG-FR-10 | `Start` = `harness.Agent.Start(ctx, RunRequest{SessionID, Input, Config: AG-FR-04 의 raw})` 를 3.6 의 `*Run` 으로 감싸 돌려준다. 쓰인 sessionID 는 `Run.SessionID()` |
+| AG-FR-10 | 모델 문제가 있으면 `Start` 는 run 없이 그 에러를 돌려준다 (잠금도 잡지 않음). 아니면 `Start` = `harness.Agent.Start(ctx, RunRequest{SessionID, Input, Config: AG-FR-04 의 raw})` 를 3.6 의 `*Run` 으로 감싸 돌려준다. 쓰인 sessionID 는 `Run.SessionID()` |
 | AG-FR-11 | `Harness()` 는 조립된 `*harness.Agent` (System·Tools 조회용), `SessionDir()` 은 AG-FR-07 의 결과 |
 
 ### 3.4 승인 규칙 (R18 ②)
@@ -221,7 +221,30 @@ func (a *Agent) Compact(ctx context.Context, sessionID string) (bool, error)
 |---|---|
 | AG-FR-31 | `Compact`: sessionID 가 비면 에러. AG-FR-22 와 같은 세션 잠금을 잡는다 (잡혀 있으면 `ErrSessionBusy`) — 잠금 중이라 그 세션의 run 과 겹치지 않는다. `harness.Agent.Compact(ctx, sessionID, AG-FR-04 의 raw 설정)` 의 결과를 그대로 돌려주고 잠금을 푼다. compaction 이벤트는 harness 가 낸다 (HN-FR-36) |
 
-### 3.12 비기능
+### 3.12 모델 선택 (R20)
+
+```go
+var ErrNoModel error // "no model configured"
+
+type ModelChoice struct {
+    Provider, ID string
+    KeyEnv       string // 프로필의 APIKeyEnv ("" = 키 불필요)
+    KeyMissing   bool   // KeyEnv != "" 이고 Getenv 값이 빔
+}
+
+func (a *Agent) Models() []ModelChoice
+func (a *Agent) Model() (string, error)
+func (a *Agent) SetModel(ctx context.Context, ref string) error
+```
+
+| id | 요구사항 |
+|---|---|
+| AG-FR-32 | 모델 문제: 모델 없음 = `ErrNoModel`, 모르는 provider·키 없음 = AG-FR-08 의 에러. `Model()` 은 현재 모델 `provider/id`(없으면 "")와 모델 문제(없으면 nil)를 돌려준다. 키 확인은 `Model()`·`Start` 를 부를 때마다 `Getenv` 로 다시 한다 (실행 중 환경은 바뀌지 않지만 SetModel 뒤 상태를 반영하기 위함) |
+| AG-FR-33 | `Models()`: `adapters.Client.Models()` 의 각 항목에 프로필의 `APIKeyEnv` 와 `KeyMissing` 을 붙인다. 순서는 adapters 와 같다 |
+| AG-FR-34 | `SetModel(ctx, ref)`: ref 형식은 AG-FR-05(틀리면 에러). provider 가 프로필에 없으면 에러 `unknown provider`, 키가 없으면 에러 `missing API key: set <ENV>` — 에러면 아무것도 바꾸지 않는다. 검증을 통과하면 **사용자 설정 파일**(AG-FR-01 의 경로, 기본 경로에 파일이 없으면 새로 만듦, 상위 디렉터리 0755)을 읽어 `agent.model` 을 `{"provider","id"}` 로 바꿔 쓴다: 최상위의 다른 키와 `agent` 안의 다른 키는 원문 JSON 그대로, 들여쓰기 2칸 + 끝 줄바꿈, 파일 0644. 쓰기에 실패하면 에러이고 바꾸지 않는다. 성공하면 이후 `Start`·`Compact` 의 설정(AG-FR-04 의 raw)에서 모델을 바꾼다 (이미 시작한 run 은 그대로). `Options.Model` 덮어쓰기보다 이긴다 |
+| AG-FR-35 | `Model`·`SetModel`·`Start`·`Compact` 는 동시에 불러도 안전하다 |
+
+### 3.13 비기능
 
 | id | 요구사항 |
 |---|---|
@@ -252,6 +275,7 @@ func (a *Agent) Compact(ctx context.Context, sessionID string) (bool, error)
 | AG-FR-27 | approval·run_end 가 이벤트 순서에 맞게 옴 (연쇄 run 마다 run_end) |
 | AG-FR-28~29 | SessionKey 결정성·CheckID 통과, Sessions 의 Title(80 rune)·Updated·Messages·정렬·깨진 파일 건너뜀·없는 dir |
 | AG-FR-30 | 압축된 세션 → 요약 메시지 없음·Omitted = 대체된 원본 수·나머지 순서, hide 편집, 편집 없는 세션 = 원본 전부, 없는 파일 → 빈 결과, 깨진 파일·잘못된 ID → 에러, 실행 중인 세션도 읽음 |
+| AG-FR-32~35 | 모델 없음 → New 성공·Model() ErrNoModel·Start ErrNoModel(잠금 없음), 모르는 provider·키 없음 → New 성공·같은 문제, Models 의 KeyMissing·설정 모델 포함, SetModel: 형식 틀림·모르는 provider·키 없음 → 에러·파일 그대로, 성공 → 파일의 agent.model 갱신·다른 키 보존·파일 없으면 생성·다음 Start 요청의 모델·Options.Model 보다 이김, 쓰기 실패 → 에러·모델 그대로, -race 동시 호출 |
 | AG-FR-31 | 긴 세션(작은 keepRecentTokens) → true·세션 파일에 edit 줄 하나·다음 run 요청에 요약 메시지·edit 줄 중복 없음, 짧은 세션 → false, 실행 중인 세션 → ErrSessionBusy, 빈 ID → 에러, compaction 이벤트 start/end |
 
 ---
@@ -278,5 +302,6 @@ func (a *Agent) Compact(ctx context.Context, sessionID string) (bool, error)
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
 | 0.1 | 설정·env 해석, ModelCaller 생성은 L3 (R14) | `L2_harness/agent` | R17 |
+| 0.4 | 모델 없음·모르는 provider·키 없음 → `New` 에러 | `New` 성공, 모델 문제는 `Model()`·`Start` 에러. `Models`·`SetModel`(설정 파일 저장) | R20: 설정이 없어도 실행되고 앱 안에서 고른다 |
 | 0.3 | 히스토리·수동 압축 없음 | `History`(투영 중 원본 메시지 + Omitted), `Compact`(세션 잠금 + harness 수동 압축) | impl-04 터미널 surface: 이어갈 때 지난 대화 다시 그리기(편집 적용 뒤, 요약은 걸러냄), `/compact` 즉시 압축 |
 | 0.2 | `Start` → `(*core.Run, string, error)`, surface 기능 없음 | `Start` → `(*Run, error)` (Steer·FollowUp·Abort·Wait·SessionID), 승인 규칙·Approver, 도구 상한, 이벤트, 세션 키·목록, 세션 잠금, 콜백 panic 격리 (3.4~3.9) | R18 |
