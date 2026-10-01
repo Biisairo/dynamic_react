@@ -5,9 +5,9 @@ import "testing"
 // AG-FR-13~17: 규칙 문법·대상·매칭·복합 명령 방어·우선순위.
 func TestRules(t *testing.T) {
 	rs, err := compileRules(Permissions{
-		Allow: []string{"read", "mytool", "bash(go test *)", "bash(make build && make test)", "edit(src/**)", "write(~/notes/*.md)"},
+		Allow: []string{"read", "mytool", "bash(go test *)", "bash(make build && make test)", "edit(src/**)", "write(~/notes/*.md)", "grep(src/**)", "find", "ls(~/**)"},
 		Ask:   []string{"bash(git push *)", "bash(go test ./risky/*)"},
-		Deny:  []string{"write(/etc/**)", "bash(rm -rf *)"},
+		Deny:  []string{"write(/etc/**)", "bash(rm -rf *)", "grep(/etc/**)", "ls(/w/secret)"},
 	}, "/w", "/h")
 	if err != nil {
 		t.Fatal(err)
@@ -46,6 +46,13 @@ func TestRules(t *testing.T) {
 		{"write", "/h/notes/a.txt", true, ask, ""},
 		{"write", "/etc/passwd", true, deny, "write(/etc/**)"},
 		{"write", "/etc/a/b/c", true, deny, "write(/etc/**)"},
+		{"grep", "/w/src/x", true, allow, "grep(src/**)"},
+		{"grep", "/w", true, ask, ""},
+		{"grep", "/etc/passwd", true, deny, "grep(/etc/**)"},
+		{"find", "/anywhere", true, allow, "find"},
+		{"ls", "/h/a", true, allow, "ls(~/**)"},
+		{"ls", "/w/secret", true, deny, "ls(/w/secret)"},
+		{"ls", "/w", true, ask, ""},
 	}
 	for _, c := range cases {
 		v, rule := rs.decide(c.tool, c.target, c.hasTarget, nil)

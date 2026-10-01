@@ -27,7 +27,7 @@ func (v verdict) String() string { return [...]string{"allow", "ask", "deny"}[v]
 var ruleSyntax = regexp.MustCompile(`^([A-Za-z0-9_.-]+)(?:\((.+)\))?$`)
 
 // patternTools 는 패턴 규칙을 쓸 수 있는 도구와 대상 종류다 (AG-FR-13, 14).
-var patternTools = map[string]bool{"bash": false, "read": true, "write": true, "edit": true} // true = 경로
+var patternTools = map[string]bool{"bash": false, "read": true, "write": true, "edit": true, "grep": true, "find": true, "ls": true} // true = 경로
 
 // compoundOps 는 `*` allow 규칙이 허용하지 않는 셸 연결자다 (AG-FR-16).
 var compoundOps = []string{";", "&&", "|", "`", "$(", "\n"}
@@ -69,7 +69,7 @@ func compileRule(text, cwd, home string) (rule, error) {
 	}
 	isPath, ok := patternTools[r.tool]
 	if !ok {
-		return rule{}, fmt.Errorf("permission rule %q: patterns are only for bash, read, write, edit", text)
+		return rule{}, fmt.Errorf("permission rule %q: patterns are only for bash, read, write, edit, grep, find, ls", text)
 	}
 	r.isPath = isPath
 	if isPath {

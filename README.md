@@ -14,11 +14,11 @@
              cmd/dr-print  non-interactive test CLI             (spec v0.2)
  ─────────────────────────────────────────────────────────────────
  L2_harness  the real agent on the user's environment (R17)
-             harness   agent assembly over Env + ModelCaller:   (spec v1.0)
+             harness   agent assembly over Env + ModelCaller:   (spec v1.1)
                        tool logic, JSONL sessions, prompt,
                        summarizer (no real I/O itself)
-             osenv     Env on the OS: files, shell, groups      (spec v0.2)
-             agent     config + auth.json + osenv + adapters    (spec v0.6)
+             osenv     Env on the OS: files, shell, groups      (spec v0.3)
+             agent     config + auth.json + osenv + adapters    (spec v0.7)
                        -> harness.New (the finished agent),
                        surface layer: approval, steer, models
  ─────────────────────────────────────────────────────────────────
@@ -60,9 +60,9 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 | [`L1_inject/inject/`](L1_inject/inject/SPEC.md) | 함수 주입 프레임워크 + 조합 함수 | 스펙 v0.3, 구현 |
 | [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 기본 함수 세트 (base, resilient) | 스펙 v0.5, 구현 |
 | [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그 | 스펙 v0.6, 구현 |
-| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입 | 스펙 v1.0, 구현 |
-| [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.2, 구현 |
-| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키), 주입 통로 | 스펙 v0.6, 구현 |
+| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 7종 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입 | 스펙 v1.1, 구현 |
+| [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.3, 구현 |
+| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키), 주입 통로 | 스펙 v0.7, 구현 |
 | [`L3_ui/surfaces/terminal/`](L3_ui/surfaces/terminal/SPEC.md) | 대화형 터미널 surface 라이브러리 | 스펙 v0.3, 구현 |
 | [`L3_ui/cmd/dr/`](L3_ui/cmd/dr/SPEC.md) | 대화형 진입점 | 스펙 v0.3, 구현 |
 | [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 비대화형 검증용 CLI (입출력만) | 스펙 v0.2, 구현 |
@@ -131,7 +131,7 @@ a, err := agent.New(ctx, agent.Options{
 ```
 
 - 승인 규칙·Approver·이벤트는 사용자 세트가 무엇이든 유지된다. base 의 기본 검사는 base 를 감싸지 않고 바꾸면 빠진다 (사용자 책임).
-- 추가 도구도 도구 상한·설정 `agent.tools`·이름 규칙의 대상이다. 패턴 규칙은 `bash`·`read`·`write`·`edit` 에만 쓴다.
+- 추가 도구도 도구 상한·설정 `agent.tools`·이름 규칙의 대상이다. 패턴 규칙은 `bash`·`read`·`write`·`edit`·`grep`·`find`·`ls` 에만 쓴다.
 - 실행 가능한 전체 예시: [`examples/inject`](examples/inject/main.go) (`cd examples/inject && go run . "질문"`).
 - 자세한 규칙(만드는 순서, 세트 이름과 상태, 저장소 계약, 사용자 책임): [`docs/INJECT.md`](docs/INJECT.md).
 

@@ -1,8 +1,8 @@
 # agent — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.6 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18, R20, R21, R22)
+- 버전: 0.7 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18, R20, R21, R22, R23)
 - 의존 명세: `L2_harness/SPEC.md`, `L2_harness/osenv/SPEC.md`, `L1_inject/adapters/SPEC.md`, `L1_inject/sets/SPEC.md` (설정 JSON)
 - 사용하는 쪽: `L3_ui/cmd/dr-print`, 이후 L3 surfaces
 
@@ -114,8 +114,8 @@ func (a *Agent) SessionDir() string
 | id | 요구사항 |
 |---|---|
 | AG-FR-12 | 규칙 출처는 셋이고 목록을 이어 붙인다: 사용자 설정(3.1)의 `permissions`, **프로젝트 설정** `<cwd>/.dynamic_react/config.json` 의 `permissions`(allow 포함, 파일이 없으면 무시, 최상위 키는 `permissions` 만 — 다른 키는 에러), `Options.Permissions`(surface 프로필). `permissions` 의 키는 `allow`·`ask`·`deny` 뿐이다 |
-| AG-FR-13 | 규칙 문법: `name` 또는 `name(pattern)`. name 은 도구 이름, pattern 은 비어 있지 않은 문자열(괄호 안 전체). 패턴 규칙은 `bash`·`read`·`write`·`edit` 에만 쓸 수 있다. 문법이 틀리거나 다른 도구에 패턴을 쓰면 `New` 에러 |
-| AG-FR-14 | 대상: `bash` = 인자 `command`. `read`·`write`·`edit` = 인자 `path` 를 도구와 같은 규칙(HN-FR-05: 상대 = cwd 기준, `~` = home)으로 절대 경로로 바꾼 것. 패턴도 같은 규칙으로 절대 경로로 바꾼다. 같은 이름을 `ToolSet` 으로 바꾼 도구(AG-FR-43)도 같은 인자에서 꺼낸다 — 인자가 없으면 대상은 "" 이고 그 도구의 패턴 규칙(deny 포함)은 맞지 않는다. 이름 규칙은 맞는다 |
+| AG-FR-13 | 규칙 문법: `name` 또는 `name(pattern)`. name 은 도구 이름, pattern 은 비어 있지 않은 문자열(괄호 안 전체). 패턴 규칙은 `bash`·`read`·`write`·`edit`·`grep`·`find`·`ls` 에만 쓸 수 있다. 문법이 틀리거나 다른 도구에 패턴을 쓰면 `New` 에러 |
+| AG-FR-14 | 대상: `bash` = 인자 `command`. `read`·`write`·`edit` = 인자 `path` 를 도구와 같은 규칙(HN-FR-05: 상대 = cwd 기준, `~` = home)으로 절대 경로로 바꾼 것. `grep`·`find`·`ls` = 같은 방식, 단 `path` 가 없거나 "" 면 cwd (도구의 기본 시작 경로, HN-FR-43) (R23). 패턴도 같은 규칙으로 절대 경로로 바꾼다. 같은 이름을 `ToolSet` 으로 바꾼 도구(AG-FR-43)도 같은 인자에서 꺼낸다 — 인자가 없으면 대상은 ""(grep·find·ls 는 cwd) 이고, "" 이면 그 도구의 패턴 규칙(deny 포함)은 맞지 않는다. 이름 규칙은 맞는다 |
 | AG-FR-15 | 매칭: `bash` 패턴은 전체 문자열 일치이고 `*` 는 임의의 문자열(빈 문자열 포함)이다. 경로 패턴은 glob — `*` 는 `/` 를 넘지 않는 임의 문자열, `**` 는 0개 이상의 경로 단계. 이름 규칙은 그 도구의 모든 호출에 맞는다 |
 | AG-FR-16 | **복합 명령 방어**: `*` 가 든 `bash` allow 규칙은 command 에 `;` `&&` `\|\|` `\|` 백틱 `$(` 줄바꿈 중 하나라도 있으면 맞지 않는다. `*` 없는 allow 규칙(정확 일치)과 deny·ask 규칙에는 적용하지 않는다 (사용자가 그 문자열 전체를 적었으므로) |
 | AG-FR-17 | 평가: deny 에 맞으면 거부 → 이 세션에서 `allow_session` 으로 허용한 대상(AG-FR-19)이면 허용 → ask 에 맞으면 묻기 → allow 에 맞으면 허용 → 어디에도 안 맞으면 묻기. (allow_session 이 ask 보다 먼저인 이유: ask 규칙에 걸린 대상을 "세션 동안 허용" 해도 다시 묻는다면 그 답이 의미가 없다) |
@@ -283,7 +283,7 @@ ModelCaller func(def sets.ModelCaller) sets.ModelCaller   // AG-FR-41
 | AG-FR-40 | `Sets`·`ToolSet`·`System`·`Summarizer`·`Store` 는 harness 의 같은 이름 필드로 그대로 넘긴다. 의미·순서·nil 결과는 HN-FR-38~42 를 따른다. harness 의 에러는 `agent: ` 접두어로 돌려준다 |
 | AG-FR-41 | `ModelCaller`: def = adapters Client. 결과를 `harness.Options.Model` 로 넘긴다 — run 의 모델 호출과 자동·수동 압축의 요약 호출이 이것을 거친다. nil 결과는 `New` 에러 `agent: ModelCaller returned nil`. 모델 목록·provider 프로필·키 확인(AG-FR-08, 32~34, 39)은 adapters Client 그대로 쓴다 |
 | AG-FR-42 | 승인과의 관계 (HN-FR-41): 승인 규칙·Approver·Steer 의 skip(AG-FR-17~20, 24)은 Gate 이므로 사용자 세트와 무관하게 유지된다. base 기본 검사를 빼는 것은 사용자 책임이다. Steer 의 skip 판단은 base 공개 상태 `inbox.consumed` 를 읽으므로, 이름이 `base` 인 세트가 그 상태를 갱신하지 않으면 Steer 뒤의 도구 호출이 계속 skipped 된다 |
-| AG-FR-43 | 도구: 도구 상한(AG-FR-21)·설정 `agent.tools`·이름 규칙(AG-FR-13·15)은 `ToolSet` 적용 뒤의 registry 를 기준으로 한다 — 추가한 도구도 상한·규칙의 대상이다. 패턴 규칙은 계속 `bash`·`read`·`write`·`edit` 이름에만 쓴다 (AG-FR-13, 추가 도구에 패턴 → `New` 에러). 패턴 비교 값은 AG-FR-14 |
+| AG-FR-43 | 도구: 도구 상한(AG-FR-21)·설정 `agent.tools`·이름 규칙(AG-FR-13·15)은 `ToolSet` 적용 뒤의 registry 를 기준으로 한다 — 추가한 도구도 상한·규칙의 대상이다. 패턴 규칙은 계속 AG-FR-13 의 이름(`bash`·`read`·`write`·`edit`·`grep`·`find`·`ls`)에만 쓴다 (AG-FR-13, 추가 도구에 패턴 → `New` 에러). 패턴 비교 값은 AG-FR-14 |
 
 ### 3.15 비기능
 
@@ -307,7 +307,7 @@ ModelCaller func(def sets.ModelCaller) sets.ModelCaller   // AG-FR-41
 | AG-FR-09~11 | 종단: httptest 서버가 bash 도구 호출 → 텍스트 응답, 실제 osenv 로 명령 실행, 세션 파일이 sessionDir 에 생김, 같은 sessionID 로 재개 시 History 이어짐 |
 | AG-NFR-02 | `DR_E2E_MODEL`·`DR_E2E_KEY` 있을 때만 "ok 라고만 답하라" run → completed |
 | AG-FR-12~13 | 세 출처 합침, 프로젝트 파일의 다른 키 에러, 없는 프로젝트 파일 무시, 잘못된 규칙·패턴 규칙을 다른 도구에 → New 에러 |
-| AG-FR-14~17 | 표 기반: bash 와일드카드·정확 일치, 경로 glob(`*` 한 단계, `**` 여러 단계, 상대·`~` 패턴), 복합 명령 6종이 `*` allow 에 안 맞음·정확 일치 allow 에는 맞음·deny 에는 맞음, 우선순위 deny > ask > allow > 기본 ask |
+| AG-FR-14~17 | 표 기반: bash 와일드카드·정확 일치, 경로 glob(`*` 한 단계, `**` 여러 단계, 상대·`~` 패턴), grep·find·ls 경로 규칙(`path` 있음·없음 → cwd), 복합 명령 6종이 `*` allow 에 안 맞음·정확 일치 allow 에는 맞음·deny 에는 맞음, 우선순위 deny > ask > allow > 기본 ask |
 | AG-FR-18~20 | 가짜 Approver: nil → 허용, allow·deny(사유 전달)·allow_session(같은 세션 다음 호출은 묻지 않음, 다른 세션은 물음, deny 규칙이 여전히 이김), Approver error → 거부, ctx 취소 → aborted, approval 이벤트 유무 |
 | AG-FR-21 | 상한 교집합, 설정 tools 와 교집합, 없는 이름 → 에러, 모델 요청의 tools 목록 |
 | AG-FR-22 | 같은 세션 동시 Start → ErrSessionBusy, 끝난 뒤 다시 Start 성공, 다른 세션 동시 실행 |
@@ -346,6 +346,7 @@ ModelCaller func(def sets.ModelCaller) sets.ModelCaller   // AG-FR-41
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.7 | 패턴 규칙은 bash·read·write·edit 만 (grep·find·ls 에 패턴 → `New` 에러) | grep·find·ls 도 경로 패턴 규칙, `path` 없으면 대상 cwd | R23 ④ |
 | 0.6 | 외부 함수를 끼울 통로 없음 (`harness.Options` 의 Extra·Tools 를 받지도 넘기지도 않음) | `Sets`·`ToolSet`·`System`·`Summarizer`·`Store`·`ModelCaller` (3.14) | R22: core 외 전부 튜닝 |
 | 0.6 | `History`·`Sessions` 가 `session.New` 로 sessionDir 의 파일을 직접 읽음 | harness 의 저장소(`Harness().Store()`)의 `Load`·`List` 를 거침 (기본 저장소면 결과 같음) | R22 ③: 저장소를 바꿨을 때 목록·이력이 어긋나지 않게 |
 | 0.6 | 절 번호 중복 (3.13 API 키, 3.13 비기능) | 3.14 주입, 3.15 비기능 | 번호 정정 |

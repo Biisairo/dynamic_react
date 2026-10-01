@@ -12,6 +12,8 @@ type FileInfo struct {
 	Name  string
 	IsDir bool
 	Size  int64
+	// Symlink 은 ListDir 항목이 심볼릭 링크라는 뜻이다. IsDir·Size 는 대상 기준이다.
+	Symlink bool
 }
 
 // FileSystem 의 경로는 절대 경로다. 없는 파일은 errors.Is(err, fs.ErrNotExist) 인 에러다 (HN-FR-01, 02).

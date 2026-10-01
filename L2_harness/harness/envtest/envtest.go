@@ -28,6 +28,7 @@ type Env struct {
 	dirs    map[string]bool
 	fail    map[string]error
 	appends map[string]int
+	links   map[string]bool
 	temps   int
 	script  Script
 	reqs    []env.ExecRequest
@@ -35,7 +36,7 @@ type Env struct {
 
 func New(cwd, home string) *Env {
 	e := &Env{cwd: cwd, home: home, files: map[string][]byte{}, dirs: map[string]bool{"/": true},
-		fail: map[string]error{}, appends: map[string]int{}}
+		fail: map[string]error{}, appends: map[string]int{}, links: map[string]bool{}}
 	e.mkdirAll(cwd)
 	if home != "" {
 		e.mkdirAll(home)
@@ -59,6 +60,13 @@ func (e *Env) SetDir(p string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.mkdirAll(p)
+}
+
+// SetSymlink 은 이미 있는 파일·디렉터리 p 를 링크로 표시한다. ListDir 만 Symlink=true 로 돌려준다.
+func (e *Env) SetSymlink(p string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.links[p] = true
 }
 
 func (e *Env) File(p string) (string, bool) {
@@ -187,12 +195,12 @@ func (e *Env) ListDir(ctx context.Context, p string) ([]env.FileInfo, error) {
 	var out []env.FileInfo
 	for f, b := range e.files {
 		if path.Dir(f) == p {
-			out = append(out, env.FileInfo{Name: path.Base(f), Size: int64(len(b))})
+			out = append(out, env.FileInfo{Name: path.Base(f), Size: int64(len(b)), Symlink: e.links[f]})
 		}
 	}
 	for d := range e.dirs {
 		if d != p && path.Dir(d) == p {
-			out = append(out, env.FileInfo{Name: path.Base(d), IsDir: true})
+			out = append(out, env.FileInfo{Name: path.Base(d), IsDir: true, Symlink: e.links[d]})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

@@ -112,7 +112,7 @@ func TestFlagsAndPrompt(t *testing.T) {
 	}
 	l := newLLM(t, textReply("ok"))
 	cwd = setup(t, l)
-	if r := call(t, ctx, "ignored", "-cwd", cwd, "hello", "world"); r.code != 0 || !strings.Contains(l.body(0), "hello world") || strings.Contains(l.body(0), "ignored") {
+	if r := call(t, ctx, "stdin-unused", "-cwd", cwd, "hello", "world"); r.code != 0 || !strings.Contains(l.body(0), "hello world") || strings.Contains(l.body(0), "stdin-unused") {
 		t.Errorf("args prompt: %+v %.300s", r, l.body(0))
 	}
 	if r := call(t, ctx, "from stdin\n", "-cwd", cwd); r.code != 0 || !strings.Contains(l.body(1), "from stdin") {

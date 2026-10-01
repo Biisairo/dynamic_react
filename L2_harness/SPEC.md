@@ -1,8 +1,8 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 1.0 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22)
+- 버전: 1.1 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
@@ -16,7 +16,7 @@ L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로**
 ### 1.2 범위
 - 포함 (모듈 `L2_harness/harness`):
   - `Env` interface (FileSystem + Shell) — 3.1
-  - 도구 4종 `read`·`write`·`edit`·`bash` 의 로직 (`sets.Tool`, Env 위에서 동작) — 3.2
+  - 도구 7종 `read`·`write`·`edit`·`bash`·`grep`·`find`·`ls` 의 로직 (`sets.Tool`, Env 위에서 동작) — 3.2
   - JSONL 세션 형식과 `sets.Store` 구현 (Env.FileSystem 위에서 동작) — 3.3
   - 시스템 프롬프트 조립: 기본 문안, 대체·덧붙임, `AGENTS.md`·`CLAUDE.md` 탐색, 스킬 목록 (Env.FileSystem 으로 읽음) — 3.4
   - 요약기 (`sets.Summarizer`, pi 요약 프롬프트, ModelCaller 로 호출) — 3.5
@@ -80,7 +80,7 @@ L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로**
 `harness` 가 `tools` 를 import 하므로 import 순환을 피하려고 별도 패키지에 둔다. `harness.Env` 는 `env.Env` 의 별칭이다.
 
 ```go
-type FileInfo struct { Name string; IsDir bool; Size int64 }
+type FileInfo struct { Name string; IsDir bool; Size int64; Symlink bool }  // Symlink: ListDir 항목이 심볼릭 링크 (IsDir·Size 는 대상 기준)
 
 type FileSystem interface {
     ReadFile(ctx context.Context, path string) ([]byte, error)
@@ -112,7 +112,7 @@ type Env interface {
 | HN-FR-01 | Env 의 경로 인자는 **절대 경로**다. 상대 경로·`~` 해석은 harness 가 한다 (HN-FR-05). 구분자는 `/` |
 | HN-FR-02 | 없는 파일은 `errors.Is(err, fs.ErrNotExist)` 로 판별 가능한 에러여야 한다 (Env 구현 계약) |
 | HN-FR-03 | `AppendFile` 호출 하나는 한 번의 write 로 쓴다 (세션 줄 원자성, HN-FR-12). `Exec` 는 ctx 취소·Timeout 시 **자식 프로세스 전체**를 끝내고 반환한다. Timeout 이면 `TimedOut=true`, 에러 아님. 실행 자체를 못 하면 error (Env 구현 계약) |
-| HN-FR-04 | `harness/envtest` 패키지가 메모리 FileSystem 과 스크립트된 Shell 로 된 가짜 Env(`envtest.New(cwd, home)`)를 제공한다. 계약 테스트 `envtest.ConformanceFS(t, fs, root)`(HN-FR-02·03 의 FileSystem 부분, 메모리 FS 도 통과)와 `envtest.ConformanceShell(t, sh, dir)`(실제 셸용: 출력 합치기, 종료 코드, Timeout, 취소 시 자식 종료)를 둔다 |
+| HN-FR-04 | `harness/envtest` 패키지가 메모리 FileSystem 과 스크립트된 Shell 로 된 가짜 Env(`envtest.New(cwd, home)`)를 제공한다. `SetSymlink(p)` 는 이미 있는 파일·디렉터리 p 를 링크로 표시해 `ListDir` 이 `Symlink=true` 로 돌려주게 한다 (읽기·순회는 대상 그대로). 계약 테스트 `envtest.ConformanceFS(t, fs, root)`(HN-FR-02·03 의 FileSystem 부분, 메모리 FS 도 통과)와 `envtest.ConformanceShell(t, sh, dir)`(실제 셸용: 출력 합치기, 종료 코드, Timeout, 취소 시 자식 종료)를 둔다 |
 
 ### 3.2 도구 (`harness/tools`)
 
@@ -122,15 +122,33 @@ type Env interface {
 | `write` | `path`, `content` | `WriteFile`. 결과: 쓴 바이트 수와 경로 |
 | `edit` | `path`, `edits:[{oldText, newText}]` | pi 알고리즘: BOM 제거·LF 정규화 → 정확 매칭, 없으면 fuzzy(NFKC, 줄 끝 공백, 스마트 따옴표·유니코드 대시·특수 공백 정규화) → 없음·중복·겹침·무변화는 에러 → 모든 편집은 원본 기준 적용 → 원래 줄바꿈(CRLF)·BOM 복원. 결과에 unified diff |
 | `bash` | `command`, `timeout?`(초) | `Exec{Command, Dir: Cwd, Timeout}`. 합친 출력의 **마지막** 2000줄 / 50KB 반환. 넘으면 전체를 `CreateTemp` 파일에 쓰고 경로 안내. 종료 코드 표시, 0 이 아니거나 TimedOut 이면 error 결과 |
+| `grep` | `pattern`, `path?`, `glob?`, `ignoreCase?`, `literal?`, `context?`, `limit?`(기본 100), `respectIgnore?` | 3.2a HN-FR-43~47 |
+| `find` | `pattern`(glob), `path?`, `limit?`(기본 1000), `respectIgnore?` | 3.2a HN-FR-43~45, 48 |
+| `ls` | `path?`, `limit?`(기본 500) | 3.2a HN-FR-49 |
 
 | id | 요구사항 |
 |---|---|
 | HN-FR-05 | 경로 해석(`tools.Resolve(env, path)`, agent 승인 규칙도 같은 함수를 쓴다): 절대 경로는 그대로, `~`·`~/…` 는 `Home()` 기준(Home 이 ""면 error 결과), 그 외는 `Cwd()` 기준. `path.Clean` 으로 정리. 결과 문구에는 cwd 안이면 cwd 기준 상대 경로, 밖이면 절대 경로 |
 | HN-FR-06 | 도구 실행 에러(파일 없음, 매칭 실패, 타임아웃, 0 이 아닌 종료 코드, Env 에러)는 `Status: error` 결과다. Go panic·error 로 루프를 멈추지 않는다 |
-| HN-FR-07 | `read`·`bash` 는 자체 절단을 하므로 `Tool.Truncate` 를 항등 함수로 둔다 (sets 18 의 기본 절단이 이중으로 걸리지 않게). `write`·`edit` 는 nil |
+| HN-FR-07 | `read`·`bash`·`grep`·`find`·`ls` 는 자체 절단을 하므로 `Tool.Truncate` 를 항등 함수로 둔다 (sets 18 의 기본 절단이 이중으로 걸리지 않게). `write`·`edit` 는 nil |
 | HN-FR-08 | `InputSchema` 는 sets ST-FR-38 범위(객체·required·최상위 타입)로 검사 가능한 JSON Schema 다 |
-| HN-FR-09 | `tools.All(env)` 는 `read, bash, edit, write` 순서의 `[]sets.Tool`. 도구별 생성자 `tools.Read(env)` 등도 공개한다. 각 도구는 프롬프트용 한 줄 설명(`tools.Snippet(name)`)을 가진다 |
+| HN-FR-09 | `tools.All(env)` 는 `read, bash, edit, write, grep, find, ls` 순서의 `[]sets.Tool`. 도구별 생성자 `tools.Read(env)` 등도 공개한다. 각 도구는 프롬프트용 한 줄 설명(`tools.Snippet(name)`)을 가진다 |
 | HN-FR-10 | 같은 파일에 대한 `write`·`edit` 는 직렬화한다 (pi `file-mutation-queue`, 병렬 도구 대비). `tools.All` 이 만든 도구들이 큐 하나를 공유하고, 따로 만든 `tools.Write`·`tools.Edit` 는 각자의 큐를 쓴다 |
+
+### 3.2a 탐색 도구 `grep`·`find`·`ls` (R23)
+
+출처: pi `coding-agent/src/core/tools/grep.ts`·`find.ts`·`ls.ts`. pi 는 rg·fd 를 실행하지만 여기서는 Env 위에서 순회한다 (HN-C1).
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-43 | **순회** (grep·find 공통): 시작 = `path`(없거나 "" 면 `.`)를 HN-FR-05 로 푼 경로. `Stat` 이 `fs.ErrNotExist` 면 `Path not found: <path>`, 다른 에러면 `Cannot access <path>: <에러>` error 결과 (`<path>` 는 인자 그대로, 없으면 `.`). 디렉터리면 `ListDir` 로 깊이 우선, 각 디렉터리 안은 `ListDir` 순서(이름순)로 항목을 내고 하위 디렉터리는 그 자리에서 들어간다. 이름이 `.git` 인 디렉터리는 항상 건너뛴다. 숨김 항목(`.` 으로 시작)은 포함한다. `Symlink=true` 인 디렉터리 항목에는 들어가지 않는다. 시작 디렉터리의 `ListDir` 에러는 error 결과, 하위 디렉터리의 `ListDir` 에러는 그 디렉터리만 건너뛴다. ctx 가 취소되면 순회를 멈추고 `ctx.Err()` 문구의 error 결과. 결과 경로는 시작 디렉터리 기준 상대 경로(`/` 구분) |
+| HN-FR-44 | **`respectIgnore`** (grep·find, 기본 false): true 면 `.gitignore` 를 따른다. 읽는 파일 = 시작 디렉터리의 조상 중 `.git` 항목(파일·디렉터리)을 가진 가장 가까운 디렉터리부터 시작 디렉터리까지의 각 `.gitignore`(그런 조상이 없으면 시작 디렉터리의 것만), 그리고 순회 중 들어가는 각 디렉터리의 `.gitignore`. 읽을 수 없는 `.gitignore` 는 없는 것으로 본다. 문법 (git): 빈 줄·`#` 시작 줄 무시, 끝 공백 제거, 앞의 `\` 는 다음 문자(`#`·`!`) 이스케이프, `!` = 부정(다시 포함), 끝 `/` = 디렉터리에만 맞음, 맨 앞이나 중간에 `/` 가 있으면 그 `.gitignore` 의 디렉터리 기준 상대 경로에 맞고 없으면 어느 깊이의 이름에도 맞음, `*`·`?`·`[...]` 는 `/` 를 넘지 않고 `**` 는 0개 이상의 경로 단계. 한 항목에 맞는 규칙 중 **마지막** 것이 이긴다(얕은 파일의 규칙이 먼저, 깊은 파일이 나중). 무시된 디렉터리에는 들어가지 않는다. 비목표: `.git/info/exclude`, 전역 excludesFile, `.ignore`·`.rgignore` |
+| HN-FR-45 | **glob 매칭** (find 의 `pattern`, grep 의 `glob`): `/` 가 없으면 항목 **이름**에 맞춘다. `/` 가 있으면 시작 디렉터리 기준 상대 경로에 맞춘다 — `/` 로 시작하면 앞 `/` 를 떼고 시작 디렉터리에 고정, 아니면 `**/` 를 앞에 붙인 것처럼 어느 깊이에서든 (pi find 의 `--full-path` 처리). 문법은 HN-FR-44 의 `*`·`?`·`[...]`·`**`. 잘못된 패턴(`[` 가 닫히지 않음 등)은 `Invalid glob pattern: <pattern>` error 결과 |
+| HN-FR-46 | **grep 매칭**: `literal` 이면 `regexp.QuoteMeta(pattern)`, `ignoreCase` 면 앞에 `(?i)`. 컴파일 실패는 `Invalid regex: <에러>` error 결과. `path` 가 파일이면 그 파일만 검사하고(`respectIgnore`·`glob` 무시) 결과 경로는 파일 이름. 디렉터리면 순회한 파일 중 `Symlink=false`·`glob`(있으면) 에 맞는 것을 `ReadFile` 한다. 내용 앞 8000 바이트에 NUL 이 있으면 이진 파일로 보고 건너뛴다 (파일 경로로 준 경우도). 읽기 에러인 파일은 건너뛴다. 줄 = `\n` 으로 나누고 각 줄의 `\r` 제거, 줄 번호는 1부터. 맞는 줄마다 match 1건, 파일 순서·줄 순서대로 `limit`(1 미만이면 1)건까지 담고, 그 뒤에 match 가 하나라도 더 있으면 멈추고 limit 안내(HN-FR-47)를 붙인다 |
+| HN-FR-47 | **grep 결과**: match 가 없으면 ok 결과 `No matches found`. 있으면 match 마다 `context`(기본 0, 음수는 0) 가 0 이면 `<경로>:<줄>: <텍스트>`, 크면 `[줄-context, 줄+context]`(파일 범위 안) 의 각 줄을 맞은 줄은 `<경로>:<n>: <텍스트>`, 나머지는 `<경로>-<n>- <텍스트>` 로 (pi 처럼 겹치는 구간을 합치지 않음). 각 줄 텍스트는 500 rune 을 넘으면 앞 500 rune + `... [truncated]`. 줄들을 `\n` 으로 잇고 50KB 를 넘으면 앞에서부터 온전한 줄만(줄 수 상한 없음). 안내를 `\n\n[` + `. ` 로 이은 것 + `]` 로 붙인다: limit 에 닿음 → `<limit> matches limit reached. Use limit=<limit*2> for more, or refine pattern`, 50KB → `50.0KB limit reached`, 줄 절단 → `Some lines truncated to 500 chars. Use read tool to see full lines` |
+| HN-FR-48 | **find**: `pattern` 필수(비면 `pattern is required`). 시작 경로가 디렉터리가 아니면 `Not a directory: <path>`. 순회한 항목(파일·디렉터리·링크 모두) 중 HN-FR-45 로 맞는 것을 순회 순서대로, 디렉터리는 끝에 `/` 를 붙여 낸다. `limit`(1 미만이면 1)개까지 담고, 더 있으면 멈추고 limit 안내를 붙인다. 없으면 `No files found matching pattern`. 50KB 절단·안내는 HN-FR-47 방식: `<limit> results limit reached. Use limit=<limit*2> for more, or refine pattern`, `50.0KB limit reached` |
+| HN-FR-49 | **ls**: 시작 경로 해석·없음 에러는 HN-FR-43, 디렉터리가 아니면 `Not a directory: <path>`, `ListDir` 에러는 `Cannot read directory: <에러>`. 항목을 소문자 비교로 정렬(같으면 원래 이름순), 디렉터리는 끝에 `/`. `.git` 포함 모든 항목을 낸다(들어가지 않으므로). `limit`(기본 500, 1 미만이면 1)개까지 담고, 더 있으면 limit 안내를 붙인다. 비면 `(empty directory)`. 50KB 절단·안내: `<limit> entries limit reached. Use limit=<limit*2> for more`, `50.0KB limit reached` |
+| HN-FR-50 | 프롬프트 한 줄 설명(HN-FR-09): grep `Search file contents for patterns`, find `Find files by glob pattern`, ls `List directory contents`. 도구 Description 은 pi 문안에서 `.gitignore` 설명을 R23 ② 로 바꾼 것 (`Searches all files including hidden and ignored ones; set respectIgnore to skip files ignored by .gitignore.`) |
 
 ### 3.3 세션 (`harness/session`)
 
@@ -315,6 +333,7 @@ func (a *Agent) Store() Store
 | 요구사항 | 방법 |
 |---|---|
 | HN-FR-01~04 | envtest 자체 테스트, `Conformance` 가 envtest 에서 통과 |
+| HN-FR-43~50 | envtest 로 표 기반: 순회 순서·`.git` 제외·숨김 포함·링크 디렉터리 안 들어감·하위 ListDir 에러 건너뜀·취소, gitignore 문법 표(부정·디렉터리 전용·앵커·`**`·이스케이프·마지막 규칙 우선·조상 `.gitignore` 와 `.git` 경계·무시된 디렉터리 안의 부정은 효과 없음), glob 표(이름·경로·앞 `/`·잘못된 패턴), grep(literal·ignoreCase·context·파일 경로·glob·이진·limit·500 rune·50KB·잘못된 regex·없는 경로), find(디렉터리 `/`·limit·없음·파일 경로), ls(정렬·`/`·빈 디렉터리·limit·파일·없음) |
 | HN-FR-05~10 | 도구별 단위: 정상 / 경계(offset 끝, 2000줄·50KB 경계, 빈 파일, 이미지, `~`, cwd 밖) / 실패(없는 파일, 매칭 0·2회, 겹침, 무변화, 타임아웃, 0 아닌 종료 코드, Env 에러, spill). edit fuzzy 정규화 표, CRLF·BOM 복원 |
 | HN-FR-11~16 | 왕복(메시지·편집·상태 → Load), 깨진 마지막 줄 무시, 깨진 중간 줄·모르는 type 에러, 잘못된 sessionID, 호출당 AppendFile 1회, 동시 Append(-race), DefaultDir |
 | HN-FR-17~21 | 골든: 기본 / 컨텍스트 파일 순서(루트 쪽 먼저, git 루트에서 멈춤) / 스킬 우선순위·깨진 frontmatter·home 없음 |
@@ -336,6 +355,7 @@ func (a *Agent) Store() Store
 | R14 | HN-C1, 3.1, 3.6, HN-FR-15, HN-NFR-01, 04 |
 | R17 | 1.2, 2.1, HN-FR-15, HN-NFR-01 |
 | R22 | 1.2, 2.1, HN-FR-17, 26, 29, 30, 36, 3.6c (HN-FR-37~42) |
+| R23 | 1.2, 3.1 FileInfo·HN-FR-04, 3.2, 3.2a (HN-FR-43~50), HN-FR-07, 09 |
 | sets ST-FR-19, 35 | HN-C4, HN-FR-21 |
 | sets ST-FR-24, 27, 36 | 3.5 |
 | 자격증명 보호 | HN-C2 |
@@ -357,6 +377,8 @@ func (a *Agent) Store() Store
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 1.1 | 도구 4종, `tools.All` = read, bash, edit, write. 모델에 보내는 tools 4개, 시스템 프롬프트 rules 에 `Use bash for file operations like ls, rg, find` | 도구 7종 (3.2a), `tools.All` 끝에 grep, find, ls. 기본 프롬프트에서 그 rule 이 빠짐 (`prompt` 의 기존 pi 조건: bash 가 있고 grep·find·ls 가 모두 없을 때만 넣음) | R23 |
+| 1.1 | `env.FileInfo{Name, IsDir, Size}` | `Symlink` 추가 (envtest `SetSymlink`) | R23 ③: 순회가 링크 디렉터리를 구별해야 함 |
 | 1.0 | `Options.Tools []sets.Tool`(추가·교체), `Options.Extra`(base·resilient 위에 겹침). 저장소·시스템 프롬프트·요약기는 고정, base·resilient 는 뺄 수 없음 | `ToolSet`·`Sets`·`System`·`Summarizer`·`Store` 함수(기본값을 받아 바꾼 값을 돌려줌, nil = 기본), `DefaultSets`, `harness.Store`(`sets.Store` + `List`), `session.Store.List`, `Agent.Store()` (3.6c). `Tools`·`Extra` 삭제 (쓰는 곳 없음, 새 필드가 포함) | R22: core 외 전부 튜닝 |
 | 1.0 | Gate 는 "base 검사를 통과한 호출"에 불림 | 실제로 쓰이는 `tool.before` 가 ShortCircuit 없이 돌려준 호출에 불림 (기본 세트면 같음) | R22 ④: 사용자 세트가 `tool.before` 를 덮을 때의 의미를 정함 |
 | 1.0 | `Compact` 는 요약기가 항상 있음 | 요약기가 nil 이면 에러 | R22: `Summarizer` 가 nil 을 돌려주면 압축을 끈다 |

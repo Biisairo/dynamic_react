@@ -94,7 +94,7 @@ agent.Options{
 | base 기본 검사 (없는 도구, 인자 스키마, ST-FR-38) | `tool.before` 를 덮으면서 `sets.BaseToolBefore(d)` 를 부르지 않으면 **빠진다.** 이때 승인 Gate 는 검사 없이 그 호출에 불린다. 사용자 책임 |
 | Steer 의 남은 도구 건너뛰기 | `base` 세트의 공개 상태 `inbox.consumed` 를 읽는다. `base` 를 빼고 그 상태를 갱신하지 않으면 Steer 한 번 뒤의 도구 호출이 계속 skipped 된다 (AG-FR-42) |
 | 도구 상한·설정 `agent.tools`·이름 규칙 | `ToolSet` 적용 뒤 registry 기준. 추가한 도구도 대상이다 |
-| 패턴 규칙 `tool(pattern)` | `bash`·`read`·`write`·`edit` 이름에만 쓴다 (추가 도구에 쓰면 `New` 에러). 비교 값은 인자 `command`/`path` 에서 꺼낸다 — 같은 이름으로 바꾼 도구에 그 인자가 없으면 패턴 규칙(deny 포함)이 **맞지 않는다.** 이름 규칙(`bash`)은 맞는다 |
+| 패턴 규칙 `tool(pattern)` | `bash`·`read`·`write`·`edit`·`grep`·`find`·`ls` 이름에만 쓴다 (추가 도구에 쓰면 `New` 에러). 비교 값은 인자 `command`/`path` 에서 꺼낸다 — 같은 이름으로 바꾼 도구에 그 인자가 없으면 패턴 규칙(deny 포함)이 **맞지 않는다.** 이름 규칙(`bash`)은 맞는다 |
 
 ## 5. 실행 가능한 예시
 

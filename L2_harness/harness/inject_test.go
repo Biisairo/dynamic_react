@@ -54,10 +54,10 @@ func TestToolSet(t *testing.T) {
 			return append(out, objTool("mytool", "My tool.\nMore."), objTool("read", "replaced"))
 		}
 	})
-	if strings.Join(got, ",") != "read,bash,edit,write" {
+	if strings.Join(got, ",") != "read,bash,edit,write,grep,find,ls" {
 		t.Fatalf("default tools %v", got)
 	}
-	if names := strings.Join(a.Tools().Names(), ","); names != "read,edit,write,mytool" {
+	if names := strings.Join(a.Tools().Names(), ","); names != "read,edit,write,grep,find,ls,mytool" {
 		t.Fatalf("registry %s", names)
 	}
 	if tl, _ := a.Tools().Get("read"); tl.Spec.Description != "replaced" {
@@ -67,7 +67,7 @@ func TestToolSet(t *testing.T) {
 		t.Fatalf("system prompt tools:\n%s", sys)
 	}
 	start(t, a, "s1", user("u1", "hi"))
-	if names := toolNames(m.requests()[0]); names != "read,edit,write,mytool" {
+	if names := toolNames(m.requests()[0]); names != "read,edit,write,grep,find,ls,mytool" {
 		t.Fatalf("request tools %s", names)
 	}
 

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -258,6 +259,9 @@ func (a *Agent) target(call contract.ToolCall) (string, bool) {
 	switch call.Name {
 	case "bash":
 		return args.Command, true
+	case "grep", "find", "ls":
+		args.Path = cmp.Or(args.Path, ".")
+		fallthrough
 	case "read", "write", "edit":
 		p, err := tools.Resolve(a.env, args.Path)
 		if err != nil {

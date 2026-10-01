@@ -84,18 +84,17 @@ func TestAll(t *testing.T) {
 			t.Errorf("%s description/snippet/run", tl.Spec.Name)
 		}
 	}
-	if strings.Join(names, ",") != "read,bash,edit,write" {
+	if strings.Join(names, ",") != "read,bash,edit,write,grep,find,ls" {
 		t.Fatalf("order %v", names)
 	}
 	r := contract.ToolResult{CallID: "c", Status: contract.StatusOK, Content: []contract.Block{{Kind: contract.BlockText, Text: strings.Repeat("x\n", 5000)}}}
-	for _, tl := range all[:2] {
-		if tl.Truncate == nil || text(tl.Truncate(r)) != text(r) {
-			t.Errorf("%s Truncate must be identity", tl.Spec.Name)
-		}
-	}
-	for _, tl := range all[2:] {
-		if tl.Truncate != nil {
+	for _, tl := range all {
+		mutating := tl.Spec.Name == "edit" || tl.Spec.Name == "write"
+		if mutating && tl.Truncate != nil {
 			t.Errorf("%s Truncate must be nil", tl.Spec.Name)
+		}
+		if !mutating && (tl.Truncate == nil || text(tl.Truncate(r)) != text(r)) {
+			t.Errorf("%s Truncate must be identity", tl.Spec.Name)
 		}
 	}
 	if tools.Snippet("unknown") != "" {

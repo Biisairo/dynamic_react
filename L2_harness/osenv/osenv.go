@@ -120,7 +120,7 @@ func (e *Env) Stat(ctx context.Context, p string) (env.FileInfo, error) {
 	return env.FileInfo{Name: path.Base(p), IsDir: info.IsDir(), Size: info.Size()}, nil
 }
 
-// ListDir 은 이름순이고 심볼릭 링크는 대상으로 판별한다. 깨진 링크는 파일로 둔다 (OS-FR-08).
+// ListDir 은 이름순이고 심볼릭 링크는 대상으로 판별해 Symlink 를 표시한다. 깨진 링크는 파일로 둔다 (OS-FR-08).
 func (e *Env) ListDir(ctx context.Context, p string) ([]env.FileInfo, error) {
 	if err := check(ctx, "listdir", p); err != nil {
 		return nil, err
@@ -135,13 +135,13 @@ func (e *Env) ListDir(ctx context.Context, p string) ([]env.FileInfo, error) {
 		if ent.Type()&fs.ModeSymlink != 0 {
 			info, err = os.Stat(path.Join(p, ent.Name()))
 			if err != nil {
-				out = append(out, env.FileInfo{Name: ent.Name()})
+				out = append(out, env.FileInfo{Name: ent.Name(), Symlink: true})
 				continue
 			}
 		} else if info, err = ent.Info(); err != nil {
 			return nil, err
 		}
-		out = append(out, env.FileInfo{Name: ent.Name(), IsDir: info.IsDir(), Size: info.Size()})
+		out = append(out, env.FileInfo{Name: ent.Name(), IsDir: info.IsDir(), Size: info.Size(), Symlink: ent.Type()&fs.ModeSymlink != 0})
 	}
 	return out, nil
 }

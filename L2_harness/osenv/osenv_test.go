@@ -184,6 +184,9 @@ func TestListDirSymlinks(t *testing.T) {
 	if !got["link"].IsDir || !got["real"].IsDir || got["f"].IsDir || got["f"].Size != 3 || got["flink"].IsDir || got["flink"].Size != 3 {
 		t.Errorf("entries %+v", got)
 	}
+	if !got["link"].Symlink || !got["flink"].Symlink || !got["broken"].Symlink || got["real"].Symlink || got["f"].Symlink {
+		t.Errorf("symlink flags %+v", got)
+	}
 	if b := got["broken"]; b.IsDir || b.Size != 0 {
 		t.Errorf("broken %+v", b)
 	}

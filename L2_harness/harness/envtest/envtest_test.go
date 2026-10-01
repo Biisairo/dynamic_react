@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"reflect"
 	"testing"
 
 	"github.com/Biisairo/dynamic_react/L2_harness/harness/env"
@@ -76,3 +77,24 @@ func TestScriptedShell(t *testing.T) {
 type stringWriter []byte
 
 func (w *stringWriter) Write(p []byte) (int, error) { *w = append(*w, p...); return len(p), nil }
+
+// HN-FR-04 SetSymlink
+func TestSetSymlink(t *testing.T) {
+	e := envtest.New("/w", "")
+	e.SetFile("/w/f", "x")
+	e.SetDir("/w/d")
+	e.SetFile("/w/g", "y")
+	e.SetSymlink("/w/f")
+	e.SetSymlink("/w/d")
+	got, err := e.ListDir(context.Background(), "/w")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []env.FileInfo{{Name: "d", IsDir: true, Symlink: true}, {Name: "f", Size: 1, Symlink: true}, {Name: "g", Size: 1}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("%+v", got)
+	}
+	if b, err := e.ReadFile(context.Background(), "/w/f"); err != nil || string(b) != "x" {
+		t.Fatalf("read through link %q %v", b, err)
+	}
+}

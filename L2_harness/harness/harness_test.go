@@ -146,7 +146,7 @@ func TestAssembly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(a.Tools().Names(), ","); got != "read,bash,edit,write,mytool" {
+	if got := strings.Join(a.Tools().Names(), ","); got != "read,bash,edit,write,grep,find,ls,mytool" {
 		t.Fatalf("tools %s", got)
 	}
 	if tl, _ := a.Tools().Get("read"); tl.Spec.Description != "replaced" {

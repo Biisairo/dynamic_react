@@ -1,4 +1,4 @@
-// Package tools 는 도구 4종(read, bash, edit, write)의 로직이다. 파일·프로세스는 env.Env 로만 접근한다 (HN-C1, 3.2).
+// Package tools 는 도구 7종(read, bash, edit, write, grep, find, ls)의 로직이다. 파일·프로세스는 env.Env 로만 접근한다 (HN-C1, 3.2).
 package tools
 
 import (
@@ -23,15 +23,18 @@ var snippets = map[string]string{
 	"bash":  "Execute bash commands (ls, grep, find, etc.)",
 	"edit":  "Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
 	"write": "Create or overwrite files",
+	"grep":  "Search file contents for patterns",
+	"find":  "Find files by glob pattern",
+	"ls":    "List directory contents",
 }
 
 // Snippet 은 시스템 프롬프트에 쓰는 도구 한 줄 설명이다. 모르는 이름은 "" (HN-FR-09).
 func Snippet(name string) string { return snippets[name] }
 
-// All 은 read, bash, edit, write 순서의 도구다. write·edit 가 변경 큐 하나를 공유한다 (HN-FR-10).
+// All 은 read, bash, edit, write, grep, find, ls 순서의 도구다. write·edit 가 변경 큐 하나를 공유한다 (HN-FR-10).
 func All(e env.Env) []sets.Tool {
 	q := newQueue()
-	return []sets.Tool{Read(e), Bash(e), editTool(e, q), writeTool(e, q)}
+	return []sets.Tool{Read(e), Bash(e), editTool(e, q), writeTool(e, q), Grep(e), Find(e), Ls(e)}
 }
 
 // Write 는 write 도구다. 자신만의 변경 큐를 쓴다.

@@ -1,8 +1,8 @@
 # osenv — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.2 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R14, R17)
+- 버전: 0.3 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R14, R17, R23)
 - 의존 명세: `L2_harness/SPEC.md` 3.1 (Env 계약 HN-FR-01~04)
 - 사용하는 쪽: `L2_harness/agent`
 
@@ -63,7 +63,7 @@ func New(cwd, shell string) (*Env, error)
 | OS-FR-05 | `WriteFile`: 상위 디렉터리를 `MkdirAll(0755)`, `os.WriteFile(0644)`. 기존 파일은 내용만 바뀌고 권한은 유지된다. umask 가 적용된다 |
 | OS-FR-06 | `AppendFile`: 상위 디렉터리를 `MkdirAll(0755)`, `OpenFile(O_WRONLY\|O_APPEND\|O_CREATE, 0644)` 후 **`Write` 한 번**, `Close`. Close 에러도 돌려준다 (HN-FR-03 세션 줄 원자성) |
 | OS-FR-07 | `Stat`: 심볼릭 링크를 따라간다 (`os.Stat`). `FileInfo{Name: 경로의 마지막 요소, IsDir, Size}` |
-| OS-FR-08 | `ListDir`: 이름순. 항목이 심볼릭 링크면 대상을 `os.Stat` 해 `IsDir`·`Size` 를 채운다 (스킬 디렉터리 링크 지원). 깨진 링크는 `IsDir=false`, `Size=0` 으로 포함 |
+| OS-FR-08 | `ListDir`: 이름순. 항목이 심볼릭 링크면 대상을 `os.Stat` 해 `IsDir`·`Size` 를 채운다 (스킬 디렉터리 링크 지원). 깨진 링크는 `IsDir=false`, `Size=0` 으로 포함. 링크 항목은 깨졌든 아니든 `Symlink=true` (HN-FR-43 순회가 들어가지 않게, R23) |
 | OS-FR-09 | `CreateTemp(pattern)`: `os.CreateTemp("", pattern)`. 반환 경로가 절대 경로가 아니면 파일을 지우고 에러. writer 는 그 `*os.File` |
 | OS-FR-10 | `Exec`: `exec.Cmd{Path: 셸, Args: [셸, "-c", Command], Dir: req.Dir (비면 Cwd()), Env: 프로세스 환경 그대로, Stdin: 없음(null 장치)}`. `Stdout` 과 `Stderr` 에 같은 `out` 을 넣어 합친다 (한 번에 한 goroutine 만 Write) |
 | OS-FR-11 | 자식은 새 프로세스 그룹(`Setpgid`)으로 시작한다. ctx 취소 또는 `Timeout`(>0) 경과 시 `kill(-pgid, SIGKILL)` 로 그룹 전체를 끝낸다. 그룹을 벗어난 자손이 파이프를 잡고 있어도 `WaitDelay`(상수 `waitDelay` = 1초) 뒤 반환한다 |
@@ -83,7 +83,7 @@ func New(cwd, shell string) (*Env, error)
 | OS-FR-02 | 상대 경로 인자 → `fs.ErrInvalid` (FileSystem 6종, Exec Dir) |
 | OS-FR-03 | 취소된 ctx → `context.Canceled`, 파일이 만들어지지 않음 |
 | OS-FR-05 | 0600 파일을 WriteFile 로 덮어써도 0600 유지 |
-| OS-FR-08 | 디렉터리를 가리키는 링크 → `IsDir=true`, 깨진 링크 → 포함·`IsDir=false` |
+| OS-FR-08 | 디렉터리를 가리키는 링크 → `IsDir=true`·`Symlink=true`, 깨진 링크 → 포함·`IsDir=false`·`Symlink=true`, 일반 파일·디렉터리 → `Symlink=false` |
 | OS-FR-11 | 취소·Timeout 뒤 백그라운드 자식 pid 가 죽고 `waitDelay` 전에 반환. 파이프를 잡은 백그라운드 자식(`sleep 3 &`)이 있어도 `waitDelay` 뒤 종료 코드 0 으로 반환 |
 | OS-FR-10 | Dir 비면 Cwd 에서 실행(`pwd`), stdin 이 비어 있음(`cat` 즉시 종료) |
 | OS-FR-12 | `kill -TERM $$` → 143, 취소 → `context.Canceled`, 없는 Dir → error, 없는 셸(`New(dir, "/nonexistent")`) → error |
@@ -113,5 +113,6 @@ func New(cwd, shell string) (*Env, error)
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.3 | `ListDir` 항목에 링크 여부 없음 | `Symlink` 채움 | R23 ③ |
 | 0.2 | `New(cwd)`, 셸 = `$SHELL`, 없으면 `/bin/sh` | `New(cwd, shell)`, 비면 `/bin/bash`, 환경변수를 보지 않음 | R21 |
 | 0.1 | `L3_ui/osenv` (R14) | `L2_harness/osenv` 별도 모듈 | 사용자: L2 부터 사용자 환경 위의 실제 에이전트 (R17), osenv 는 분리 모듈 |
