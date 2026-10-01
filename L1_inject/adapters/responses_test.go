@@ -79,13 +79,18 @@ func TestResponsesEndings(t *testing.T) {
 		name, final string
 		stop        contract.StopKind
 		class       contract.ErrorClass
+		msg         string
 	}{
-		{"completed text", `{"type":"response.completed","response":{"id":"r","status":"completed","usage":{"input_tokens":3,"output_tokens":1}}}`, contract.StopStop, ""},
-		{"incomplete length", `{"type":"response.incomplete","response":{"id":"r","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}`, contract.StopLength, ""},
-		{"incomplete filter", `{"type":"response.incomplete","response":{"id":"r","status":"incomplete","incomplete_details":{"reason":"content_filter"}}}`, contract.StopError, ""},
-		{"failed overflow", `{"type":"response.failed","response":{"id":"r","status":"failed","error":{"code":"context_length_exceeded","message":"too long"}}}`, "", contract.ClassOverflow},
-		{"failed rate", `{"type":"response.failed","response":{"id":"r","status":"failed","error":{"code":"rate_limit_exceeded","message":"slow"}}}`, "", contract.ClassRateLimit},
-		{"error event", `{"type":"error","code":"server_error","message":"boom"}`, "", contract.ClassUnknown},
+		{"completed text", `{"type":"response.completed","response":{"id":"r","status":"completed","usage":{"input_tokens":3,"output_tokens":1}}}`, contract.StopStop, "", ""},
+		{"incomplete length", `{"type":"response.incomplete","response":{"id":"r","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}`, contract.StopLength, "", ""},
+		{"incomplete filter", `{"type":"response.incomplete","response":{"id":"r","status":"incomplete","incomplete_details":{"reason":"content_filter"}}}`, contract.StopError, "", ""},
+		{"failed overflow", `{"type":"response.failed","response":{"id":"r","status":"failed","error":{"code":"context_length_exceeded","message":"too long"}}}`, "", contract.ClassOverflow, ""},
+		{"failed rate", `{"type":"response.failed","response":{"id":"r","status":"failed","error":{"code":"rate_limit_exceeded","message":"slow"}}}`, "", contract.ClassRateLimit, ""},
+		{"error event", `{"type":"error","code":"server_error","message":"boom"}`, "", contract.ClassUnknown, "boom"},
+		{"error event nested", `{"type":"error","error":{"type":"insufficient_quota","code":"credit_balance_exhausted","message":"no credits"},"sequence_number":2}`, "", contract.ClassUnknown, "no credits"},
+		{"error event nested type", `{"type":"error","error":{"type":"authentication_error","code":"invalid_api_key","message":"bad key"}}`, "", contract.ClassAuth, "bad key"},
+		{"error event nested code", `{"type":"error","error":{"type":"invalid_request","code":"context_length_exceeded","message":"long"}}`, "", contract.ClassOverflow, "long"},
+		{"error event nested rate", `{"type":"error","error":{"type":"rate_limit_error","code":"rate_limit_exceeded","message":"slow down"}}`, "", contract.ClassRateLimit, "slow down"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -93,7 +98,7 @@ func TestResponsesEndings(t *testing.T) {
 			f.sseText("/responses", respText(c.final))
 			evs := collect(t, client(t, f, "openai", ""), simple("openai", "gpt-5"))
 			if c.class != "" {
-				if ce := failed(t, evs); ce.Class != c.class {
+				if ce := failed(t, evs); ce.Class != c.class || c.msg != "" && ce.Message != c.msg {
 					t.Fatalf("class %+v", ce)
 				}
 				return

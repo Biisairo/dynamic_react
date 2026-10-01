@@ -144,7 +144,12 @@ type responsesEvent struct {
 	Delta       string        `json:"delta"`
 	Code        string        `json:"code"`
 	Message     string        `json:"message"`
-	Response    struct {
+	Error       struct {
+		Type    string `json:"type"`
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+	Response struct {
 		ID                string `json:"id"`
 		IncompleteDetails struct {
 			Reason string `json:"reason"`
@@ -241,7 +246,11 @@ func (responsesDialect) parse(r io.Reader, s *stream) error {
 			s.fail(classifyStreamError(e.Response.Error.Code, e.Response.Error.Message, s.secrets))
 			return false
 		case "error":
-			s.fail(classifyStreamError(e.Code, e.Message, s.secrets))
+			kind, msg := e.Code, e.Message
+			if e.Error.Message != "" || e.Error.Code != "" || e.Error.Type != "" {
+				kind, msg = e.Error.Type+" "+e.Error.Code, e.Error.Message
+			}
+			s.fail(classifyStreamError(kind, msg, s.secrets))
 			return false
 		}
 		return !s.ended
