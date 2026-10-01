@@ -1,8 +1,8 @@
 # agent — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.5 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18, R20, R21)
+- 버전: 0.6 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18, R20, R21, R22)
 - 의존 명세: `L2_harness/SPEC.md`, `L2_harness/osenv/SPEC.md`, `L1_inject/adapters/SPEC.md`, `L1_inject/sets/SPEC.md` (설정 JSON)
 - 사용하는 쪽: `L3_ui/cmd/dr-print`, 이후 L3 surfaces
 
@@ -14,8 +14,8 @@
 사용자 환경 위에서 바로 도는 **완성된 에이전트**다 (R17). 설정 파일·키 파일을 해석하고 (환경변수는 읽지 않는다, R21), `osenv`(OS Env)와 `adapters`(ModelCaller)를 만들어 `harness.New` 에 넣는다. L3 는 이 모듈만 쓰고 입출력만 한다.
 
 ### 1.2 범위
-- 포함 (모듈 `L2_harness/agent`, 패키지 `agent`): 설정 파일 읽기·검증, `-model` 덮어쓰기, sessionDir 해석, API 키 존재 확인, 조립, run 시작. **surface 공통 계층** (R18): 도구 세트 상한, 승인 규칙·Approver, Abort·Steer·FollowUp, 이벤트, 세션 키·목록, 세션 잠금, surface 콜백 panic 격리 — 3.4~3.9. 히스토리 조회·수동 압축 — 3.10~3.11 (impl-04). 모델 선택 — 3.12 (R20). API 키 파일 읽기·저장 — 3.13 (R21)
-- 제외: 터미널 입출력·시그널·종료 코드 (L3), 시스템 프롬프트 편집 (R16)
+- 포함 (모듈 `L2_harness/agent`, 패키지 `agent`): 설정 파일 읽기·검증, `-model` 덮어쓰기, sessionDir 해석, API 키 존재 확인, 조립, run 시작. **surface 공통 계층** (R18): 도구 세트 상한, 승인 규칙·Approver, Abort·Steer·FollowUp, 이벤트, 세션 키·목록, 세션 잠금, surface 콜백 panic 격리 — 3.4~3.9. 히스토리 조회·수동 압축 — 3.10~3.11 (impl-04). 모델 선택 — 3.12 (R20). API 키 파일 읽기·저장 — 3.13 (R21). 주입(세트·부품을 바꾸는 Go 함수) — 3.14 (R22)
+- 제외: 터미널 입출력·시그널·종료 코드 (L3), 설정 파일로 시스템 프롬프트를 고치거나 세트를 고르기 (R16, R22), 실행 중 세트·부품 교체 (R22 비목표)
 
 ### 1.3 참조
 
@@ -40,7 +40,8 @@
             │              └─ "shellPath"
             │ auth.json ── 키 → APIKey
             ├─ osenv.New(cwd, shell)
-            └─ harness.New(Options{Env, Model, SessionDir, Observer})
+            └─ harness.New(Options{Env, Model: ModelCaller(adapters), SessionDir, OnEvent, Gate,
+                                   Sets, ToolSet, System, Summarizer, Store})   // 3.14
        ── Agent.Start(ctx, sessionID, input) → *core.Run
 ```
 
@@ -100,9 +101,9 @@ func (a *Agent) SessionDir() string
 
 | id | 요구사항 |
 |---|---|
-| AG-FR-09 | `New` 순서: Cwd → `osenv.New` → 설정 파일(AG-FR-01~05) → 셸(AG-FR-06) → 키 파일(AG-FR-36) → sessionDir(AG-FR-07) → `adapters.New(Options{APIKey, Config, NoRemoteCatalog})` → 모델 문제 확인(AG-FR-08) → `harness.New(ctx, harness.Options{Env, Model, SessionDir, Observer})`. 어느 단계든 실패하면 에러 (앞 단계 이름을 접두어로: `agent: config: …`) |
+| AG-FR-09 | `New` 순서: Cwd → `osenv.New` → 설정 파일(AG-FR-01~05) → 셸(AG-FR-06) → 키 파일(AG-FR-36) → sessionDir(AG-FR-07) → `adapters.New(Options{APIKey, Config, NoRemoteCatalog})` → 모델 문제 확인(AG-FR-08) → 승인 규칙(AG-FR-12) → `harness.New(ctx, harness.Options{Env, Model: AG-FR-41 의 caller, SessionDir, OnEvent, Gate, Sets, ToolSet, System, Summarizer, Store})` → 도구 상한(AG-FR-21). 어느 단계든 실패하면 에러 (앞 단계 이름을 접두어로: `agent: config: …`) |
 | AG-FR-10 | 모델 문제가 있으면 `Start` 는 run 없이 그 에러를 돌려준다 (잠금도 잡지 않음). 아니면 `Start` = `harness.Agent.Start(ctx, RunRequest{SessionID, Input, Config: AG-FR-04 의 raw})` 를 3.6 의 `*Run` 으로 감싸 돌려준다. 쓰인 sessionID 는 `Run.SessionID()` |
-| AG-FR-11 | `Harness()` 는 조립된 `*harness.Agent` (System·Tools 조회용), `SessionDir()` 은 AG-FR-07 의 결과 |
+| AG-FR-11 | `Harness()` 는 조립된 `*harness.Agent` (System·Tools·Store 조회용), `SessionDir()` 은 AG-FR-07 의 결과 |
 
 ### 3.4 승인 규칙 (R18 ②)
 
@@ -114,7 +115,7 @@ func (a *Agent) SessionDir() string
 |---|---|
 | AG-FR-12 | 규칙 출처는 셋이고 목록을 이어 붙인다: 사용자 설정(3.1)의 `permissions`, **프로젝트 설정** `<cwd>/.dynamic_react/config.json` 의 `permissions`(allow 포함, 파일이 없으면 무시, 최상위 키는 `permissions` 만 — 다른 키는 에러), `Options.Permissions`(surface 프로필). `permissions` 의 키는 `allow`·`ask`·`deny` 뿐이다 |
 | AG-FR-13 | 규칙 문법: `name` 또는 `name(pattern)`. name 은 도구 이름, pattern 은 비어 있지 않은 문자열(괄호 안 전체). 패턴 규칙은 `bash`·`read`·`write`·`edit` 에만 쓸 수 있다. 문법이 틀리거나 다른 도구에 패턴을 쓰면 `New` 에러 |
-| AG-FR-14 | 대상: `bash` = 인자 `command`. `read`·`write`·`edit` = 인자 `path` 를 도구와 같은 규칙(HN-FR-05: 상대 = cwd 기준, `~` = home)으로 절대 경로로 바꾼 것. 패턴도 같은 규칙으로 절대 경로로 바꾼다 |
+| AG-FR-14 | 대상: `bash` = 인자 `command`. `read`·`write`·`edit` = 인자 `path` 를 도구와 같은 규칙(HN-FR-05: 상대 = cwd 기준, `~` = home)으로 절대 경로로 바꾼 것. 패턴도 같은 규칙으로 절대 경로로 바꾼다. 같은 이름을 `ToolSet` 으로 바꾼 도구(AG-FR-43)도 같은 인자에서 꺼낸다 — 인자가 없으면 대상은 "" 이고 그 도구의 패턴 규칙(deny 포함)은 맞지 않는다. 이름 규칙은 맞는다 |
 | AG-FR-15 | 매칭: `bash` 패턴은 전체 문자열 일치이고 `*` 는 임의의 문자열(빈 문자열 포함)이다. 경로 패턴은 glob — `*` 는 `/` 를 넘지 않는 임의 문자열, `**` 는 0개 이상의 경로 단계. 이름 규칙은 그 도구의 모든 호출에 맞는다 |
 | AG-FR-16 | **복합 명령 방어**: `*` 가 든 `bash` allow 규칙은 command 에 `;` `&&` `\|\|` `\|` 백틱 `$(` 줄바꿈 중 하나라도 있으면 맞지 않는다. `*` 없는 allow 규칙(정확 일치)과 deny·ask 규칙에는 적용하지 않는다 (사용자가 그 문자열 전체를 적었으므로) |
 | AG-FR-17 | 평가: deny 에 맞으면 거부 → 이 세션에서 `allow_session` 으로 허용한 대상(AG-FR-19)이면 허용 → ask 에 맞으면 묻기 → allow 에 맞으면 허용 → 어디에도 안 맞으면 묻기. (allow_session 이 ask 보다 먼저인 이유: ask 규칙에 걸린 대상을 "세션 동안 허용" 해도 다시 묻는다면 그 답이 의미가 없다) |
@@ -126,7 +127,7 @@ func (a *Agent) SessionDir() string
 
 | id | 요구사항 |
 |---|---|
-| AG-FR-21 | `Options.Tools` 가 nil 이 아니면 **상한**이다: 실제 도구 = `Options.Tools` ∩ (설정 `agent.tools`, 비면 레지스트리 전부). 합친 목록을 `agent.tools` 에 써서 sets 에 넘긴다. `Options.Tools` 에 레지스트리에 없는 이름이 있거나 교집합이 비면 `New` 에러 (sets 는 빈 tools 를 "전부" 로 해석하므로 빈 결과를 넘기면 오히려 모든 도구가 켜진다) |
+| AG-FR-21 | `Options.Tools` 가 nil 이 아니면 **상한**이다: 실제 도구 = `Options.Tools` ∩ (설정 `agent.tools`, 비면 레지스트리 전부). 레지스트리는 `ToolSet` 적용 뒤의 것이다 (AG-FR-43). 합친 목록을 `agent.tools` 에 써서 sets 에 넘긴다. `Options.Tools` 에 레지스트리에 없는 이름이 있거나 교집합이 비면 `New` 에러 (sets 는 빈 tools 를 "전부" 로 해석하므로 빈 결과를 넘기면 오히려 모든 도구가 켜진다) |
 
 ### 3.6 run 제어 (R18 ③⑥⑦)
 
@@ -174,7 +175,7 @@ type SessionInfo struct {
 | id | 요구사항 |
 |---|---|
 | AG-FR-28 | `SessionKey(key)` = `"k-"` + sha256(key) 의 앞 16 hex. 같은 키는 항상 같은 ID 이고 `session.CheckID` 를 통과한다. 키 구성(채널·스레드·사용자)은 surface 가 정한다 |
-| AG-FR-29 | `Sessions`: sessionDir 의 `*.jsonl` 을 읽어 `SessionInfo` 를 만든다. Updated 내림차순. sessionDir 이 없으면 빈 목록. 읽을 수 없거나 깨진 파일은 건너뛴다. 편집(압축)과 무관하게 파일의 message 줄 기준이다 |
+| AG-FR-29 | `Sessions`: harness 의 저장소(`Harness().Store()`, HN-FR-40)의 `List` 로 ID 를 얻고 각각 `Load` 해 `SessionInfo` 를 만든다. Updated 내림차순. `List` 에러는 에러 (기본 저장소는 sessionDir 이 없으면 빈 목록, HN-FR-37). `Load` 에 실패한 세션(기본 저장소: 읽을 수 없거나 깨진 파일)은 건너뛴다. 편집(압축)과 무관하게 저장된 원본 메시지 기준이다 |
 
 ### 3.9 Options 추가
 
@@ -212,7 +213,7 @@ type History struct {
 
 | id | 요구사항 |
 |---|---|
-| AG-FR-30 | `History`: sessionID 가 `session.CheckID` 를 통과하지 않으면 에러. 세션 Store 의 `Load` 결과에 `sets.ApplyEdits(Messages, Edits)` 를 적용한 투영에서 **원본 Messages 에 있는 ID 의 메시지만** 남긴다 (편집으로 들어온 메시지 — 압축 요약 — 는 뺀다). `Omitted` = 원본 메시지 수 − 남은 메시지 수. 파일이 없으면 빈 결과, 깨진 파일은 에러. 세션 잠금을 잡지 않는다 (읽기 전용, 실행 중인 세션도 읽음) |
+| AG-FR-30 | `History`: sessionID 가 `session.CheckID` 를 통과하지 않으면 에러. harness 의 저장소(`Harness().Store()`, HN-FR-40)의 `Load` 결과에 `sets.ApplyEdits(Messages, Edits)` 를 적용한 투영에서 **원본 Messages 에 있는 ID 의 메시지만** 남긴다 (편집으로 들어온 메시지 — 압축 요약 — 는 뺀다). `Omitted` = 원본 메시지 수 − 남은 메시지 수. 저장되지 않은 세션은 빈 결과, `Load` 에러는 에러 (기본 저장소: 깨진 파일). 세션 잠금을 잡지 않는다 (읽기 전용, 실행 중인 세션도 읽음) |
 
 ### 3.11 수동 압축 (impl-04 ⑦)
 
@@ -265,7 +266,26 @@ func (a *Agent) RemoveKey(ctx context.Context, provider string) error
 | AG-FR-38 | `RemoveKey(ctx, provider)`: 키 파일에 그 provider 항목이 없으면 에러 `no stored API key for "<name>"`. 있으면 그 항목만 지우고 AG-FR-37 과 같은 방식으로 쓰고, 성공하면 메모리의 키를 지운다 |
 | AG-FR-39 | `Providers()`: adapters `Client.Providers()` 순서대로 Name·RequiresKey·HasKey |
 
-### 3.13 비기능
+### 3.14 주입 (R22)
+
+```go
+// Options 추가. 모두 nil = 지금 동작. 기본값을 받아 바꾼 값을 돌려준다.
+Sets        func(d sets.Deps) []inject.FunctionSet        // → harness.Options.Sets
+ToolSet     func(def []sets.Tool) []sets.Tool             // → harness.Options.ToolSet
+System      func(def []contract.Block) []contract.Block   // → harness.Options.System
+Summarizer  func(def sets.Summarizer) sets.Summarizer     // → harness.Options.Summarizer
+Store       func(def harness.Store) harness.Store         // → harness.Options.Store
+ModelCaller func(def sets.ModelCaller) sets.ModelCaller   // AG-FR-41
+```
+
+| id | 요구사항 |
+|---|---|
+| AG-FR-40 | `Sets`·`ToolSet`·`System`·`Summarizer`·`Store` 는 harness 의 같은 이름 필드로 그대로 넘긴다. 의미·순서·nil 결과는 HN-FR-38~42 를 따른다. harness 의 에러는 `agent: ` 접두어로 돌려준다 |
+| AG-FR-41 | `ModelCaller`: def = adapters Client. 결과를 `harness.Options.Model` 로 넘긴다 — run 의 모델 호출과 자동·수동 압축의 요약 호출이 이것을 거친다. nil 결과는 `New` 에러 `agent: ModelCaller returned nil`. 모델 목록·provider 프로필·키 확인(AG-FR-08, 32~34, 39)은 adapters Client 그대로 쓴다 |
+| AG-FR-42 | 승인과의 관계 (HN-FR-41): 승인 규칙·Approver·Steer 의 skip(AG-FR-17~20, 24)은 Gate 이므로 사용자 세트와 무관하게 유지된다. base 기본 검사를 빼는 것은 사용자 책임이다. Steer 의 skip 판단은 base 공개 상태 `inbox.consumed` 를 읽으므로, 이름이 `base` 인 세트가 그 상태를 갱신하지 않으면 Steer 뒤의 도구 호출이 계속 skipped 된다 |
+| AG-FR-43 | 도구: 도구 상한(AG-FR-21)·설정 `agent.tools`·이름 규칙(AG-FR-13·15)은 `ToolSet` 적용 뒤의 registry 를 기준으로 한다 — 추가한 도구도 상한·규칙의 대상이다. 패턴 규칙은 계속 `bash`·`read`·`write`·`edit` 이름에만 쓴다 (AG-FR-13, 추가 도구에 패턴 → `New` 에러). 패턴 비교 값은 AG-FR-14 |
+
+### 3.15 비기능
 
 | id | 요구사항 |
 |---|---|
@@ -298,6 +318,7 @@ func (a *Agent) RemoveKey(ctx context.Context, provider string) error
 | AG-FR-30 | 압축된 세션 → 요약 메시지 없음·Omitted = 대체된 원본 수·나머지 순서, hide 편집, 편집 없는 세션 = 원본 전부, 없는 파일 → 빈 결과, 깨진 파일·잘못된 ID → 에러, 실행 중인 세션도 읽음 |
 | AG-FR-32~35 | 모델 없음 → New 성공·Model() ErrNoModel·Start ErrNoModel(잠금 없음), 모르는 provider·키 없음 → New 성공·같은 문제, Models 는 키 없는 provider 의 모델을 뺌·키 불필요/키 있는 것·설정 모델 포함, SetModel: 형식 틀림·모르는 provider·키 없음 → 에러·파일 그대로, 성공 → 파일의 agent.model 갱신·다른 키 보존·파일 없으면 생성·다음 Start 요청의 모델·Options.Model 보다 이김, 쓰기 실패 → 에러·모델 그대로, -race 동시 호출 |
 | AG-FR-36~39 | 키 파일 없음 → 빈 키, 깨진 JSON·뒤따르는 데이터·모르는 키·type oauth·key 숫자 → New 에러(문구에 키 값 없음), 모르는 provider 항목 보존. SetKey: 모르는 provider·빈 키(공백만) → 에러·파일 그대로, 성공 → 파일 0600·디렉터리 0700(새로 만들 때)·다른 항목 원문 보존·앞뒤 공백 잘림·다음 Start 요청의 인증 헤더·Model() 문제 해소. RemoveKey: 없는 항목 → 에러, 성공 → 항목만 삭제·Model() ErrNoAPIKey. 쓰기 실패(디렉터리 쓰기 불가) → 에러·키 그대로. Providers 순서·HasKey. -race 동시 호출 |
+| AG-FR-40~43 | httptest 서버 종단: `Sets` 로 덧붙인 `context.inject` 메시지가 서버가 받은 요청에 있음, `tool.before` 를 덮어도 deny 규칙·Approver 결과가 모델에 전달됨, `ToolSet` 추가 도구가 요청 tools 에 있고 상한·`agent.tools`·이름 deny 규칙이 적용됨·추가 도구 패턴 규칙 → New 에러, `bash` 를 `command` 없는 도구로 바꾸면 `bash(rm *)` deny 가 맞지 않고 `bash` 이름 deny 는 맞음, `System` 결과가 요청 system, `Summarizer` 감싸기가 `Compact` 에 쓰임, `Store` 로 바꾼 저장소가 `Sessions`·`History` 에 쓰임(파일이 없어도 목록에 나옴), `ModelCaller` 감싸기가 run 요청을 거침·nil → New 에러, 모든 nil = 기존 테스트 그대로 |
 | AG-FR-31 | 긴 세션(작은 keepRecentTokens) → true·세션 파일에 edit 줄 하나·다음 run 요청에 요약 메시지·edit 줄 중복 없음, 짧은 세션 → false, 실행 중인 세션 → ErrSessionBusy, 빈 ID → 에러, compaction 이벤트 start/end |
 
 ---
@@ -311,6 +332,7 @@ func (a *Agent) RemoveKey(ctx context.Context, provider string) error
 | AD-C1, C2 | AG-C1, AG-FR-08 |
 | HN-FR-15 | AG-FR-07 |
 | HN-FR-27 | AG-FR-04, 10 |
+| R22, HN-FR-38~42 | 1.2, 2.1, AG-FR-09, 11, 14, 21, 29, 30, 3.14 (AG-FR-40~43) |
 
 ---
 
@@ -324,6 +346,9 @@ func (a *Agent) RemoveKey(ctx context.Context, provider string) error
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.6 | 외부 함수를 끼울 통로 없음 (`harness.Options` 의 Extra·Tools 를 받지도 넘기지도 않음) | `Sets`·`ToolSet`·`System`·`Summarizer`·`Store`·`ModelCaller` (3.14) | R22: core 외 전부 튜닝 |
+| 0.6 | `History`·`Sessions` 가 `session.New` 로 sessionDir 의 파일을 직접 읽음 | harness 의 저장소(`Harness().Store()`)의 `Load`·`List` 를 거침 (기본 저장소면 결과 같음) | R22 ③: 저장소를 바꿨을 때 목록·이력이 어긋나지 않게 |
+| 0.6 | 절 번호 중복 (3.13 API 키, 3.13 비기능) | 3.14 주입, 3.15 비기능 | 번호 정정 |
 | 0.1 | 설정·env 해석, ModelCaller 생성은 L3 (R14) | `L2_harness/agent` | R17 |
 | 0.5 | 키 = 환경변수(`Options.Getenv`, 프로필 `APIKeyEnv`), sessionDir 에 `DR_SESSION_DIR`, 셸 `$SHELL`(없으면 `/bin/sh`), `Models` 에 KeyEnv·KeyMissing | 키 = auth.json(`SetKey`·`RemoveKey`·`Providers`, 3.13), sessionDir = 설정만, 셸 = 설정 `shellPath`(없으면 `/bin/bash`), `Models` 는 쓸 수 있는 모델만, `Options.Getenv` 삭제, `ErrNoAPIKey` | R21 |
 | 0.4 | 모델 없음·모르는 provider·키 없음 → `New` 에러 | `New` 성공, 모델 문제는 `Model()`·`Start` 에러. `Models`·`SetModel`(설정 파일 저장) | R20: 설정이 없어도 실행되고 앱 안에서 고른다 |

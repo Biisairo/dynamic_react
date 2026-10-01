@@ -1,8 +1,8 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.9 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18)
+- 버전: 1.0 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
@@ -21,11 +21,13 @@ L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로**
   - 시스템 프롬프트 조립: 기본 문안, 대체·덧붙임, `AGENTS.md`·`CLAUDE.md` 탐색, 스킬 목록 (Env.FileSystem 으로 읽음) — 3.4
   - 요약기 (`sets.Summarizer`, pi 요약 프롬프트, ModelCaller 로 호출) — 3.5
   - 조립: `harness.New(Options)` → `Agent.Start` → `*core.Run` — 3.6
+  - 주입: 함수 세트 목록과 부품(도구·저장소·시스템 프롬프트·요약기)을 생성 시점에 바꾸는 함수 — 3.6c (R22)
 - 제외 — 같은 L2 의 다른 모듈 (R17):
   - `Env` 의 OS 구현 (`os`·`os/exec`, 프로세스 그룹 kill, 임시 파일) → `L2_harness/osenv`
   - `ModelCaller` 생성 (adapters.Client, API 키 파일), 설정 파일·키 파일 해석 → `L2_harness/agent`
 - 제외 — L3 (R17): 터미널 입출력, 스트리밍 표시, 사용자 이미지 첨부 읽기, 시그널, 종료 코드, 검증용 CLI `L3_ui/cmd/dr-print`
 - 제외 — 다음 단계: 권한 승인, 서브에이전트, MCP, 병렬 도구 스케줄러 (sets 1.2 와 같음)
+- 제외 — R22 비목표: 설정 파일로 세트 고르기, 실행 중(run 도중·run 사이) 세트·부품 교체
 
 위 레이어가 쓰는 통로: 스트림·생명주기 = `core.Observer`, 사용자 입력(텍스트·이미지) = `contract.Message`, follow-up = `core.Run.Input`.
 
@@ -53,10 +55,10 @@ L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로**
  L3_ui ── agent ── terminal / stream display (core.Observer) / image files -> contract.Message
         │ harness.Options{Env, Model, SessionDir, ...}
         ▼
- harness.New ── tools.All(env) ── session.New(env, dir) ── prompt.Build(...) ── summary.New(model)
-        │        └────────────────── sets.Deps ─────────────────────┘
+ harness.New ── ToolSet(tools.All(env)) ── Store(session.New(env, dir)) ── System(prompt.Build(...)) ── Summarizer(summary.New(model))
+        │        └──────────────────────────── sets.Deps ──────────────────────────────┘
         ▼
- inject.BindWith(StateStore: sets.StateStoreOf(store), sets.Base, sets.Resilient, Extra...)
+ inject.BindWith(StateStore: sets.StateStoreOf(store), Sets(deps)...)   // Sets nil → DefaultSets = sets.Base, sets.Resilient
         ▼
  core.New(dispatcher, core.Options{Observer}) ── Agent.Start(ctx, RunRequest) -> *core.Run
 ```
@@ -140,12 +142,13 @@ type Env interface {
 | HN-FR-14 | sessionID 는 `[A-Za-z0-9._-]{1,128}` 이고 `.`·`..` 가 아니어야 한다. 어기면 에러 (경로 탈출 방지). `session.NewID(now, rand)` 는 `20060102-150405-<8 hex>` 형식 |
 | HN-FR-15 | `session.DefaultDir(home string) string` = `<home>/.dynamic_react/sessions`. 순수 함수이고 환경변수를 보지 않는다 (R21) |
 | HN-FR-16 | 동시 사용에 안전하다 (같은 Store 값). 프로세스 간 동시 쓰기는 보장하지 않는다 |
+| HN-FR-37 | `(*Store).List(ctx) ([]string, error)` (R22, `harness.Store` 구현): dir 의 항목 중 디렉터리가 아니고 이름이 `<id>.jsonl` 이며 id 가 `CheckID` 를 통과하는 것의 id 를 이름순으로 돌려준다. dir 이 없으면 빈 목록(nil, 에러 없음), 그 밖의 `ListDir` 에러는 에러 |
 
 ### 3.4 시스템 프롬프트 (`harness/prompt`)
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-17 | `prompt.Build(Input) []contract.Block` 은 text 블록 하나. 순서: preamble(기본 문안) → `<tools>` 도구 한 줄 설명 → `<rules>` → `<project_context>`(컨텍스트 파일, 있으면) → `<skills>`(있으면, `read` 도구가 있을 때) → `<cwd>`. 절은 빈 줄로 잇는다. 편집 수단을 두지 않는다 — 다른 프롬프트가 필요한 개발자는 `sets.Deps.System` 을 직접 구성한다 (R16) |
+| HN-FR-17 | `prompt.Build(Input) []contract.Block` 은 text 블록 하나. 순서: preamble(기본 문안) → `<tools>` 도구 한 줄 설명 → `<rules>` → `<project_context>`(컨텍스트 파일, 있으면) → `<skills>`(있으면, `read` 도구가 있을 때) → `<cwd>`. 절은 빈 줄로 잇는다. 편집 수단을 두지 않는다 — 다른 프롬프트가 필요한 개발자는 `Options.System` 으로 바꾼다 (R16, HN-FR-38) |
 | HN-FR-18 | 기본 문안은 코드 상수 `prompt.DefaultPreamble` 이고 내용은 부록 A 다 (사용자 확정). 이 환경의 동작(cwd·경로 해석, 출력 절단과 이어 읽기, edit 규칙, aborted 결과, 압축 요약, project_context)을 모델에 알린다 |
 | HN-FR-19 | `prompt.ContextFiles(ctx, fs, cwd)`: cwd 부터 상위로 git 루트(`.git` 이 있는 디렉터리, 없으면 `/`)까지 `AGENTS.md`, `CLAUDE.md` 를 모아 **루트 쪽부터** `[]File{Path, Content}` 로. 한 디렉터리에 둘 다 있으면 `AGENTS.md` 먼저 |
 | HN-FR-20 | `prompt.Skills(ctx, fs, cwd, home)`: `<home>/.agents/skills`, `<cwd>/.agents/skills`, `<home>/.claude/skills`, `<cwd>/.claude/skills` 순서로 `*/SKILL.md` frontmatter(`name`, `description`)를 모은다. 본문은 넣지 않는다 (모델이 `read` 로 읽음). 같은 이름은 먼저 찾은 것이 이긴다. frontmatter 가 없거나 깨진 파일, 없는 디렉터리는 건너뛴다. home 이 ""면 home 경로는 건너뛴다 |
@@ -167,8 +170,11 @@ type Options struct {
     Env        Env                   // 필수
     Model      sets.ModelCaller      // 필수
     SessionDir string                // 필수, 절대 경로
-    Tools      []sets.Tool           // 추가·교체 (같은 이름은 덮음)
-    Extra      []inject.FunctionSet  // base·resilient 위에 겹칠 세트
+    ToolSet    func(def []sets.Tool) []sets.Tool             // HN-FR-38, nil → def
+    Sets       func(d sets.Deps) []inject.FunctionSet        // HN-FR-38, nil → DefaultSets(d)
+    System     func(def []contract.Block) []contract.Block   // HN-FR-38, nil → def
+    Summarizer func(def sets.Summarizer) sets.Summarizer     // HN-FR-38, nil → def
+    Store      func(def Store) Store                         // HN-FR-38, nil → def
     Observer   core.Observer
     Core       core.Options          // Observer 는 위 필드가 이긴다
     Now        func() time.Time      // nil → time.Now
@@ -184,10 +190,10 @@ type RunRequest struct {
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-26 | `harness.New(ctx, Options) (*Agent, error)`: 레지스트리(`tools.All(env)` + `Options.Tools`), 세션 Store, 요약기, 시스템 프롬프트(`ContextFiles`·`Skills` 포함)를 한 번 만들고 `inject.BindWith(sets.StateStoreOf(store), sets.Base(deps), sets.Resilient(deps), Extra...)` 로 Dispatcher 를 만든다. Env·Model·SessionDir 누락, Bind 실패, 프롬프트 수집의 Env 에러(없는 파일 제외)는 에러 |
+| HN-FR-26 | `harness.New(ctx, Options) (*Agent, error)`: 레지스트리, 세션 Store, 시스템 프롬프트(`ContextFiles`·`Skills` 포함), 요약기를 HN-FR-38 의 순서로 한 번 만들고 `inject.BindWith(sets.StateStoreOf(store), Sets(deps)...)` 로 Dispatcher 를 만든다. Env·Model·SessionDir 누락, Bind 실패, 프롬프트 수집의 Env 에러(없는 파일 제외), HN-FR-38 의 nil 결과 에러는 에러 |
 | HN-FR-27 | `Agent.Start(ctx, RunRequest) (*core.Run, string, error)`: Config 를 `sets.ParseConfig` 로 검사하고(실패하면 run 없이 에러), sessionID 를 검사·생성해 run 을 시작한다. 두 번째 반환값은 쓰인 sessionID. `RunRequest.Observer` 가 있으면 그 run 만 그 Observer 로 도는 Kernel(같은 Dispatcher)에서 시작한다 — core 의 RunID 는 내부에서 만들어지고 Observer 이벤트에 세션이 없으므로, run 별 Observer 가 panic 을 그 run 에 귀속시키는 유일한 방법이다 |
 | HN-FR-28 | 여러 run 을 동시에 시작할 수 있다 (세션이 다르면 독립). 같은 세션의 동시 run 은 보장하지 않는다 |
-| HN-FR-29 | `Agent.System() []contract.Block`, `Agent.Tools() sets.ToolRegistry` 로 조립 결과를 조회할 수 있다 (L3 표시용) |
+| HN-FR-29 | `Agent.System() []contract.Block`, `Agent.Tools() sets.ToolRegistry`, `Agent.Store() Store` 로 조립 결과를 조회할 수 있다 (L3 표시용, Store 는 agent 의 목록·이력용, R22) |
 
 ### 3.6a surface 훅 (R18)
 
@@ -236,7 +242,7 @@ type Approval struct {
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-30 | `Gate`: `tool.before` 에서 base 검사(없는 도구·스키마 불일치, ST-FR-38)를 통과한 호출마다 부른다. nil 이 아닌 결과를 돌려주면 그것이 ShortCircuit 결과가 된다(CallID 는 harness 가 채움). ctx 는 dispatch 의 ctx 다 (취소를 따름) |
+| HN-FR-30 | `Gate`: 실제로 쓰이는 `tool.before`(nil 이 아닌 마지막 함수, 기본은 base)가 에러·ShortCircuit 없이 돌려준 호출마다 부른다 — 기본 세트면 base 검사(없는 도구·스키마 불일치, ST-FR-38)를 통과한 호출이다 (사용자 세트와의 관계는 HN-FR-41). nil 이 아닌 결과를 돌려주면 그것이 ShortCircuit 결과가 된다(CallID 는 harness 가 채움). ctx 는 dispatch 의 ctx 다 (취소를 따름). `GateInput.InboxConsumed` 는 이름이 `base` 인 세트 네임스페이스의 공개 상태 `inbox.consumed` 이고, 없으면 0 이다 |
 | HN-FR-31 | 이벤트 종류와 생성 지점. `OnEvent` 가 nil 이면 감싸지 않는다 |
 
 | Kind | 생성 지점 | 채우는 필드 |
@@ -268,7 +274,30 @@ func (a *Agent) Compact(ctx context.Context, sessionID string, config json.RawMe
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-36 | `Compact`: run 밖에서 세션 하나를 즉시 압축한다. 순서: config 를 `sets.ParseConfig`(실패 = 에러) → `session.CheckID`(실패 = 에러) → Store `Load` → 투영 `sets.ApplyEdits(Messages, Edits)` → 모델 정보 `Model.Lookup(cfg.Model)`(없으면 Ref 만 있는 ModelInfo, ContextWindow 0) → `sets.Compact(ctx, 요약기, Ref, 투영, cfg.Compaction.KeepRecentTokens, sets.ReserveTokens(cfg, ContextWindow), MaxOutputTokens, Now(), NewID(), NewID())`. ok 면 Store `AppendEdits([edit])` 후 `(true, nil)`, 압축할 구간이 없으면 `(false, nil)`, 요약 실패·저장 실패는 에러. `cfg.Compaction.Enabled` 와 무관하다 (사용자가 명시적으로 요청). 요약기를 부를 때 `OnEvent` 로 `compaction` start/end 를 낸다 (RunID "", SessionID = 인자, HN-FR-34 직렬화). 그 콜백의 panic 은 recover 해 `core.ErrPanic` 을 감싼 에러로 돌려준다. 같은 세션의 run 과 겹치지 않게 하는 것은 호출자의 몫이다 (HN-FR-28, agent 는 세션 잠금 AG-FR-31). 다음 run 의 base 는 시작 때 저장된 편집 수를 Store 에서 다시 세므로(`BaseRunStart` 의 `edits.saved`) 편집이 중복 저장되지 않는다 |
+| HN-FR-36 | `Compact`: run 밖에서 세션 하나를 즉시 압축한다. 순서: config 를 `sets.ParseConfig`(실패 = 에러) → `session.CheckID`(실패 = 에러) → 요약기가 nil 이면(HN-FR-38 ④) 에러 `harness: compaction disabled: no summarizer` → Store(HN-FR-38 ②의 결과) `Load` → 투영 `sets.ApplyEdits(Messages, Edits)` → 모델 정보 `Model.Lookup(cfg.Model)`(없으면 Ref 만 있는 ModelInfo, ContextWindow 0) → `sets.Compact(ctx, 요약기, Ref, 투영, cfg.Compaction.KeepRecentTokens, sets.ReserveTokens(cfg, ContextWindow), MaxOutputTokens, Now(), NewID(), NewID())`. ok 면 Store `AppendEdits([edit])` 후 `(true, nil)`, 압축할 구간이 없으면 `(false, nil)`, 요약 실패·저장 실패는 에러. `cfg.Compaction.Enabled` 와 무관하다 (사용자가 명시적으로 요청). 요약기를 부를 때 `OnEvent` 로 `compaction` start/end 를 낸다 (RunID "", SessionID = 인자, HN-FR-34 직렬화). 그 콜백의 panic 은 recover 해 `core.ErrPanic` 을 감싼 에러로 돌려준다. 같은 세션의 run 과 겹치지 않게 하는 것은 호출자의 몫이다 (HN-FR-28, agent 는 세션 잠금 AG-FR-31). 다음 run 의 base 는 시작 때 저장된 편집 수를 Store 에서 다시 세므로(`BaseRunStart` 의 `edits.saved`) 편집이 중복 저장되지 않는다 |
+
+### 3.6c 주입 (R22)
+
+core(L0) 외의 모든 것을 생성 시점에 바꾼다. 부품은 **기본값을 받아 바꾼 값을 돌려주는 함수**이고 nil 이면 기본값 그대로다. 기본값을 받으므로 교체와 감싸기를 같은 방법으로 한다. 각 함수는 `New` 안에서 한 번만 부른다. 실행 중 교체는 하지 않는다 (비목표).
+
+```go
+// Store 는 세션 저장소다. 기본은 session.Store (3.3).
+type Store interface {
+    sets.Store
+    List(ctx context.Context) ([]string, error) // 저장된 세션 ID, 중복 없음, 순서 무관
+}
+
+func DefaultSets(d sets.Deps) []inject.FunctionSet // [sets.Base(d), sets.Resilient(d)]
+func (a *Agent) Store() Store
+```
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-38 | `New` 는 아래 순서로 만든다. ① 도구: def = `tools.All(Env)`. `ToolSet(def)` 의 결과를 순서대로 `sets.NewRegistry` 에 넣는다 (같은 이름은 뒤의 것이 앞의 자리를 덮음, ST-FR-41). 빈 결과는 허용한다 (도구 없는 에이전트) ② 저장소: def = `session.New(Env, SessionDir)` (SessionDir 은 여전히 필수). `Store(def)` 가 nil 이면 에러 `harness: Store returned nil` ③ 시스템 프롬프트: def = 3.4 의 조립(①의 registry 기준). `System(def)` 의 결과를 그대로 쓴다 (nil·빈 결과 = 시스템 프롬프트 없음, HN-C4 는 그대로) ④ 요약기: def = `summary.New(Model, Now)`. `Summarizer(def)` 가 nil 이면 압축을 끈다 (ST-FR-36, 수동 압축은 HN-FR-36 의 에러). `OnEvent` 가 있으면 nil 이 아닐 때만 compaction 이벤트로 감싼다 (3.6a) ⑤ 세트: `sets.Deps{Model, Tools: ①, Store: ②, System: ③, Summarizer: ④, Sleep, Now, NewID}` 로 `Sets(deps)` 를 부르고(nil → `DefaultSets(deps)`), 그 결과에 3.6a 래핑(HN-FR-41)을 한 뒤 `inject.BindWith(StateStore: sets.StateStoreOf(②))`. 빈 step·같은 이름 세트는 Bind 에러 그대로 (IN-FR-19, 22) |
+| HN-FR-39 | `DefaultSets(d)` = `[sets.Base(d), sets.Resilient(d)]`. 사용자는 이것에 덧붙이거나(겹치기), 원소를 고치거나(감싸기·교체), 쓰지 않는다(전부 교체) |
+| HN-FR-40 | `Store` 의 `List` 는 그 저장소에 저장된 세션 ID 를 돌려준다. `Load` 는 저장되지 않은 ID 에 빈 세션을 돌려준다 (`sets.Store` 와 같음). run·수동 압축·state 저장(`StateStoreOf`)·agent 의 목록과 이력(AG-FR-29·30)이 모두 이 하나의 저장소를 쓴다 |
+| HN-FR-41 | 사용자 세트와 surface 래핑: 3.6a 래핑은 `Sets` 결과에서 step 마다 실제로 쓰이는 함수를 그 세트 안에서 감싼다. 그래서 **승인(Gate)과 이벤트(OnEvent)는 사용자 세트가 무엇이든 유지된다.** base 의 기본 검사(ST-FR-38)는 base `tool.before` 의 일부다 — 사용자 세트가 `tool.before` 를 덮으면서 base 의 함수(`sets.BaseToolBefore(d)`)를 부르지 않으면 검사가 빠지고, Gate 는 검사 없이 그 호출에 불린다. 이것은 사용자의 책임이다. base 공개 상태 `inbox.consumed`(HN-FR-30)를 쓰는 기능(agent 의 Steer, AG-FR-24)은 이름이 `base` 인 세트가 그 상태를 갱신할 때만 맞게 동작한다 |
+| HN-FR-42 | `Agent.Store()` 는 HN-FR-38 ②의 결과다 |
 
 ### 3.7 비기능
 
@@ -293,6 +322,8 @@ func (a *Agent) Compact(ctx context.Context, sessionID string, config json.RawMe
 | HN-FR-30~34 | 가짜 ModelCaller·가짜 Env 로: Gate ShortCircuit 결과가 모델에 전달됨, Gate 는 base 검사 실패 호출에는 불리지 않음, 이벤트 순서(텍스트 턴·도구 턴·병렬 도구 2개·스트림 에러), message_update 의 누적본 = 앞 조각들의 합, tool_end 는 절단 뒤 결과, retry 의 Attempt·Delay, compaction start/end, run_end 가 마지막, bash progress 조각 합 = 전체 출력(UTF-8 경계), OnEvent 동시 호출 없음(-race), 콜백 panic → failed |
 | HN-FR-36 | 가짜 ModelCaller(요약 응답)·가짜 Env: 긴 세션 → true·edit 저장·이어서 Start 한 run 의 요청에 요약 메시지·세션 파일의 edit 줄이 하나, 짧은 세션·빈 세션 → false, 요약 실패 → 에러·저장 없음, 잘못된 config·ID → 에러, Enabled false 여도 압축, compaction 이벤트 start/end(RunID ""), OnEvent panic → ErrPanic 에러 |
 | HN-FR-26~29 | New 에러 경로, Start 설정 검사·sessionID 검사, 동시 run 2개 |
+| HN-FR-37 | 여러 세션 파일 + 디렉터리·다른 확장자·잘못된 ID 이름 → 맞는 id 만 이름순, 없는 dir → 빈 목록, ListDir 에러 → 에러 |
+| HN-FR-38~42 | 가짜 ModelCaller·가짜 Env 로: nil 함수 = 지금 동작(기존 테스트 그대로), `ToolSet` 추가 도구가 모델 요청의 tools 와 시스템 프롬프트에 들어감·기본 도구 제거·같은 이름 교체·빈 결과, `Store` 가 감싼 저장소에 run 의 메시지·state 가 기록됨·`Agent.Store()` 가 그것·nil 결과 → New 에러, `System` 결과가 요청의 System·nil 결과 → System 없음, `Summarizer` 감싸기가 압축에 쓰임·nil 결과 → 압축 없음·`Compact` 에러, `Sets` 로 덧붙인 세트의 `context.inject` 가 요청에 들어감·base 를 빼면 Bind 에러(빈 step)·같은 이름 → Bind 에러, `Sets` 결과의 `tool.before` 를 덮어도 Gate 결과가 모델에 전달되고 tool_start/end 이벤트가 옴, base 를 부르지 않는 `tool.before` 면 없는 도구 호출에도 Gate 가 불림(검사 빠짐), base 를 부르면 없는 도구 호출에 Gate 가 불리지 않음 |
 | HN-NFR-02~04 | 종단 시나리오, `go list -deps` |
 
 ---
@@ -304,6 +335,7 @@ func (a *Agent) Compact(ctx context.Context, sessionID string, config json.RawMe
 | R13 | 1.2 범위, 3.2~3.5 |
 | R14 | HN-C1, 3.1, 3.6, HN-FR-15, HN-NFR-01, 04 |
 | R17 | 1.2, 2.1, HN-FR-15, HN-NFR-01 |
+| R22 | 1.2, 2.1, HN-FR-17, 26, 29, 30, 36, 3.6c (HN-FR-37~42) |
 | sets ST-FR-19, 35 | HN-C4, HN-FR-21 |
 | sets ST-FR-24, 27, 36 | 3.5 |
 | 자격증명 보호 | HN-C2 |
@@ -325,6 +357,9 @@ func (a *Agent) Compact(ctx context.Context, sessionID string, config json.RawMe
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 1.0 | `Options.Tools []sets.Tool`(추가·교체), `Options.Extra`(base·resilient 위에 겹침). 저장소·시스템 프롬프트·요약기는 고정, base·resilient 는 뺄 수 없음 | `ToolSet`·`Sets`·`System`·`Summarizer`·`Store` 함수(기본값을 받아 바꾼 값을 돌려줌, nil = 기본), `DefaultSets`, `harness.Store`(`sets.Store` + `List`), `session.Store.List`, `Agent.Store()` (3.6c). `Tools`·`Extra` 삭제 (쓰는 곳 없음, 새 필드가 포함) | R22: core 외 전부 튜닝 |
+| 1.0 | Gate 는 "base 검사를 통과한 호출"에 불림 | 실제로 쓰이는 `tool.before` 가 ShortCircuit 없이 돌려준 호출에 불림 (기본 세트면 같음) | R22 ④: 사용자 세트가 `tool.before` 를 덮을 때의 의미를 정함 |
+| 1.0 | `Compact` 는 요약기가 항상 있음 | 요약기가 nil 이면 에러 | R22: `Summarizer` 가 nil 을 돌려주면 압축을 끈다 |
 | 0.9 | O2 라이선스 고지 미결 | `THIRD_PARTY_NOTICES.md` 로 종결 | 사용자: 마지막 정리 때 처리 → impl-05 "전부 진행" |
 | 0.9 | `session.DefaultDir(getenv, home)` 가 `DR_SESSION_DIR`(`session.DirEnv`)를 먼저 봄 | `session.DefaultDir(home)`, `DirEnv` 삭제 | R21 |
 | 0.1 | 옛 sets v0.2 의 3.3·3.4·3.5·3.8 | 라이브러리 모듈 하나 + 검증용 CLI | 사용자 (R14 초안) |
