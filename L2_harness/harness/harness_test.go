@@ -137,9 +137,10 @@ func TestAssembly(t *testing.T) {
 	e.SetFile("/w/AGENTS.md", "Project rule X.")
 	e.SetFile("/h/.claude/skills/s/SKILL.md", "---\nname: myskill\ndescription: does things\n---\n")
 	o := options(e, &fakeModel{})
-	o.Tools = []sets.Tool{
-		{Spec: contract.ToolSpec{Name: "mytool", Description: "My tool.\nMore detail.", InputSchema: json.RawMessage(`{"type":"object"}`)}},
-		{Spec: contract.ToolSpec{Name: "read", Description: "replaced", InputSchema: json.RawMessage(`{"type":"object"}`)}},
+	o.ToolSet = func(def []sets.Tool) []sets.Tool {
+		return append(def,
+			sets.Tool{Spec: contract.ToolSpec{Name: "mytool", Description: "My tool.\nMore detail.", InputSchema: json.RawMessage(`{"type":"object"}`)}},
+			sets.Tool{Spec: contract.ToolSpec{Name: "read", Description: "replaced", InputSchema: json.RawMessage(`{"type":"object"}`)}})
 	}
 	a, err := harness.New(context.Background(), o)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"sort"
 	"strings"
 	"sync"
@@ -17,7 +16,6 @@ import (
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L0_core/core"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness"
-	"github.com/Biisairo/dynamic_react/L2_harness/harness/session"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness/tools"
 )
 
@@ -318,23 +316,13 @@ func (a *Agent) gate(ctx context.Context, in harness.GateInput) *contract.ToolRe
 
 // Sessions 는 AG-FR-29 다.
 func (a *Agent) Sessions(ctx context.Context) ([]SessionInfo, error) {
-	entries, err := a.env.ListDir(ctx, a.sessionDir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	store, err := session.New(a.env, a.sessionDir)
+	store := a.h.Store()
+	list, err := store.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var out []SessionInfo
-	for _, ent := range entries {
-		id, ok := strings.CutSuffix(ent.Name, ".jsonl")
-		if ent.IsDir || !ok || session.CheckID(id) != nil {
-			continue
-		}
+	for _, id := range list {
 		s, err := store.Load(ctx, id)
 		if err != nil {
 			continue

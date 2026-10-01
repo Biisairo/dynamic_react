@@ -388,7 +388,7 @@ func TestToolEndIsTruncated(t *testing.T) {
 	rec := &recorder{}
 	a := newAgent(t, envtest.New("/w", "/h"), m, func(o *harness.Options) {
 		o.OnEvent = rec.on
-		o.Tools = []sets.Tool{big}
+		o.ToolSet = func(def []sets.Tool) []sets.Tool { return append(def, big) }
 	})
 	start(t, a, "s1", user("u1", "go"))
 	var sent string

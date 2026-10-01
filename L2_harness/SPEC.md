@@ -142,7 +142,7 @@ type Env interface {
 | HN-FR-14 | sessionID 는 `[A-Za-z0-9._-]{1,128}` 이고 `.`·`..` 가 아니어야 한다. 어기면 에러 (경로 탈출 방지). `session.NewID(now, rand)` 는 `20060102-150405-<8 hex>` 형식 |
 | HN-FR-15 | `session.DefaultDir(home string) string` = `<home>/.dynamic_react/sessions`. 순수 함수이고 환경변수를 보지 않는다 (R21) |
 | HN-FR-16 | 동시 사용에 안전하다 (같은 Store 값). 프로세스 간 동시 쓰기는 보장하지 않는다 |
-| HN-FR-37 | `(*Store).List(ctx) ([]string, error)` (R22, `harness.Store` 구현): dir 의 항목 중 디렉터리가 아니고 이름이 `<id>.jsonl` 이며 id 가 `CheckID` 를 통과하는 것의 id 를 이름순으로 돌려준다. dir 이 없으면 빈 목록(nil, 에러 없음), 그 밖의 `ListDir` 에러는 에러 |
+| HN-FR-37 | `(*Store).List(ctx) ([]string, error)` (R22, `harness.Store` 구현): dir 의 항목 중 디렉터리가 아니고 이름이 `<id>.jsonl` 이며 id 가 `CheckID` 를 통과하는 것의 id 를 `ListDir` 순서(파일 이름순, 3.1)대로 돌려준다. dir 이 없으면 빈 목록(nil, 에러 없음), 그 밖의 `ListDir` 에러는 에러 |
 
 ### 3.4 시스템 프롬프트 (`harness/prompt`)
 

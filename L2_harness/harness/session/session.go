@@ -13,6 +13,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -123,6 +124,25 @@ func (s *Store) AppendEdits(ctx context.Context, sessionID string, edits []contr
 
 func (s *Store) SaveState(ctx context.Context, sessionID, ns string, d inject.StateDelta) error {
 	return s.append(ctx, sessionID, []line{{Type: lineState, NS: ns, Delta: &stateDelta{Set: d.Set, Delete: d.Delete, Publish: d.Publish}}})
+}
+
+// List 는 dir 의 세션 ID 를 ListDir 순서(파일 이름순)로 돌려준다. dir 이 없으면 빈 목록이다 (HN-FR-37).
+func (s *Store) List(ctx context.Context) ([]string, error) {
+	entries, err := s.fs.ListDir(ctx, s.dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, ent := range entries {
+		id, ok := strings.CutSuffix(ent.Name, ".jsonl")
+		if !ent.IsDir && ok && CheckID(id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 // Load 는 파일을 순서대로 재생한다. 개행 없는 마지막 조각은 복구한다 (HN-FR-13).

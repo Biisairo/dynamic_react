@@ -190,3 +190,29 @@ func TestConcurrentAppend(t *testing.T) {
 		t.Fatalf("%v %d", err, len(sess.Messages))
 	}
 }
+
+// HN-FR-37
+func TestList(t *testing.T) {
+	ctx := context.Background()
+	e, s := open(t)
+	if got, err := s.List(ctx); err != nil || got != nil {
+		t.Fatalf("missing dir: %v %v", got, err)
+	}
+	for _, id := range []string{"b", "a"} {
+		if err := s.AppendMessages(ctx, id, []contract.Message{user("u-"+id, "x")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.SetFile("/h/sessions/notes.txt", "x")
+	e.SetFile("/h/sessions/..jsonl", "")
+	e.SetFile("/h/sessions/bad id.jsonl", "")
+	e.SetDir("/h/sessions/c.jsonl")
+	got, err := s.List(ctx)
+	if err != nil || strings.Join(got, ",") != "a,b" {
+		t.Fatalf("list %v %v", got, err)
+	}
+	e.FailOn("/h/sessions", errors.New("io"))
+	if _, err := s.List(ctx); err == nil {
+		t.Fatal("ListDir error ignored")
+	}
+}

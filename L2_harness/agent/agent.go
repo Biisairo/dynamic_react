@@ -15,8 +15,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L0_core/core"
 	"github.com/Biisairo/dynamic_react/L1_inject/adapters"
+	"github.com/Biisairo/dynamic_react/L1_inject/inject"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness/session"
@@ -33,6 +35,13 @@ type Options struct {
 	Permissions     Permissions         // surface 프로필 규칙 (AG-FR-12)
 	Approver        Approver            // nil = 묻기 없이 허용 (AG-FR-18)
 	OnEvent         func(harness.Event) // AG-FR-27
+
+	Sets        func(d sets.Deps) []inject.FunctionSet      // AG-FR-40
+	ToolSet     func(def []sets.Tool) []sets.Tool           // AG-FR-40
+	System      func(def []contract.Block) []contract.Block // AG-FR-40
+	Summarizer  func(def sets.Summarizer) sets.Summarizer   // AG-FR-40
+	Store       func(def harness.Store) harness.Store       // AG-FR-40
+	ModelCaller func(def sets.ModelCaller) sets.ModelCaller // AG-FR-41
 }
 
 type Agent struct {
@@ -128,7 +137,14 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if a.rules, err = compileRules(perms, e.Cwd(), e.Home()); err != nil {
 		return nil, fmt.Errorf("agent: %w", err)
 	}
-	h, err := harness.New(ctx, harness.Options{Env: e, Model: a.client, SessionDir: dir, OnEvent: o.OnEvent, Gate: a.gate})
+	var caller sets.ModelCaller = a.client
+	if o.ModelCaller != nil {
+		if caller = o.ModelCaller(caller); caller == nil {
+			return nil, errors.New("agent: ModelCaller returned nil")
+		}
+	}
+	h, err := harness.New(ctx, harness.Options{Env: e, Model: caller, SessionDir: dir, OnEvent: o.OnEvent, Gate: a.gate,
+		Sets: o.Sets, ToolSet: o.ToolSet, System: o.System, Summarizer: o.Summarizer, Store: o.Store})
 	if err != nil {
 		return nil, fmt.Errorf("agent: %w", err)
 	}

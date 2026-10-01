@@ -36,6 +36,7 @@ inject-example [-model provider/id] [-cwd dir] [-config file] prompt ...
 ### 2.2 제약
 - EX-C1. 키 값을 출력하지 않는다 (agent 에러 문구를 그대로 씀, AG-C1).
 - EX-C2. 로직은 `run` 에 두고 `main` 은 `os.Exit(run(signalCtx, os.Args[1:], os.Stdout, os.Stderr))` 만 한다.
+- EX-C3. `run` 은 `agent.Options.NoRemoteCatalog` 를 노출하는 플래그를 두지 않는다. 테스트는 내부 변형 `runWith(ctx, args, stdout, stderr, mod func(*agent.Options))` 로 넣는다 (`run` 은 nil, dr-print 와 같음).
 
 ---
 
@@ -51,7 +52,7 @@ func Example(d sets.Deps) inject.FunctionSet
 | id | 요구사항 |
 |---|---|
 | EX-FR-01 | `Example(d)` 는 이름 `example` 인 세트이고 `ContextInject`·`ToolBefore` 두 step 만 채운다 (나머지는 기본 세트가 채움, IN-FR-19) |
-| EX-FR-02 | `ContextInject`: 매 턴 user 메시지 하나(text = `Rule`, ID = `d.NewID` 가 있으면 그것 아니면 무작위 hex, Timestamp = `d.Now` 가 있으면 그것 아니면 현재 시각)를 돌려준다. 이번 턴의 요청에만 들어가고 세션에 저장되지 않는다 (core `context.inject`) |
+| EX-FR-02 | `ContextInject`: 매 턴 user 메시지 하나(text = `Rule`, ID = 고정 `example-rule` — 저장·편집 대상이 아닌 임시 메시지라 고유할 필요가 없다, Timestamp = `d.Now()` — harness 가 항상 채운다, HN-FR-38 ⑤)를 돌려준다. 이번 턴의 요청에만 들어가고 세션에 저장되지 않는다 (core `context.inject`) |
 | EX-FR-03 | `ToolBefore`: 호출 이름이 `bash` 이고 인자 `command` 에 `rm -rf` 가 들어 있으면 실행하지 않고 `Status: error`, 내용 `blocked by example: rm -rf` 인 ShortCircuit 결과를 돌려준다. 그 밖의 호출은 `sets.BaseToolBefore(d)` 를 그대로 부른다 — base 의 기본 검사(없는 도구·스키마, ST-FR-38)를 유지하는 감싸기 예시다 (HN-FR-41) |
 | EX-FR-04 | 플래그: `-model`(→ `agent.Options.Model`), `-cwd`(→ `Options.Cwd`), `-config`(→ `Options.ConfigPath`). 플래그 뒤 인자들을 공백 하나로 이은 것이 프롬프트다. 플래그 에러·빈 프롬프트는 stderr 에 사용법 또는 `inject-example: empty prompt`, 종료 코드 1 |
 | EX-FR-05 | 출력: `OnEvent` 의 `message_update` 중 `text_delta` 의 Delta 를 stdout 에, `tool_end` 를 stderr 에 `[tool] <name> <status>` 한 줄로 쓴다. run 이 끝나면 stdout 에 쓴 텍스트가 줄바꿈으로 끝나지 않았을 때 줄바꿈 하나를 더 쓴다 |

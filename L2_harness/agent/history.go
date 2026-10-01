@@ -16,11 +16,10 @@ type History struct {
 
 // History 는 AG-FR-30 이다. 잠금을 잡지 않는다.
 func (a *Agent) History(ctx context.Context, sessionID string) (History, error) {
-	store, err := session.New(a.env, a.sessionDir)
-	if err != nil {
+	if err := session.CheckID(sessionID); err != nil {
 		return History{}, err
 	}
-	s, err := store.Load(ctx, sessionID)
+	s, err := a.h.Store().Load(ctx, sessionID)
 	if err != nil {
 		return History{}, err
 	}

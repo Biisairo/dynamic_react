@@ -27,17 +27,31 @@ import (
 type Env = env.Env
 
 type Options struct {
-	Env        Env                  // 필수
-	Model      sets.ModelCaller     // 필수
-	SessionDir string               // 필수, 절대 경로
-	Tools      []sets.Tool          // 추가·교체 (같은 이름은 덮음)
-	Extra      []inject.FunctionSet // base·resilient 위에 겹칠 세트
+	Env        Env                                         // 필수
+	Model      sets.ModelCaller                            // 필수
+	SessionDir string                                      // 필수, 절대 경로
+	ToolSet    func(def []sets.Tool) []sets.Tool           // HN-FR-38, nil → def
+	Sets       func(d sets.Deps) []inject.FunctionSet      // HN-FR-38, nil → DefaultSets(d)
+	System     func(def []contract.Block) []contract.Block // HN-FR-38, nil → def
+	Summarizer func(def sets.Summarizer) sets.Summarizer   // HN-FR-38, nil → def
+	Store      func(def Store) Store                       // HN-FR-38, nil → def
 	Observer   core.Observer
 	Core       core.Options // Observer 는 위 필드가 이긴다
 	Now        func() time.Time
 	NewID      func() string
 	OnEvent    func(Event)                                                  // HN-FR-31
 	Gate       func(ctx context.Context, in GateInput) *contract.ToolResult // HN-FR-30
+}
+
+// Store 는 세션 저장소다. 기본은 session.Store (HN-FR-40).
+type Store interface {
+	sets.Store
+	List(ctx context.Context) ([]string, error)
+}
+
+// DefaultSets 는 기본 세트 목록이다 (HN-FR-39).
+func DefaultSets(d sets.Deps) []inject.FunctionSet {
+	return []inject.FunctionSet{sets.Base(d), sets.Resilient(d)}
 }
 
 type RunRequest struct {
@@ -56,13 +70,13 @@ type Agent struct {
 	tools  *sets.Registry
 	now    func() time.Time
 	sf     *surface
-	store  *session.Store
+	store  Store
 	model  sets.ModelCaller
 	sum    sets.Summarizer // run 밖에서는 이벤트 없이 통과한다 (HN-FR-36)
 	newID  func() string
 }
 
-// New 는 도구·세션·요약기·시스템 프롬프트를 한 번 만들고 base·resilient(+Extra) 로 Dispatcher 를 만든다 (HN-FR-26).
+// New 는 도구·세션·시스템 프롬프트·요약기를 한 번 만들고 Sets 로 Dispatcher 를 만든다 (HN-FR-26, 38).
 func New(ctx context.Context, o Options) (*Agent, error) {
 	switch {
 	case o.Env == nil:
@@ -75,27 +89,51 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	reg := sets.NewRegistry(tools.All(o.Env)...)
-	for _, t := range o.Tools {
+	toolList := tools.All(o.Env)
+	if o.ToolSet != nil {
+		toolList = o.ToolSet(toolList)
+	}
+	reg := sets.NewRegistry()
+	for _, t := range toolList {
 		reg.Add(t)
 	}
-	store, err := session.New(o.Env, o.SessionDir)
+	def, err := session.New(o.Env, o.SessionDir)
 	if err != nil {
 		return nil, err
+	}
+	var store Store = def
+	if o.Store != nil {
+		if store = o.Store(store); store == nil {
+			return nil, errors.New("harness: Store returned nil")
+		}
 	}
 	system, err := buildSystem(ctx, o, reg)
 	if err != nil {
 		return nil, err
 	}
+	if o.System != nil {
+		system = o.System(system)
+	}
 	sf := &surface{onEvent: o.OnEvent, gate: o.Gate}
 	var summarizer sets.Summarizer = summary.New(o.Model, o.Now)
+	if o.Summarizer != nil {
+		summarizer = o.Summarizer(summarizer)
+	}
 	var sleep func(context.Context, time.Duration) error
 	if o.OnEvent != nil {
-		summarizer, sleep = eventSummarizer{sf, summarizer}, sf.sleep
+		sleep = sf.sleep
+		if summarizer != nil {
+			summarizer = eventSummarizer{sf, summarizer}
+		}
 	}
 	deps := sets.Deps{Model: o.Model, Tools: reg, Store: store, System: system,
 		Summarizer: summarizer, Sleep: sleep, Now: o.Now, NewID: o.NewID}
-	fsets := append([]inject.FunctionSet{sets.Base(deps), sets.Resilient(deps)}, o.Extra...)
+	var fsets []inject.FunctionSet
+	if o.Sets != nil {
+		fsets = o.Sets(deps)
+	} else {
+		fsets = DefaultSets(deps)
+	}
 	if sf.active() {
 		fsets = sf.wrap(fsets)
 	}
@@ -170,6 +208,9 @@ func (a *Agent) System() []contract.Block { return append([]contract.Block(nil),
 
 // Tools 는 도구 레지스트리다 (HN-FR-29).
 func (a *Agent) Tools() sets.ToolRegistry { return a.tools }
+
+// Store 는 HN-FR-38 ②의 저장소다 (HN-FR-42).
+func (a *Agent) Store() Store { return a.store }
 
 // Emit 은 OnEvent 를 같은 직렬화로 부른다 (HN-FR-35).
 func (a *Agent) Emit(ev Event) { a.sf.emit(ev) }

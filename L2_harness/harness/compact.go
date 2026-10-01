@@ -5,19 +5,27 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L0_core/core"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
+	"github.com/Biisairo/dynamic_react/L2_harness/harness/session"
 )
 
-// Compact 는 run 밖에서 세션 하나를 즉시 압축한다 (HN-FR-36). ID 검사는 Store 가 한다.
+// Compact 는 run 밖에서 세션 하나를 즉시 압축한다 (HN-FR-36).
 // 같은 세션의 run 과 겹치지 않게 하는 것은 호출자의 몫이다.
 func (a *Agent) Compact(ctx context.Context, sessionID string, config json.RawMessage) (bool, error) {
 	cfg, err := sets.ParseConfig(config)
 	if err != nil {
 		return false, err
+	}
+	if err := session.CheckID(sessionID); err != nil {
+		return false, err
+	}
+	if a.sum == nil {
+		return false, errors.New("harness: compaction disabled: no summarizer")
 	}
 	sess, err := a.store.Load(ctx, sessionID)
 	if err != nil {

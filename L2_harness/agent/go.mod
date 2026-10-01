@@ -6,15 +6,13 @@ require (
 	github.com/Biisairo/dynamic_react/L0_core/contract v0.0.0
 	github.com/Biisairo/dynamic_react/L0_core/core v0.0.0
 	github.com/Biisairo/dynamic_react/L1_inject/adapters v0.0.0
+	github.com/Biisairo/dynamic_react/L1_inject/inject v0.0.0
 	github.com/Biisairo/dynamic_react/L1_inject/sets v0.0.0
 	github.com/Biisairo/dynamic_react/L2_harness/harness v0.0.0
 	github.com/Biisairo/dynamic_react/L2_harness/osenv v0.0.0
 )
 
-require (
-	github.com/Biisairo/dynamic_react/L1_inject/inject v0.0.0 // indirect
-	golang.org/x/text v0.28.0 // indirect
-)
+require golang.org/x/text v0.28.0 // indirect
 
 replace github.com/Biisairo/dynamic_react/L0_core/contract => ../../L0_core/contract
 

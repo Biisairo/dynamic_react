@@ -14,11 +14,11 @@
              cmd/dr-print  non-interactive test CLI             (spec v0.2)
  ─────────────────────────────────────────────────────────────────
  L2_harness  the real agent on the user's environment (R17)
-             harness   agent assembly over Env + ModelCaller:   (spec v0.9)
+             harness   agent assembly over Env + ModelCaller:   (spec v1.0)
                        tool logic, JSONL sessions, prompt,
                        summarizer (no real I/O itself)
              osenv     Env on the OS: files, shell, groups      (spec v0.2)
-             agent     config + auth.json + osenv + adapters    (spec v0.5)
+             agent     config + auth.json + osenv + adapters    (spec v0.6)
                        -> harness.New (the finished agent),
                        surface layer: approval, steer, models
  ─────────────────────────────────────────────────────────────────
@@ -45,6 +45,7 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
            └── agent ──► harness ──► sets ──► inject, core, contract
                  ▲  └──► osenv ──► harness/env
                  ├── dr-print (L3)
+                 ├── examples/inject
                  └── terminal (L3) ◄── dr (L3)
 ```
 
@@ -59,12 +60,13 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 | [`L1_inject/inject/`](L1_inject/inject/SPEC.md) | 함수 주입 프레임워크 + 조합 함수 | 스펙 v0.3, 구현 |
 | [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 기본 함수 세트 (base, resilient) | 스펙 v0.5, 구현 |
 | [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그 | 스펙 v0.6, 구현 |
-| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface | 스펙 v0.9, 구현 |
+| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입 | 스펙 v1.0, 구현 |
 | [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.2, 구현 |
-| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키) | 스펙 v0.5, 구현 |
+| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키), 주입 통로 | 스펙 v0.6, 구현 |
 | [`L3_ui/surfaces/terminal/`](L3_ui/surfaces/terminal/SPEC.md) | 대화형 터미널 surface 라이브러리 | 스펙 v0.3, 구현 |
 | [`L3_ui/cmd/dr/`](L3_ui/cmd/dr/SPEC.md) | 대화형 진입점 | 스펙 v0.3, 구현 |
 | [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 비대화형 검증용 CLI (입출력만) | 스펙 v0.2, 구현 |
+| [`examples/inject/`](examples/inject/SPEC.md) | 주입 예시: 매 턴 규칙 덧붙이기 + `rm -rf` 차단 | 스펙 v0.1, 구현 |
 | [`docs/`](docs/DECISIONS.md) | 결정 기록, 인계 문서 | — |
 
 ## 실행
@@ -95,6 +97,42 @@ cd L3_ui/cmd/dr-print && go run . "질문"        # 비대화형 (stdin 도 받�
 ```
 
 인증은 API 키만 지원한다. 구독 계정(Claude Pro/Max, ChatGPT 플랜)의 로그인·OAuth 경로는 넣지 않는다 (AD-C1).
+
+## 주입 (R22)
+
+core(22 step 루프) 외의 모든 것은 `agent.New` 를 부를 때 Go 함수로 바꾼다. 각 함수는 기본값을 받아 바꾼 값을 돌려준다. nil 이면 기본값 그대로다.
+
+| 필드 | 바꾸는 것 |
+|---|---|
+| `Sets func(sets.Deps) []inject.FunctionSet` | 함수 세트 목록. 기본 = `harness.DefaultSets(d)` (base + resilient). 겹치기·감싸기·교체·전부 교체 |
+| `ToolSet func([]sets.Tool) []sets.Tool` | 도구 목록 (추가·제거·같은 이름 교체) |
+| `System func([]contract.Block) []contract.Block` | 시스템 프롬프트 |
+| `Summarizer func(sets.Summarizer) sets.Summarizer` | 요약기 (nil 을 돌려주면 압축 끔) |
+| `Store func(harness.Store) harness.Store` | 세션 저장소 (`sets.Store` + `List`). 세션 목록·이력도 이것을 쓴다 |
+| `ModelCaller func(sets.ModelCaller) sets.ModelCaller` | 모델 호출 (목록·키 확인은 adapters 그대로) |
+
+```go
+a, err := agent.New(ctx, agent.Options{
+    Sets: func(d sets.Deps) []inject.FunctionSet {
+        base := sets.BaseToolBefore(d)
+        mine := inject.FunctionSet{Name: "mine",
+            ContextInject: func(ctx *inject.ContextInjectCtx) ([]contract.Message, []inject.ContextInjectSignal, error) {
+                return []contract.Message{rule()}, nil, nil // 이번 턴의 요청에만 들어가고 저장되지 않는다
+            },
+            ToolBefore: func(ctx *inject.ToolBeforeCtx, c contract.ToolCall) (core.BeforeOut, []inject.ToolBeforeSignal, error) {
+                if blocked(c) {
+                    return core.BeforeOut{Call: c, ShortCircuit: &contract.ToolResult{CallID: c.ID, Status: contract.StatusError}}, nil, nil
+                }
+                return base(ctx, c) // base 를 부르면 기본 검사(없는 도구·스키마)가 남는다
+            }}
+        return append(harness.DefaultSets(d), mine) // step 마다 마지막 세트가 이긴다
+    },
+})
+```
+
+- 승인 규칙·Approver·이벤트는 사용자 세트가 무엇이든 유지된다. base 의 기본 검사는 base 를 감싸지 않고 바꾸면 빠진다 (사용자 책임).
+- 추가 도구도 도구 상한·설정 `agent.tools`·이름 규칙의 대상이다. 패턴 규칙은 `bash`·`read`·`write`·`edit` 에만 쓴다.
+- 실행 가능한 전체 예시: [`examples/inject`](examples/inject/main.go) (`cd examples/inject && go run . "질문"`).
 
 ## 핵심 개념 (한 장 요약)
 
