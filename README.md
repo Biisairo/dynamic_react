@@ -67,7 +67,7 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 | [`L3_ui/cmd/dr/`](L3_ui/cmd/dr/SPEC.md) | 대화형 진입점 | 스펙 v0.3, 구현 |
 | [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 비대화형 검증용 CLI (입출력만) | 스펙 v0.2, 구현 |
 | [`examples/inject/`](examples/inject/SPEC.md) | 주입 예시: 매 턴 규칙 덧붙이기 + `rm -rf` 차단 | 스펙 v0.1, 구현 |
-| [`docs/`](docs/DECISIONS.md) | 결정 기록, 인계 문서 | — |
+| [`docs/`](docs/DECISIONS.md) | 결정 기록, 주입 가이드([`INJECT.md`](docs/INJECT.md)), 22 step 표현 검증, 인계 문서 | — |
 
 ## 실행
 
@@ -133,6 +133,7 @@ a, err := agent.New(ctx, agent.Options{
 - 승인 규칙·Approver·이벤트는 사용자 세트가 무엇이든 유지된다. base 의 기본 검사는 base 를 감싸지 않고 바꾸면 빠진다 (사용자 책임).
 - 추가 도구도 도구 상한·설정 `agent.tools`·이름 규칙의 대상이다. 패턴 규칙은 `bash`·`read`·`write`·`edit` 에만 쓴다.
 - 실행 가능한 전체 예시: [`examples/inject`](examples/inject/main.go) (`cd examples/inject && go run . "질문"`).
+- 자세한 규칙(만드는 순서, 세트 이름과 상태, 저장소 계약, 사용자 책임): [`docs/INJECT.md`](docs/INJECT.md).
 
 ## 핵심 개념 (한 장 요약)
 

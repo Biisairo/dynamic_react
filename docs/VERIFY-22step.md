@@ -43,3 +43,14 @@
   - #11: deferred 시 입력함 중복 — LiveInput capability 확인 후 보냄 (inject 문서화 대상)
   - #16: 도구 step 을 거치는 실행이 필요해지면 그때 step 추가를 검토
   - #22: 캐시 보호는 기본 세트의 책임
+
+## 완성된 에이전트에서의 표현 (R22)
+
+위 28개는 L1 세트(`inject.FunctionSet`)로 표현한다. impl-06 부터 이 세트를 **완성된 에이전트(`agent.New`)에 그대로 끼울 수 있다**: `agent.Options.Sets func(sets.Deps) []inject.FunctionSet` 이 기본 세트(`harness.DefaultSets` = base + resilient)를 받아 겹치기·감싸기·교체를 하고, 함수가 쓰는 부품(도구·시스템 프롬프트·요약기·세션 저장소·모델 호출)도 `ToolSet`·`System`·`Summarizer`·`Store`·`ModelCaller` 로 바꾼다. 사용법은 [`INJECT.md`](INJECT.md).
+
+| 표현 경로 | 실제 모델(deepseek)로 확인한 것 |
+|---|---|
+| #23 류 (4 context.inject 로 매 턴 지시 주입) | `examples/inject` 의 규칙이 모든 답에 반영, 세션에 저장되지 않음 |
+| #28 류 (16 tool.before 로 호출 차단 + 기본 검사 유지) | `rm -rf` bash 차단, 그 밖의 bash 는 base 검사를 거쳐 실행 |
+
+사용자 세트가 무엇이든 surface 계층의 승인(Gate)·이벤트는 step 마다 실제로 쓰이는 함수를 감싸 유지된다 (HN-FR-41). base 기본 검사(ST-FR-38)는 base `tool.before` 를 부르지 않으면 빠진다 — △ 와 같은 **함수 작성 규약**이다.
