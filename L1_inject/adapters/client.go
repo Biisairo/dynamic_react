@@ -29,7 +29,7 @@ const anthropicVersion = "2023-06-01"
 
 type Options struct {
 	HTTPClient       *http.Client
-	Getenv           func(string) string
+	APIKey           func(provider string) string
 	Now              func() time.Time
 	Config           Config
 	RemoteCatalogURL string
@@ -39,7 +39,7 @@ type Options struct {
 // Client 는 방언 어댑터와 카탈로그다. 동시 사용에 안전하다 (AD-FR-48).
 type Client struct {
 	http     *http.Client
-	getenv   func(string) string
+	apiKey   func(string) string
 	now      func() time.Time
 	profiles map[string]Profile
 	models   map[string]ModelPatch
@@ -54,12 +54,12 @@ type Client struct {
 }
 
 func New(o Options) *Client {
-	c := &Client{http: o.HTTPClient, getenv: o.Getenv, now: o.Now, models: o.Config.Models, lookups: map[string]lookupResult{}}
+	c := &Client{http: o.HTTPClient, apiKey: o.APIKey, now: o.Now, models: o.Config.Models, lookups: map[string]lookupResult{}}
 	if c.http == nil {
 		c.http = http.DefaultClient
 	}
-	if c.getenv == nil {
-		c.getenv = func(string) string { return "" } // 환경을 읽지 않는다 (AD-C6)
+	if c.apiKey == nil {
+		c.apiKey = func(string) string { return "" }
 	}
 	if c.now == nil {
 		c.now = time.Now
@@ -84,6 +84,16 @@ func New(o Options) *Client {
 	}
 	c.snap = loadSnapshot()
 	return c
+}
+
+// Providers 는 프로필 이름이다, 사전순 (AD-FR-53).
+func (c *Client) Providers() []string {
+	out := make([]string, 0, len(c.profiles))
+	for name := range c.profiles {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Profile 은 provider 의 적용된 프로필이다.
@@ -140,12 +150,10 @@ func (c *Client) call(ctx context.Context, req contract.Request, s *stream) {
 		s.fail(*invalid("unknown api %q", p.API))
 		return
 	}
-	var key string
-	if p.APIKeyEnv != "" {
-		if key = c.getenv(p.APIKeyEnv); key == "" {
-			s.fail(contract.CallError{Class: contract.ClassAuth, Message: "missing API key: set " + p.APIKeyEnv})
-			return
-		}
+	key := c.apiKey(req.Model.Provider)
+	if p.RequiresKey && key == "" {
+		s.fail(contract.CallError{Class: contract.ClassAuth, Message: fmt.Sprintf("missing API key for provider %q", req.Model.Provider)})
+		return
 	}
 	s.secrets = []string{key}
 	s.provider = req.Model.Provider

@@ -101,7 +101,7 @@ func client(t *testing.T, f *fake, provider, patch string) *adapters.Client {
 	}
 	return adapters.New(adapters.Options{
 		Config:          cfg,
-		Getenv:          func(string) string { return testKey },
+		APIKey:          func(string) string { return testKey },
 		Now:             func() time.Time { return ts },
 		NoRemoteCatalog: true,
 	})

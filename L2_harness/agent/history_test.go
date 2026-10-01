@@ -122,7 +122,7 @@ func TestHistoryWhileRunning(t *testing.T) {
 // compactConfig 는 자동 압축을 끄고 keepRecentTokens 를 작게 둔 설정이다.
 func compactConfig(url string) string {
 	return `{"agent":{"model":{"provider":"test","id":"m"},"compaction":{"enabled":false,"keepRecentTokens":10}},` +
-		`"providers":{"test":{"api":"openai-chat","baseUrl":"` + url + `","apiKeyEnv":""}},` +
+		`"providers":{"test":{"api":"openai-chat","baseUrl":"` + url + `"}},` +
 		`"models":{"test/m":{"contextWindow":100000,"maxOutputTokens":1000}}}`
 }
 

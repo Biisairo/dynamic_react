@@ -166,7 +166,7 @@ func TestBuiltinProfiles(t *testing.T) {
 	}
 	for name, w := range want {
 		p, ok := ps[name]
-		if !ok || string(p.API) != w[0] || p.BaseURL != w[1] || p.APIKeyEnv != w[2] {
+		if !ok || string(p.API) != w[0] || p.BaseURL != w[1] || p.RequiresKey != (w[2] != "") {
 			t.Errorf("%s: %+v", name, p)
 		}
 	}
@@ -213,7 +213,7 @@ func TestBuiltinProfiles(t *testing.T) {
 // AD-C1, C2: 구독·OAuth 경로가 코드에 없다.
 func TestNoSubscriptionPaths(t *testing.T) {
 	files, _ := filepath.Glob("*.go")
-	banned := regexp.MustCompile(`(?i)oauth|ANTHROPIC_AUTH_TOKEN|chatgpt\.com|githubcopilot|coding/paas|token-plan|api\.kimi\.com`)
+	banned := regexp.MustCompile(`(?i)oauth|ANTHROPIC_AUTH_TOKEN|chatgpt\.com|githubcopilot|coding/paas|token-plan|api\.kimi\.com|getenv|_API_KEY|HF_TOKEN`)
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {
 			continue
@@ -228,18 +228,19 @@ func TestNoSubscriptionPaths(t *testing.T) {
 // AD-FR-49, AD-C2
 func TestParseConfig(t *testing.T) {
 	cfg, err := ParseConfig([]byte(`{
-		"providers": {"mine": {"api": "openai-chat", "baseUrl": "http://x/v1", "apiKeyEnv": "MINE_KEY", "developerRole": true},
+		"providers": {"mine": {"api": "openai-chat", "baseUrl": "http://x/v1", "requiresKey": true, "developerRole": true},
 		              "anthropic": {"baseUrl": "http://proxy"}},
 		"models": {"mine/m1": {"contextWindow": 32000, "maxOutputTokens": 4096, "capabilities": {"vision": true}}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Providers["mine"].API == nil || *cfg.Providers["mine"].API != APIChat || *cfg.Models["mine/m1"].ContextWindow != 32000 {
+	if cfg.Providers["mine"].API == nil || *cfg.Providers["mine"].API != APIChat || !*cfg.Providers["mine"].RequiresKey || *cfg.Models["mine/m1"].ContextWindow != 32000 {
 		t.Fatalf("cfg %+v", cfg)
 	}
 	for name, bad := range map[string]string{
 		"unknown top key":      `{"catalog": {}}`,
 		"unknown provider key": `{"providers": {"x": {"apiKey": "sk-123"}}}`,
+		"env name field":       `{"providers": {"anthropic": {"apiKeyEnv": "K"}}}`,
 		"unknown model key":    `{"models": {"a/b": {"window": 1}}}`,
 		"bad api":              `{"providers": {"x": {"api": "gemini"}}}`,
 		"bad model key":        `{"models": {"noslash": {}}}`,
@@ -255,15 +256,23 @@ func TestProfileOverride(t *testing.T) {
 	cfg, _ := ParseConfig([]byte(`{"providers": {"anthropic": {"baseUrl": "http://proxy"}, "mine": {"api": "openai-chat", "baseUrl": "http://m"}}}`))
 	c := New(Options{Config: cfg})
 	p, ok := c.Profile("anthropic")
-	if !ok || p.BaseURL != "http://proxy" || p.APIKeyEnv != "ANTHROPIC_API_KEY" || p.API != APIAnthropic {
+	if !ok || p.BaseURL != "http://proxy" || !p.RequiresKey || p.API != APIAnthropic {
 		t.Fatalf("patched %+v", p)
 	}
 	m, ok := c.Profile("mine")
-	if !ok || m.API != APIChat || m.MaxTokensField != "max_completion_tokens" || m.Thinking != ThinkOpenAI || !m.UsageInStreaming {
+	if !ok || m.API != APIChat || m.MaxTokensField != "max_completion_tokens" || m.Thinking != ThinkOpenAI || !m.UsageInStreaming || m.RequiresKey {
 		t.Fatalf("new provider defaults %+v", m)
 	}
 	if _, ok := c.Profile("nope"); ok {
 		t.Fatal("unknown provider")
+	}
+	cfg, _ = ParseConfig([]byte(`{"providers": {"ollama": {"requiresKey": true}, "anthropic": {"requiresKey": false}}}`))
+	c = New(Options{Config: cfg})
+	if o, _ := c.Profile("ollama"); !o.RequiresKey {
+		t.Fatal("requiresKey true not applied")
+	}
+	if a, _ := c.Profile("anthropic"); a.RequiresKey {
+		t.Fatal("requiresKey false not applied")
 	}
 	if _, err := ParseConfig([]byte(`{"providers": {"nobase": {"api": "openai-chat"}}}`)); err == nil {
 		t.Fatal("new provider without baseUrl accepted")

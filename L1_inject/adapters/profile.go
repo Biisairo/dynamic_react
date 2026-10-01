@@ -57,7 +57,7 @@ func (f ThinkingFormat) valid() bool {
 type Profile struct {
 	API                API            `json:"api"`
 	BaseURL            string         `json:"baseUrl"`
-	APIKeyEnv          string         `json:"apiKeyEnv"`
+	RequiresKey        bool           `json:"requiresKey"`
 	Lookup             LookupKind     `json:"lookup"`
 	CatalogID          string         `json:"catalogId"`
 	DeveloperRole      bool           `json:"developerRole"`
@@ -89,47 +89,47 @@ func chatDefaults(p Profile) Profile {
 	return p
 }
 
-func chat(base, env string, dev bool, maxField string, think ThinkingFormat) Profile {
-	return chatDefaults(Profile{API: APIChat, BaseURL: base, APIKeyEnv: env, DeveloperRole: dev, MaxTokensField: maxField, Thinking: think})
+func chat(base string, dev bool, maxField string, think ThinkingFormat) Profile {
+	return chatDefaults(Profile{API: APIChat, BaseURL: base, RequiresKey: true, DeveloperRole: dev, MaxTokensField: maxField, Thinking: think})
 }
 
-func anthropic(base, env string, lookup LookupKind) Profile {
-	return Profile{API: APIAnthropic, BaseURL: base, APIKeyEnv: env, Lookup: lookup}
+func anthropic(base string, lookup LookupKind) Profile {
+	return Profile{API: APIAnthropic, BaseURL: base, RequiresKey: true, Lookup: lookup}
 }
 
 // BuiltinProfiles 는 내장 프로필이다 (AD-FR-30, R12). 원본: pi providers/*.ts, openai-completions.ts detectCompat.
 // 구독 요금제 엔드포인트는 넣지 않는다 (AD-C1).
 func BuiltinProfiles() map[string]Profile {
 	local := func(base string, l LookupKind) Profile {
-		p := chat(base, "", false, maxTokens, ThinkNone)
-		p.Lookup = l
+		p := chat(base, false, maxTokens, ThinkNone)
+		p.RequiresKey, p.Lookup = false, l
 		return p
 	}
-	openrouter := chat("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", false, "", ThinkOpenRouter)
+	openrouter := chat("https://openrouter.ai/api/v1", false, "", ThinkOpenRouter)
 	openrouter.Lookup = LookupOpenRouter
-	deepseek := chat("https://api.deepseek.com", "DEEPSEEK_API_KEY", false, maxTokens, ThinkDeepSeek)
+	deepseek := chat("https://api.deepseek.com", false, maxTokens, ThinkDeepSeek)
 	deepseek.ReasoningField = "reasoning_content"
 	return map[string]Profile{
-		"anthropic":         anthropic("https://api.anthropic.com", "ANTHROPIC_API_KEY", LookupAnthropic),
-		"minimax":           anthropic("https://api.minimax.io/anthropic", "MINIMAX_API_KEY", LookupNone),
-		"minimax-cn":        anthropic("https://api.minimaxi.com/anthropic", "MINIMAX_CN_API_KEY", LookupNone),
-		"fireworks":         anthropic("https://api.fireworks.ai/inference", "FIREWORKS_API_KEY", LookupNone),
-		"vercel-ai-gateway": anthropic("https://ai-gateway.vercel.sh", "AI_GATEWAY_API_KEY", LookupNone),
-		"openai":            {API: APIResponses, BaseURL: "https://api.openai.com/v1", APIKeyEnv: "OPENAI_API_KEY", Lookup: LookupNone, DeveloperRole: true, EncryptedReasoning: true},
-		"xai":               {API: APIResponses, BaseURL: "https://api.x.ai/v1", APIKeyEnv: "XAI_API_KEY", Lookup: LookupNone},
+		"anthropic":         anthropic("https://api.anthropic.com", LookupAnthropic),
+		"minimax":           anthropic("https://api.minimax.io/anthropic", LookupNone),
+		"minimax-cn":        anthropic("https://api.minimaxi.com/anthropic", LookupNone),
+		"fireworks":         anthropic("https://api.fireworks.ai/inference", LookupNone),
+		"vercel-ai-gateway": anthropic("https://ai-gateway.vercel.sh", LookupNone),
+		"openai":            {API: APIResponses, BaseURL: "https://api.openai.com/v1", RequiresKey: true, Lookup: LookupNone, DeveloperRole: true, EncryptedReasoning: true},
+		"xai":               {API: APIResponses, BaseURL: "https://api.x.ai/v1", RequiresKey: true, Lookup: LookupNone},
 		"deepseek":          deepseek,
-		"zai":               chat("https://api.z.ai/api/paas/v4", "ZAI_API_KEY", false, maxTokens, ThinkZai),
-		"xiaomi":            chat("https://api.xiaomimimo.com/v1", "XIAOMI_API_KEY", true, "", ThinkOpenAI),
-		"moonshotai":        chat("https://api.moonshot.ai/v1", "MOONSHOT_API_KEY", false, maxTokens, ThinkNone),
-		"moonshotai-cn":     chat("https://api.moonshot.cn/v1", "MOONSHOT_API_KEY", false, maxTokens, ThinkNone),
+		"zai":               chat("https://api.z.ai/api/paas/v4", false, maxTokens, ThinkZai),
+		"xiaomi":            chat("https://api.xiaomimimo.com/v1", true, "", ThinkOpenAI),
+		"moonshotai":        chat("https://api.moonshot.ai/v1", false, maxTokens, ThinkNone),
+		"moonshotai-cn":     chat("https://api.moonshot.cn/v1", false, maxTokens, ThinkNone),
 		"openrouter":        openrouter,
-		"groq":              chat("https://api.groq.com/openai/v1", "GROQ_API_KEY", true, "", ThinkOpenAI),
-		"cerebras":          chat("https://api.cerebras.ai/v1", "CEREBRAS_API_KEY", false, "", ThinkOpenAI),
-		"together":          chat("https://api.together.ai/v1", "TOGETHER_API_KEY", false, maxTokens, ThinkTogether),
-		"nvidia":            chat("https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY", false, maxTokens, ThinkNone),
-		"huggingface":       chat("https://router.huggingface.co/v1", "HF_TOKEN", true, "", ThinkOpenAI),
-		"baseten":           chat("https://inference.baseten.co/v1", "BASETEN_API_KEY", true, "", ThinkOpenAI),
-		"ant-ling":          chat("https://api.ant-ling.com/v1", "ANT_LING_API_KEY", false, maxTokens, ThinkAntLing),
+		"groq":              chat("https://api.groq.com/openai/v1", true, "", ThinkOpenAI),
+		"cerebras":          chat("https://api.cerebras.ai/v1", false, "", ThinkOpenAI),
+		"together":          chat("https://api.together.ai/v1", false, maxTokens, ThinkTogether),
+		"nvidia":            chat("https://integrate.api.nvidia.com/v1", false, maxTokens, ThinkNone),
+		"huggingface":       chat("https://router.huggingface.co/v1", true, "", ThinkOpenAI),
+		"baseten":           chat("https://inference.baseten.co/v1", true, "", ThinkOpenAI),
+		"ant-ling":          chat("https://api.ant-ling.com/v1", false, maxTokens, ThinkAntLing),
 		"vllm":              local("http://localhost:8000/v1", LookupVLLM),
 		"llamacpp":          local("http://localhost:8080/v1", LookupLlamaCpp),
 		"ollama":            local("http://localhost:11434/v1", LookupOllama),
@@ -152,7 +152,7 @@ func (pp ProfilePatch) apply(p Profile) Profile {
 		p.API = *pp.API
 	}
 	set(&p.BaseURL, pp.BaseURL)
-	set(&p.APIKeyEnv, pp.APIKeyEnv)
+	setB(&p.RequiresKey, pp.RequiresKey)
 	if pp.Lookup != nil {
 		p.Lookup = *pp.Lookup
 	}

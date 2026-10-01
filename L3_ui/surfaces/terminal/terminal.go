@@ -62,6 +62,8 @@ const (
 	stRunning
 	stCompacting
 	stPick
+	stChoose // 모델·provider 선택 (TM-FR-49, 52)
+	stKey    // 키 입력 (TM-FR-53)
 )
 
 type approval struct {
@@ -96,6 +98,9 @@ type Terminal struct {
 	appr     *approval
 	reason   editor
 	pickList []agent.SessionInfo
+	ch       *chooser
+	keyFor   string
+	secret   editor
 
 	started  atomic.Bool
 	running  atomic.Bool
@@ -115,6 +120,8 @@ type Terminal struct {
 	modify   bool
 	negStart time.Time
 	negDone  bool
+
+	modelChecked bool
 }
 
 func New(o Options) *Terminal {
@@ -192,6 +199,12 @@ func (t *Terminal) view() view {
 		}
 	case t.st == stCompacting:
 		v.status = statusComp
+	case t.st == stChoose && t.ch.kind == chModel:
+		v.status = statusModel
+	case t.st == stChoose:
+		v.status = statusProvider
+	case t.st == stKey:
+		v.status = statusKey
 	}
 	if t.appr != nil {
 		lines, col := t.approvalView(t.appr)
@@ -202,11 +215,24 @@ func (t *Terminal) view() view {
 		}
 		return v
 	}
-	prompt := promptMain
-	if t.st == stPick {
+	prompt, ed := promptMain, &t.ed
+	var above []string
+	switch {
+	case t.st == stPick:
 		prompt = promptPick
+	case t.st == stChoose && t.ch.kind == chModel:
+		prompt, above = promptModel, t.chooseLines()
+	case t.st == stChoose:
+		prompt, above = promptProvider, t.chooseLines()
+	case t.st == stKey:
+		prompt, ed = t.keyFor+" 키: ", &t.secret
 	}
-	lines, line, col := t.ed.layout()
+	lines, line, col := ed.layout()
+	if ed == &t.secret {
+		for i, l := range lines {
+			lines[i] = strings.Repeat("•", len([]rune(l)))
+		}
+	}
 	for i, l := range lines {
 		if i == line {
 			col += 3 * strings.Count(string([]rune(l)[:col]), "\t")
@@ -218,7 +244,7 @@ func (t *Terminal) view() view {
 			lines[i] = "  " + lines[i]
 		}
 	}
-	v.lines, v.line = lines, line
+	v.lines, v.line = append(above, lines...), line+len(above)
 	v.col = col + 2
 	if line == 0 {
 		v.col = col + len([]rune(prompt))
@@ -271,6 +297,9 @@ func (t *Terminal) Run(ctx context.Context, a *agent.Agent, s Start) error {
 	t.running.Store(true)
 	defer t.finish()
 	t.begin(s)
+	if t.st != stPick {
+		t.checkModel()
+	}
 
 	var p parser
 	esc := time.NewTimer(time.Hour)
@@ -396,6 +425,15 @@ func (t *Terminal) key(k key) {
 		return
 	case t.st == stPick:
 		t.pickKey(k)
+		if t.st != stPick {
+			t.checkModel()
+		}
+		return
+	case t.st == stChoose:
+		t.chooseKey(k)
+		return
+	case t.st == stKey:
+		t.secretKey(k)
 		return
 	}
 	var abort, quit, cancel, send bool
@@ -549,7 +587,7 @@ func (t *Terminal) submit(followUp bool) {
 func (t *Terminal) start(msgs []contract.Message) {
 	r, err := t.a.Start(t.ctx, t.sid, msgs)
 	if err != nil {
-		t.fail(err)
+		t.say(t.paint(sgrRed, "✗") + " " + sanitize(err.Error()) + t.modelHint())
 		return
 	}
 	fresh := t.sid == ""
@@ -740,7 +778,8 @@ func (t *Terminal) resume(info agent.SessionInfo) {
 
 const helpText = `키: Enter 전송(실행 중 steer) · Alt+Enter follow-up · Shift+Enter/Ctrl+J 줄바꿈
      Esc/Ctrl+C 실행 중 중단 · Ctrl+C 입력 지우기(빈 줄에서 두 번 = 종료) · Ctrl+D 빈 줄에서 종료 · ↑↓ 기록
-명령: /help · /sessions · /resume [번호|id] · /new · /compact · /quit · /exit · //글 = '/글' 전송`
+명령: /help · /sessions · /resume [번호|id] · /new · /compact · /quit · /exit · //글 = '/글' 전송
+     /model [provider/id] · /login [provider] · /logout [provider]`
 
 // command 는 3.8 이다.
 func (t *Terminal) command(text string) {
@@ -807,6 +846,17 @@ func (t *Terminal) command(text string) {
 				t.compDone <- compactResult{ok: ok, err: err, ctx: cctx}
 			}()
 		}
+	case "/model":
+		switch {
+		case !idle:
+			t.say(t.paint(sgrRed, "✗") + " 실행 중에는 모델을 바꿀 수 없습니다")
+		case len(args) > 0:
+			t.setModel(args[0])
+		default:
+			t.chooseModel()
+		}
+	case "/login", "/logout":
+		t.keyCommand(name, args)
 	case "/quit", "/exit":
 		t.quit()
 	default:

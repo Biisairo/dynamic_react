@@ -19,7 +19,7 @@ type Config struct {
 type ProfilePatch struct {
 	API                *API            `json:"api,omitempty"`
 	BaseURL            *string         `json:"baseUrl,omitempty"`
-	APIKeyEnv          *string         `json:"apiKeyEnv,omitempty"`
+	RequiresKey        *bool           `json:"requiresKey,omitempty"`
 	Lookup             *LookupKind     `json:"lookup,omitempty"`
 	CatalogID          *string         `json:"catalogId,omitempty"`
 	DeveloperRole      *bool           `json:"developerRole,omitempty"`

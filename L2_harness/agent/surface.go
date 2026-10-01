@@ -65,6 +65,7 @@ func SessionKey(key string) string {
 type Run struct {
 	a        *Agent
 	sid      string
+	config   json.RawMessage // 시작할 때의 설정 (AG-FR-34: 이미 시작한 run 은 그대로)
 	ctx      context.Context
 	cancel   context.CancelFunc
 	steers   atomic.Int64
@@ -143,7 +144,7 @@ func (o runObserver) Observe(ev core.ObserverEvent) {
 }
 
 func (a *Agent) request(r *Run, sid string, input []contract.Message) harness.RunRequest {
-	req := harness.RunRequest{SessionID: sid, Input: input, Config: a.config}
+	req := harness.RunRequest{SessionID: sid, Input: input, Config: r.config}
 	if a.observer != nil {
 		req.Observer = runObserver{r: r, inner: a.observer}
 	}
@@ -152,11 +153,15 @@ func (a *Agent) request(r *Run, sid string, input []contract.Message) harness.Ru
 
 // Start 는 AG-FR-10, 22 다.
 func (a *Agent) Start(ctx context.Context, sessionID string, input []contract.Message) (*Run, error) {
+	cfg, err := a.runConfig()
+	if err != nil {
+		return nil, err
+	}
 	if sessionID != "" && !a.lock(sessionID) {
 		return nil, ErrSessionBusy
 	}
 	rctx, cancel := context.WithCancel(ctx)
-	r := &Run{a: a, cancel: cancel, finished: make(chan struct{})}
+	r := &Run{a: a, config: cfg, cancel: cancel, finished: make(chan struct{})}
 	r.ctx = context.WithValue(rctx, runKey{}, r)
 	cr, id, err := a.h.Start(r.ctx, a.request(r, sessionID, input))
 	if err != nil {

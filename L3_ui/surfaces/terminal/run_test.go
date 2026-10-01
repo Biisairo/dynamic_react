@@ -25,6 +25,7 @@ type llm struct {
 	*httptest.Server
 	mu      sync.Mutex
 	bodies  []string
+	heads   []http.Header
 	replies []string
 	gate    chan struct{} // nil 이 아니면 요청마다 하나씩 받아야 답한다
 }
@@ -36,6 +37,7 @@ func newLLM(t *testing.T, replies ...string) *llm {
 		l.mu.Lock()
 		n := len(l.bodies)
 		l.bodies = append(l.bodies, string(b))
+		l.heads = append(l.heads, r.Header.Clone())
 		gate := l.gate
 		l.mu.Unlock()
 		if gate != nil {
@@ -75,6 +77,15 @@ func (l *llm) body(i int) string {
 		return ""
 	}
 	return l.bodies[i]
+}
+
+func (l *llm) header(i int) http.Header {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if i < 0 || i >= len(l.heads) {
+		return http.Header{}
+	}
+	return l.heads[i]
 }
 
 func sse(chunks ...string) string {
@@ -149,7 +160,7 @@ func newEnv(t *testing.T) *env {
 // config 는 가짜 서버를 provider "test" 로 등록한 설정이다. agentExtra 는 "agent" 안에 붙는다.
 func config(url, agentExtra, extra string) string {
 	return `{"agent":{"model":{"provider":"test","id":"m"}` + agentExtra + `},` +
-		`"providers":{"test":{"api":"openai-chat","baseUrl":"` + url + `","apiKeyEnv":""}},` +
+		`"providers":{"test":{"api":"openai-chat","baseUrl":"` + url + `"}},` +
 		`"models":{"test/m":{"contextWindow":100000,"maxOutputTokens":1000}}` + extra + `}`
 }
 
@@ -160,7 +171,7 @@ func (e *env) agent(t *testing.T, cfg string, term *Terminal) *agent.Agent {
 	if err := os.WriteFile(p, []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	o := agent.Options{Cwd: e.cwd, Getenv: func(string) string { return "" }, NoRemoteCatalog: true}
+	o := agent.Options{Cwd: e.cwd, NoRemoteCatalog: true}
 	if term != nil {
 		o.Approver, o.OnEvent = term.Approver(), term.OnEvent
 	}
@@ -763,6 +774,10 @@ func TestRunStartError(t *testing.T) {
 	h := e.start(t, context.Background(), config(l.URL, "", ""), Start{Session: "bad id!"})
 	h.typ("hi\r")
 	h.wait("✗ ")
+	h.waitFn("prompt back", func(s string) bool { return strings.HasSuffix(s, "\n>") })
+	if strings.Contains(h.scr.text(), "(/model)") || strings.Contains(h.scr.text(), "(/login)") {
+		t.Fatal(h.scr.text())
+	}
 	h.typ("/quit\r")
 	if err := h.exit(); err != nil {
 		t.Fatal(err)

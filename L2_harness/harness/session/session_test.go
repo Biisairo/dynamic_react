@@ -167,14 +167,9 @@ func TestNewAndErrors(t *testing.T) {
 
 // HN-FR-15
 func TestDefaultDir(t *testing.T) {
-	env := map[string]string{}
-	getenv := func(k string) string { return env[k] }
-	if got := session.DefaultDir(getenv, "/home/u"); got != "/home/u/.dynamic_react/sessions" {
+	t.Setenv("DR_SESSION_DIR", "/data/s")
+	if got := session.DefaultDir("/home/u"); got != "/home/u/.dynamic_react/sessions" {
 		t.Fatalf("default %q", got)
-	}
-	env["DR_SESSION_DIR"] = "/data/s"
-	if got := session.DefaultDir(getenv, "/home/u"); got != "/data/s" {
-		t.Fatalf("env %q", got)
 	}
 }
 

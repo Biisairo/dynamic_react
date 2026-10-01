@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
+	"github.com/Biisairo/dynamic_react/L1_inject/adapters"
 )
 
-const goldenChat = `{"api":"openai-chat","apiKeyEnv":"K","developerRole":true,"maxTokensField":"max_completion_tokens","thinking":"openai"}`
+const goldenChat = `{"api":"openai-chat","requiresKey":true,"developerRole":true,"maxTokensField":"max_completion_tokens","thinking":"openai"}`
 
 func chatChunks(chunks ...string) string {
 	var b strings.Builder
@@ -216,13 +217,17 @@ func TestChatImagesAndEmpty(t *testing.T) {
 	}
 }
 
-// 키가 없는 로컬 서버는 Authorization 을 보내지 않는다.
+// AD-FR-29: 키가 필요 없는 로컬 서버는 키가 없으면 Authorization 없이 보내고, 키가 있으면 붙인다.
 func TestChatNoKey(t *testing.T) {
-	f := newFake(t)
-	f.sseText("/chat/completions", chatText("stop", ""))
-	collect(t, client(t, f, "ollama", `{"apiKeyEnv":""}`), simple("ollama", "llama3"))
-	if f.header("/chat/completions").Get("Authorization") != "" {
-		t.Fatal("auth header sent")
+	for key, want := range map[string]string{"": "", "local-key": "Bearer local-key"} {
+		f := newFake(t)
+		f.sseText("/chat/completions", chatText("stop", ""))
+		cfg, _ := adapters.ParseConfig([]byte(`{"providers":{"ollama":{"baseUrl":"` + f.URL + `"}}}`))
+		c := adapters.New(adapters.Options{Config: cfg, NoRemoteCatalog: true, APIKey: func(string) string { return key }})
+		done(t, collect(t, c, simple("ollama", "llama3")))
+		if got := f.header("/chat/completions").Get("Authorization"); got != want {
+			t.Fatalf("key %q: Authorization %q, want %q", key, got, want)
+		}
 	}
 }
 

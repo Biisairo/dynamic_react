@@ -14,7 +14,7 @@ import (
 
 // AD-FR-01
 func TestUnknownProviderOrAPI(t *testing.T) {
-	c := adapters.New(adapters.Options{NoRemoteCatalog: true, Getenv: func(string) string { return "k" }})
+	c := adapters.New(adapters.Options{NoRemoteCatalog: true, APIKey: func(string) string { return "k" }})
 	for _, req := range []contract.Request{simple("nope", "m"), func() contract.Request {
 		r := simple("anthropic", "m")
 		r.Model.API = "openai-chat"
@@ -30,20 +30,40 @@ func TestUnknownProviderOrAPI(t *testing.T) {
 	}
 }
 
-// AD-FR-50: 키가 없으면 보내지 않고, 메시지에는 환경변수 이름만.
+// AD-FR-50: 키가 없으면 보내지 않고, 메시지에는 provider 이름만.
 func TestMissingKey(t *testing.T) {
 	f := newFake(t)
 	f.sseText("/v1/messages", anthropicReply("end_turn"))
 	cfg, _ := adapters.ParseConfig([]byte(`{"providers":{"anthropic":{"baseUrl":"` + f.URL + `"}}}`))
-	c := adapters.New(adapters.Options{Config: cfg, NoRemoteCatalog: true, Getenv: func(string) string { return "" }})
+	var asked []string
+	c := adapters.New(adapters.Options{Config: cfg, NoRemoteCatalog: true, APIKey: func(p string) string { asked = append(asked, p); return "" }})
 	ce := failed(t, collect(t, c, simple("anthropic", "m")))
-	if ce.Class != contract.ClassAuth || !strings.Contains(ce.Message, "ANTHROPIC_API_KEY") || f.body("/v1/messages") != nil {
+	if ce.Class != contract.ClassAuth || ce.Message != `missing API key for provider "anthropic"` || f.body("/v1/messages") != nil {
 		t.Fatalf("%+v", ce)
+	}
+	if len(asked) != 1 || asked[0] != "anthropic" {
+		t.Fatalf("APIKey asked %v", asked)
 	}
 }
 
-// AD-FR-48, AD-C6: Getenv 가 nil 이면 프로세스 환경에 키가 있어도 읽지 않는다.
-func TestNilGetenvReadsNoEnv(t *testing.T) {
+// AD-FR-48: APIKey 는 호출마다 불려 바뀐 키가 다음 요청에 쓰인다.
+func TestAPIKeyPerCall(t *testing.T) {
+	f := newFake(t)
+	f.sseText("/v1/messages", anthropicReply("end_turn"))
+	cfg, _ := adapters.ParseConfig([]byte(`{"providers":{"anthropic":{"baseUrl":"` + f.URL + `"}}}`))
+	key := "sk-first"
+	c := adapters.New(adapters.Options{Config: cfg, NoRemoteCatalog: true, APIKey: func(string) string { return key }})
+	for _, k := range []string{"sk-first", "sk-second"} {
+		key = k
+		done(t, collect(t, c, simple("anthropic", "m")))
+		if got := f.header("/v1/messages").Get("x-api-key"); got != k {
+			t.Fatalf("x-api-key %q, want %q", got, k)
+		}
+	}
+}
+
+// AD-FR-48, AD-C6: APIKey 가 nil 이면 프로세스 환경에 키가 있어도 읽지 않는다.
+func TestNilAPIKeyReadsNoEnv(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "sk-from-process-env")
 	f := newFake(t)
 	f.sseText("/v1/messages", anthropicReply("end_turn"))
@@ -155,7 +175,7 @@ func TestLiveProviders(t *testing.T) {
 			if os.Getenv(env) == "" {
 				t.Skipf("%s not set", env)
 			}
-			c := adapters.New(adapters.Options{Getenv: os.Getenv})
+			c := adapters.New(adapters.Options{APIKey: func(p string) string { return os.Getenv(cases[p]) }})
 			req := simple(p, models[p])
 			req.Messages = []contract.Message{user("u1", "Reply with the single word: ok")}
 			m := done(t, collect(t, c, req))

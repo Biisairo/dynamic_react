@@ -33,8 +33,11 @@ type Env struct {
 
 var _ env.Env = (*Env)(nil)
 
-// New 는 cwd 에서 동작하는 Env 다. 셸은 여기서 한 번 읽는다 (OS-FR-01, OS-C2).
-func New(cwd string) (*Env, error) {
+// defaultShell 은 shell 인자가 비었을 때의 셸이다 (OS-FR-01).
+const defaultShell = "/bin/bash"
+
+// New 는 cwd 에서 동작하는 Env 다. shell 이 비면 defaultShell (OS-FR-01).
+func New(cwd, shell string) (*Env, error) {
 	if !path.IsAbs(cwd) {
 		return nil, fmt.Errorf("osenv: cwd %q is not absolute", cwd)
 	}
@@ -49,9 +52,8 @@ func New(cwd string) (*Env, error) {
 	if err != nil {
 		home = ""
 	}
-	shell := os.Getenv("SHELL")
 	if shell == "" {
-		shell = "/bin/sh"
+		shell = defaultShell
 	}
 	return &Env{cwd: path.Clean(cwd), home: home, shell: shell}, nil
 }

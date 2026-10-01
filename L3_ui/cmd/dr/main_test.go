@@ -33,7 +33,6 @@ type fixture struct {
 	stdin, stdinW, stdout *os.File
 	stderr                strings.Builder
 	restored              atomic.Int32
-	env                   map[string]string
 	hooks                 hooks
 }
 
@@ -43,7 +42,7 @@ func setup(t *testing.T, url string) *fixture {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	cfg := `{"agent":{"model":{"provider":"test","id":"m"}},"providers":{"test":{"api":"openai-chat","baseUrl":"` + url +
-		`","apiKeyEnv":""}},"models":{"test/m":{"contextWindow":100000,"maxOutputTokens":1000}}}`
+		`"}},"models":{"test/m":{"contextWindow":100000,"maxOutputTokens":1000}}}`
 	os.MkdirAll(filepath.Join(home, ".dynamic_react"), 0o755)
 	os.WriteFile(filepath.Join(home, ".dynamic_react", "config.json"), []byte(cfg), 0o644)
 	r, w, err := os.Pipe()
@@ -54,14 +53,13 @@ func setup(t *testing.T, url string) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fixture{stdin: r, stdinW: w, stdout: out, env: map[string]string{}}
+	f := &fixture{stdin: r, stdinW: w, stdout: out}
 	t.Cleanup(func() { r.Close(); w.Close(); out.Close() })
 	f.hooks = hooks{
 		isTerminal: func(int) bool { return true },
 		open: func(*os.File) (func() error, func() int, error) {
 			return func() error { f.restored.Add(1); return nil }, func() int { return 80 }, nil
 		},
-		getenv:       func(k string) string { return f.env[k] },
 		agentOptions: func(o *agent.Options) { o.NoRemoteCatalog = true; o.Cwd = t.TempDir() },
 	}
 	return f
@@ -129,20 +127,22 @@ func TestInitErrors(t *testing.T) {
 	}
 }
 
-// DR-FR-03, 04: /quit → 0, 색, 복구. NO_COLOR 면 SGR 없음. 플래그 전달.
+// DR-FR-01, 03, 04: /quit → 0, 색, 복구. -no-color 면 SGR 없음 (NO_COLOR 환경변수는 보지 않음). 플래그 전달.
 func TestQuit(t *testing.T) {
 	srv := llm(t, "hello")
+	t.Setenv("NO_COLOR", "1")
 	for _, noColor := range []bool{false, true} {
 		f := setup(t, srv.URL)
+		args := []string{"-session", "s-1", "-model", "test/m"}
 		if noColor {
-			f.env["NO_COLOR"] = "1"
+			args = append(args, "-no-color")
 		}
 		go func() {
 			f.stdinW.Write([]byte("hi\r"))
 			time.Sleep(300 * time.Millisecond)
 			f.stdinW.Write([]byte("/quit\r"))
 		}()
-		if code := f.run(context.Background(), "-session", "s-1", "-model", "test/m"); code != 0 {
+		if code := f.run(context.Background(), args...); code != 0 {
 			t.Fatalf("code %d stderr %q", code, f.stderr.String())
 		}
 		out := f.out(t)
@@ -150,7 +150,7 @@ func TestQuit(t *testing.T) {
 			t.Fatalf("out %q restored %d", out, f.restored.Load())
 		}
 		if hasSGR := strings.Contains(out, "\x1b[1m"); hasSGR == noColor {
-			t.Fatalf("NO_COLOR=%v but SGR=%v", noColor, hasSGR)
+			t.Fatalf("-no-color=%v but SGR=%v", noColor, hasSGR)
 		}
 		if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".dynamic_react", "sessions", "s-1.jsonl")); err != nil {
 			t.Fatalf("-session not used: %v", err)
@@ -168,5 +168,23 @@ func TestCancel(t *testing.T) {
 	}()
 	if code := f.run(ctx); code != 130 || f.restored.Load() == 0 {
 		t.Fatalf("code %d restored %d", code, f.restored.Load())
+	}
+}
+
+// DR-FR-03: 모델 없는 설정으로도 시작하고 /quit 으로 0 (R20)
+func TestNoModel(t *testing.T) {
+	f := setup(t, "http://127.0.0.1:1")
+	os.WriteFile(filepath.Join(os.Getenv("HOME"), ".dynamic_react", "config.json"), []byte(`{}`), 0o644)
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		f.stdinW.Write([]byte("\x1b"))
+		time.Sleep(300 * time.Millisecond)
+		f.stdinW.Write([]byte("/quit\r"))
+	}()
+	if code := f.run(context.Background()); code != 0 {
+		t.Fatalf("code %d stderr %q", code, f.stderr.String())
+	}
+	if out := f.out(t); !strings.Contains(out, "모델이 설정되지 않았습니다") {
+		t.Fatalf("out %q", out)
 	}
 }

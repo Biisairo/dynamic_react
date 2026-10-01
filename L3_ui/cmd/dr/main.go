@@ -25,7 +25,6 @@ func main() {
 type hooks struct {
 	isTerminal   func(fd int) bool
 	open         func(*os.File) (func() error, func() int, error)
-	getenv       func(string) string
 	agentOptions func(*agent.Options)
 }
 
@@ -40,9 +39,6 @@ func runWith(ctx context.Context, args []string, stdin, stdout *os.File, stderr 
 	if h.open == nil {
 		h.open = terminal.Open
 	}
-	if h.getenv == nil {
-		h.getenv = os.Getenv
-	}
 	fs := flag.NewFlagSet("dr", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	model := fs.String("model", "", "provider/id")
@@ -51,6 +47,7 @@ func runWith(ctx context.Context, args []string, stdin, stdout *os.File, stderr 
 	session := fs.String("session", "", "이어갈 세션 ID")
 	cont := fs.Bool("c", false, "가장 최근 세션 이어가기")
 	pick := fs.Bool("r", false, "세션 목록에서 고르기")
+	noColor := fs.Bool("no-color", false, "색을 쓰지 않음")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -75,7 +72,7 @@ func runWith(ctx context.Context, args []string, stdin, stdout *os.File, stderr 
 		return 1
 	}
 	defer restore()
-	t := terminal.New(terminal.Options{In: stdin, Out: stdout, Width: width, Color: h.getenv("NO_COLOR") == ""})
+	t := terminal.New(terminal.Options{In: stdin, Out: stdout, Width: width, Color: !*noColor})
 	o := agent.Options{Model: *model, Cwd: *cwd, ConfigPath: *config, Approver: t.Approver(), OnEvent: t.OnEvent}
 	if h.agentOptions != nil {
 		h.agentOptions(&o)

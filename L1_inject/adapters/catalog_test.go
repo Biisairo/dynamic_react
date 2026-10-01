@@ -26,7 +26,7 @@ func catalogClient(t *testing.T, e *catalogEnv, cfgJSON string, remote bool) *ad
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := adapters.Options{Config: cfg, Getenv: func(string) string { return testKey }, Now: func() time.Time { return ts }, NoRemoteCatalog: !remote}
+	opts := adapters.Options{Config: cfg, APIKey: func(string) string { return testKey }, Now: func() time.Time { return ts }, NoRemoteCatalog: !remote}
 	if e.remote != nil {
 		opts.RemoteCatalogURL = e.remote.URL + "/api.json"
 	}
@@ -65,7 +65,7 @@ func TestLookupKinds(t *testing.T) {
 			if c.lookup == "vllm" || c.lookup == "llamacpp" || c.lookup == "ollama" {
 				base += "/v1" // 로컬 서버: base 는 /v1, 조회는 host 기준 (vllm 은 base 기준)
 			}
-			cl := catalogClient(t, e, providerCfg("p", c.lookup, base, `,"apiKeyEnv":"K"`), false)
+			cl := catalogClient(t, e, providerCfg("p", c.lookup, base, `,"requiresKey":true`), false)
 			info, ok := cl.Lookup(context.Background(), "p", "m")
 			if !ok {
 				t.Fatal("not found")
@@ -142,7 +142,7 @@ func TestLookupPriority(t *testing.T) {
 
 // AD-FR-36c: 내장 스냅샷이 마지막 출처
 func TestLookupSnapshot(t *testing.T) {
-	cl := adapters.New(adapters.Options{NoRemoteCatalog: true, Getenv: func(string) string { return "" }})
+	cl := adapters.New(adapters.Options{NoRemoteCatalog: true})
 	info, ok := cl.Lookup(context.Background(), "deepseek", "deepseek-v4-pro")
 	if !ok || info.ContextWindow <= 0 || info.MaxOutputTokens <= 0 {
 		t.Fatalf("snapshot %+v %v", info, ok)

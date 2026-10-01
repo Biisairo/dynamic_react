@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -29,7 +28,6 @@ type Options struct {
 	ConfigPath      string // "" → <home>/.dynamic_react/config.json
 	Model           string // "provider/id", 설정의 agent.model 을 덮음
 	Observer        core.Observer
-	Getenv          func(string) string // nil → os.Getenv
 	NoRemoteCatalog bool                // adapters.Options.NoRemoteCatalog 로 전달
 	Tools           []string            // 도구 상한 (AG-FR-21)
 	Permissions     Permissions         // surface 프로필 규칙 (AG-FR-12)
@@ -38,13 +36,21 @@ type Options struct {
 }
 
 type Agent struct {
-	h          *harness.Agent
-	env        *osenv.Env
-	config     json.RawMessage
-	sessionDir string
-	rules      *ruleSet
-	approver   Approver
-	observer   core.Observer
+	h           *harness.Agent
+	env         *osenv.Env
+	client      *adapters.Client
+	cfgPath     string // AG-FR-01 의 경로, "" = 없음 (home 없음)
+	cfgExplicit bool
+	authPath    string // AG-FR-36, "" = 없음
+	sessionDir  string
+	rules       *ruleSet
+	approver    Approver
+	observer    core.Observer
+
+	smu    sync.Mutex        // config·model·keys 와 설정·키 파일 쓰기 (AG-FR-35)
+	config json.RawMessage   // AG-FR-04 의 raw
+	model  string            // "provider/id", "" = 없음
+	keys   map[string]string // provider → 키 (AG-FR-36)
 
 	mu      sync.Mutex
 	busy    map[string]bool            // AG-FR-22
@@ -54,6 +60,7 @@ type Agent struct {
 // fileConfig 는 설정 파일의 최상위다 (AG-FR-02).
 type fileConfig struct {
 	SessionDir  string          `json:"sessionDir"`
+	ShellPath   string          `json:"shellPath"`
 	Agent       json.RawMessage `json:"agent"`
 	Providers   json.RawMessage `json:"providers"`
 	Models      json.RawMessage `json:"models"`
@@ -62,27 +69,40 @@ type fileConfig struct {
 
 // New 는 AG-FR-09 순서로 조립한다.
 func New(ctx context.Context, o Options) (*Agent, error) {
-	getenv := o.Getenv
-	if getenv == nil {
-		getenv = os.Getenv
-	}
 	cwd, err := filepath.Abs(o.Cwd)
 	if err != nil {
 		return nil, fmt.Errorf("agent: cwd: %w", err)
 	}
-	e, err := osenv.New(cwd)
+	e, err := osenv.New(cwd, "")
 	if err != nil {
 		return nil, fmt.Errorf("agent: %w", err)
 	}
-	fc, err := loadConfig(ctx, e, o.ConfigPath)
+	cfgPath, explicit := configPath(e, o.ConfigPath)
+	fc, err := loadConfig(ctx, e, cfgPath, explicit)
 	if err != nil {
 		return nil, fmt.Errorf("agent: config: %w", err)
 	}
-	cfg, provider, err := agentConfig(fc.Agent, o.Model)
+	if fc.ShellPath != "" {
+		if !path.IsAbs(fc.ShellPath) {
+			return nil, fmt.Errorf("agent: config: shellPath %q is not absolute", fc.ShellPath)
+		}
+		if e, err = osenv.New(cwd, fc.ShellPath); err != nil {
+			return nil, fmt.Errorf("agent: %w", err)
+		}
+	}
+	cfg, model, err := agentConfig(fc.Agent, o.Model)
 	if err != nil {
 		return nil, err
 	}
-	dir, err := sessionDir(getenv, fc.SessionDir, e.Home())
+	var authPath string
+	if e.Home() != "" {
+		authPath = path.Join(e.Home(), ".dynamic_react", "auth.json")
+	}
+	keys, err := loadAuth(ctx, e, authPath)
+	if err != nil {
+		return nil, fmt.Errorf("agent: auth: %w", err)
+	}
+	dir, err := sessionDir(fc.SessionDir, e.Home())
 	if err != nil {
 		return nil, fmt.Errorf("agent: sessionDir: %w", err)
 	}
@@ -90,14 +110,9 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("agent: config: %w", err)
 	}
-	client := adapters.New(adapters.Options{Getenv: getenv, Config: acfg, NoRemoteCatalog: o.NoRemoteCatalog})
-	p, ok := client.Profile(provider)
-	if !ok {
-		return nil, fmt.Errorf("agent: unknown provider %q", provider)
-	}
-	if p.APIKeyEnv != "" && getenv(p.APIKeyEnv) == "" {
-		return nil, fmt.Errorf("agent: missing API key: set %s", p.APIKeyEnv)
-	}
+	a := &Agent{env: e, cfgPath: cfgPath, cfgExplicit: explicit, authPath: authPath, sessionDir: dir, model: model, keys: keys,
+		approver: o.Approver, observer: o.Observer, busy: map[string]bool{}, allowed: map[string]map[string]bool{}}
+	a.client = adapters.New(adapters.Options{APIKey: a.apiKey, Config: acfg, NoRemoteCatalog: o.NoRemoteCatalog})
 	project, err := loadProject(ctx, e)
 	if err != nil {
 		return nil, fmt.Errorf("agent: project config: %w", err)
@@ -110,13 +125,10 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 			perms.Deny = append(perms.Deny, p.Deny...)
 		}
 	}
-	rules, err := compileRules(perms, e.Cwd(), e.Home())
-	if err != nil {
+	if a.rules, err = compileRules(perms, e.Cwd(), e.Home()); err != nil {
 		return nil, fmt.Errorf("agent: %w", err)
 	}
-	a := &Agent{env: e, sessionDir: dir, rules: rules, approver: o.Approver, observer: o.Observer,
-		busy: map[string]bool{}, allowed: map[string]map[string]bool{}}
-	h, err := harness.New(ctx, harness.Options{Env: e, Model: client, SessionDir: dir, OnEvent: o.OnEvent, Gate: a.gate})
+	h, err := harness.New(ctx, harness.Options{Env: e, Model: a.client, SessionDir: dir, OnEvent: o.OnEvent, Gate: a.gate})
 	if err != nil {
 		return nil, fmt.Errorf("agent: %w", err)
 	}
@@ -162,8 +174,10 @@ func limitTools(raw json.RawMessage, limit, registry []string) (json.RawMessage,
 		}
 		want[n] = true
 	}
-	cfg, err := sets.ParseConfig(raw)
-	if err != nil {
+	var cfg struct {
+		Tools []string `json:"tools"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, err
 	}
 	configured := map[string]bool{}
@@ -185,16 +199,23 @@ func limitTools(raw json.RawMessage, limit, registry []string) (json.RawMessage,
 	return json.Marshal(m)
 }
 
-// loadConfig 는 AG-FR-01·02 다. 기본 경로에 파일이 없으면 빈 설정이다.
-func loadConfig(ctx context.Context, e *osenv.Env, configPath string) (fileConfig, error) {
-	p, explicit := configPath, configPath != ""
+// configPath 는 AG-FR-01 의 경로와 명시 여부다. home 이 없고 명시하지 않았으면 "".
+func configPath(e *osenv.Env, p string) (string, bool) {
 	switch {
-	case explicit && !path.IsAbs(p):
-		p = path.Join(e.Cwd(), p)
-	case !explicit && e.Home() == "":
+	case p != "" && !path.IsAbs(p):
+		return path.Join(e.Cwd(), p), true
+	case p != "":
+		return p, true
+	case e.Home() == "":
+		return "", false
+	}
+	return path.Join(e.Home(), ".dynamic_react", "config.json"), false
+}
+
+// loadConfig 는 AG-FR-01·02 다. 기본 경로에 파일이 없으면 빈 설정이다.
+func loadConfig(ctx context.Context, e *osenv.Env, p string, explicit bool) (fileConfig, error) {
+	if p == "" {
 		return fileConfig{}, nil
-	case !explicit:
-		p = path.Join(e.Home(), ".dynamic_react", "config.json")
 	}
 	b, err := e.ReadFile(ctx, p)
 	if !explicit && errors.Is(err, fs.ErrNotExist) {
@@ -223,42 +244,68 @@ func decodeStrict(b []byte, v any) error {
 	return nil
 }
 
-// agentConfig 는 AG-FR-04·05 다: 모델을 덮은 sets 설정 raw 와 provider 이름.
-func agentConfig(raw json.RawMessage, model string) (json.RawMessage, string, error) {
+// splitRef 는 AG-FR-05 다: 첫 "/" 에서 나누고 어느 쪽도 비면 안 된다.
+func splitRef(ref string) (string, string, error) {
+	provider, id, ok := strings.Cut(ref, "/")
+	if !ok || provider == "" || id == "" {
+		return "", "", fmt.Errorf("agent: model %q: want provider/id", ref)
+	}
+	return provider, id, nil
+}
+
+// withModel 은 sets 설정 객체 raw 의 model 을 바꾼다.
+func withModel(raw json.RawMessage, provider, id string) (json.RawMessage, error) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		m = map[string]json.RawMessage{}
+	}
+	m["model"], _ = json.Marshal(sets.ConfigModel{Provider: provider, ID: id})
+	return json.Marshal(m)
+}
+
+// agentConfig 는 AG-FR-04·05 다: 모델을 덮은 sets 설정 raw 와 "provider/id" (모델이 없으면 "").
+func agentConfig(raw json.RawMessage, override string) (json.RawMessage, string, error) {
 	if len(raw) == 0 {
 		raw = json.RawMessage(`{}`)
 	}
-	if model != "" {
-		provider, id, ok := strings.Cut(model, "/")
-		if !ok {
-			return nil, "", fmt.Errorf("agent: model %q: want provider/id", model)
+	if override != "" {
+		provider, id, err := splitRef(override)
+		if err != nil {
+			return nil, "", err
 		}
-		var m map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &m); err != nil {
+		if raw, err = withModel(raw, provider, id); err != nil {
 			return nil, "", fmt.Errorf("agent: config: agent: %w", err)
 		}
-		ref, _ := json.Marshal(sets.ConfigModel{Provider: provider, ID: id})
-		if m == nil {
-			m = map[string]json.RawMessage{}
-		}
-		m["model"] = ref
-		raw, _ = json.Marshal(m)
 	}
 	cfg, err := sets.ParseConfig(raw)
+	if err == nil {
+		return raw, cfg.Model.Provider + "/" + cfg.Model.ID, nil
+	}
+	var m struct {
+		Model *sets.ConfigModel `json:"model"`
+	}
+	if json.Unmarshal(raw, &m) != nil {
+		return nil, "", fmt.Errorf("agent: config: %w", err)
+	}
+	// 모델만 없을 수 있다: 나머지 검사는 자리표시 모델로 한다 (AG-FR-04).
+	placeholder, err := withModel(raw, "_", "_")
+	if err == nil {
+		_, err = sets.ParseConfig(placeholder)
+	}
 	if err != nil {
 		return nil, "", fmt.Errorf("agent: config: %w", err)
 	}
-	return raw, cfg.Model.Provider, nil
+	return raw, "", nil
 }
 
-// sessionDir 는 AG-FR-07 이다: DR_SESSION_DIR > 설정 > 기본.
-func sessionDir(getenv func(string) string, configured, home string) (string, error) {
-	dir := getenv(session.DirEnv)
+// sessionDir 는 AG-FR-07 이다: 설정 > 기본.
+func sessionDir(configured, home string) (string, error) {
+	dir := configured
 	if dir == "" {
-		dir = configured
-	}
-	if dir == "" {
-		dir = session.DefaultDir(getenv, home)
+		dir = session.DefaultDir(home)
 	}
 	if dir == "~" || strings.HasPrefix(dir, "~/") {
 		if home == "" {

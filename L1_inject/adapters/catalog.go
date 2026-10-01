@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
@@ -54,6 +55,37 @@ func boolp(b bool) *bool { return &b }
 type lookupResult struct {
 	models map[string]record
 	all    *record // 서버 하나가 한 모델만 서빙할 때 (llama.cpp)
+}
+
+// ModelRef 는 Models 목록의 한 항목이다.
+type ModelRef struct{ Provider, ID string }
+
+// Models 는 설정 models 와 내장 스냅샷의 모델 목록이다 (AD-FR-52). 네트워크를 쓰지 않는다.
+func (c *Client) Models() []ModelRef {
+	seen := map[ModelRef]bool{}
+	for p, ms := range c.snap {
+		for id := range ms {
+			seen[ModelRef{p, id}] = true
+		}
+	}
+	for key := range c.models {
+		if p, id, ok := strings.Cut(key, "/"); ok && id != "" {
+			seen[ModelRef{p, id}] = true
+		}
+	}
+	out := make([]ModelRef, 0, len(seen))
+	for m := range seen {
+		if _, ok := c.profiles[m.Provider]; ok {
+			out = append(out, m)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Provider != out[j].Provider {
+			return out[i].Provider < out[j].Provider
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
 }
 
 // Lookup 은 모델 정보를 출처 순서대로 모은다 (AD-FR-35~39).
@@ -121,7 +153,7 @@ func (c *Client) providerRecord(ctx context.Context, p Profile, provider, id str
 	c.mu.Unlock()
 	if !cached {
 		var ok bool
-		if res, ok = c.fetchProvider(ctx, p, id); !ok {
+		if res, ok = c.fetchProvider(ctx, p, provider, id); !ok {
 			return record{}
 		}
 		c.mu.Lock()
@@ -135,12 +167,9 @@ func (c *Client) providerRecord(ctx context.Context, p Profile, provider, id str
 }
 
 // fetchProvider 는 조회 API 를 부른다. 두 번째 값이 false 면 실패(캐시하지 않음). 404 는 "없음" 으로 확정한다.
-func (c *Client) fetchProvider(ctx context.Context, p Profile, id string) (lookupResult, bool) {
+func (c *Client) fetchProvider(ctx context.Context, p Profile, provider, id string) (lookupResult, bool) {
 	base := strings.TrimRight(p.BaseURL, "/")
-	var key string
-	if p.APIKeyEnv != "" {
-		key = c.getenv(p.APIKeyEnv)
-	}
+	key := c.apiKey(provider)
 	get := func(method, u string, body any) ([]byte, int, bool) {
 		var rd io.Reader
 		if body != nil {

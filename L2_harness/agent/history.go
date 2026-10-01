@@ -40,9 +40,13 @@ func (a *Agent) History(ctx context.Context, sessionID string) (History, error) 
 
 // Compact 는 AG-FR-31 이다. 빈 ID·잘못된 ID 는 harness 의 ID 검사가 거부한다.
 func (a *Agent) Compact(ctx context.Context, sessionID string) (bool, error) {
+	cfg, err := a.runConfig()
+	if err != nil {
+		return false, err
+	}
 	if !a.lock(sessionID) {
 		return false, ErrSessionBusy
 	}
 	defer a.unlock(sessionID)
-	return a.h.Compact(ctx, sessionID, a.config)
+	return a.h.Compact(ctx, sessionID, cfg)
 }

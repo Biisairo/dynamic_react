@@ -75,13 +75,12 @@ func setup(t *testing.T, l *llm) string {
 	t.Helper()
 	home, cwd := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("DR_SESSION_DIR", "")
 	url := "http://127.0.0.1:1"
 	if l != nil {
 		url = l.URL
 	}
 	cfg := `{"sessionDir":"~/sess","agent":{"model":{"provider":"test","id":"m"}},` +
-		`"providers":{"test":{"api":"openai-chat","baseUrl":"` + url + `","apiKeyEnv":""}},` +
+		`"providers":{"test":{"api":"openai-chat","baseUrl":"` + url + `"}},` +
 		`"models":{"test/m":{"contextWindow":100000,"maxOutputTokens":1000}}}`
 	p := filepath.Join(home, ".dynamic_react", "config.json")
 	os.MkdirAll(filepath.Dir(p), 0o755)
@@ -121,12 +120,12 @@ func TestFlagsAndPrompt(t *testing.T) {
 	}
 }
 
-// DP-FR-01, 04: -model 이 설정을 덮고, 키가 없으면 환경변수 이름을 알린다.
+// DP-FR-01, 04: -model 이 설정을 덮고, 키가 없으면 provider 를 알린다 (환경변수의 키는 보지 않음, R21).
 func TestModelAndMissingKey(t *testing.T) {
 	cwd := setup(t, nil)
-	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-from-env")
 	r := call(t, context.Background(), "", "-cwd", cwd, "-model", "anthropic/claude-x", "hi")
-	if r.code != 1 || !strings.Contains(r.stderr, "dr-print: ") || !strings.Contains(r.stderr, "ANTHROPIC_API_KEY") {
+	if r.code != 1 || r.stderr != "dr-print: missing API key for \"anthropic\"\n" {
 		t.Fatalf("%+v", r)
 	}
 	if r := call(t, context.Background(), "", "-cwd", cwd, "-config", filepath.Join(cwd, "none.json"), "hi"); r.code != 1 {

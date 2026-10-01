@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -23,6 +24,7 @@ type llm struct {
 	*httptest.Server
 	mu      sync.Mutex
 	bodies  []string
+	heads   []http.Header
 	replies []string
 }
 
@@ -33,6 +35,7 @@ func newLLM(t *testing.T, replies ...string) *llm {
 		l.mu.Lock()
 		n := len(l.bodies)
 		l.bodies = append(l.bodies, string(b))
+		l.heads = append(l.heads, r.Header.Clone())
 		l.mu.Unlock()
 		if r.URL.Path != "/chat/completions" {
 			http.NotFound(w, r)
@@ -52,6 +55,15 @@ func (l *llm) body(i int) string {
 		return ""
 	}
 	return l.bodies[i]
+}
+
+func (l *llm) header(i int) http.Header {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if i >= len(l.heads) {
+		return http.Header{}
+	}
+	return l.heads[i]
 }
 
 func sse(chunks ...string) string {
@@ -75,18 +87,17 @@ func toolReply(name, args string) string {
 // testConfig 는 가짜 서버를 provider "test" 로 등록한 설정이다.
 func testConfig(url string, extra string) string {
 	return `{"agent":{"model":{"provider":"test","id":"m"}},` +
-		`"providers":{"test":{"api":"openai-chat","baseUrl":"` + url + `","apiKeyEnv":""}},` +
+		`"providers":{"test":{"api":"openai-chat","baseUrl":"` + url + `"}},` +
 		`"models":{"test/m":{"contextWindow":100000,"maxOutputTokens":1000}}` + extra + `}`
 }
 
 type fixture struct {
 	home, cwd string
-	env       map[string]string
 }
 
 func setup(t *testing.T) *fixture {
 	t.Helper()
-	f := &fixture{home: t.TempDir(), cwd: t.TempDir(), env: map[string]string{}}
+	f := &fixture{home: t.TempDir(), cwd: t.TempDir()}
 	t.Setenv("HOME", f.home)
 	return f
 }
@@ -101,8 +112,18 @@ func (f *fixture) writeConfig(t *testing.T, content string) string {
 	return p
 }
 
+func (f *fixture) writeAuth(t *testing.T, content string) string {
+	t.Helper()
+	p := filepath.Join(f.home, ".dynamic_react", "auth.json")
+	os.MkdirAll(filepath.Dir(p), 0o700)
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
 func (f *fixture) opts() agent.Options {
-	return agent.Options{Cwd: f.cwd, Getenv: func(k string) string { return f.env[k] }, NoRemoteCatalog: true}
+	return agent.Options{Cwd: f.cwd, NoRemoteCatalog: true}
 }
 
 func user(s string) []contract.Message {
@@ -195,27 +216,29 @@ func TestModelOverride(t *testing.T) {
 		}
 	}
 	f := setup(t)
-	if _, err := agent.New(context.Background(), f.opts()); err == nil {
-		t.Error("no model accepted")
+	a, err := agent.New(context.Background(), f.opts())
+	if err != nil {
+		t.Fatalf("no model: %v", err)
+	}
+	if ref, err := a.Model(); ref != "" || !errors.Is(err, agent.ErrNoModel) {
+		t.Fatalf("no model: %q %v", ref, err)
 	}
 }
 
 // AG-FR-06, 07
 func TestSessionDir(t *testing.T) {
 	cases := []struct {
-		name, env, cfg, want string
+		name, cfg, want string
 	}{
-		{"default", "", "", "HOME/.dynamic_react/sessions"},
-		{"config", "", "/c/s", "/c/s"},
-		{"env wins", "/e/s", "/c/s", "/e/s"},
-		{"tilde", "", "~/mine", "HOME/mine"},
-		{"tilde alone", "", "~", "HOME"},
-		{"env tilde", "~/e", "", "HOME/e"},
+		{"default", "", "HOME/.dynamic_react/sessions"},
+		{"config", "/c/s", "/c/s"},
+		{"tilde", "~/mine", "HOME/mine"},
+		{"tilde alone", "~", "HOME"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			f := setup(t)
-			f.env["DR_SESSION_DIR"] = c.env
+			t.Setenv("DR_SESSION_DIR", "/e/s") // 환경변수는 보지 않는다 (R21)
 			if c.cfg != "" {
 				f.writeConfig(t, `{"sessionDir":"`+c.cfg+`"}`)
 			}
@@ -234,47 +257,53 @@ func TestSessionDir(t *testing.T) {
 		})
 	}
 	f := setup(t)
-	want := t.TempDir()
-	t.Setenv("DR_SESSION_DIR", want)
+	f.writeConfig(t, `{"sessionDir":"rel/s"}`)
 	o := f.opts()
-	o.Getenv, o.Model = nil, "ollama/llama3"
-	if a, err := agent.New(context.Background(), o); err != nil || a.SessionDir() != want {
-		t.Errorf("nil Getenv must read the process env: %v", err)
-	}
-	for name, set := range map[string]func(*fixture){
-		"relative config": func(f *fixture) { f.writeConfig(t, `{"sessionDir":"rel/s"}`) },
-		"relative env":    func(f *fixture) { f.env["DR_SESSION_DIR"] = "rel" },
-	} {
-		f := setup(t)
-		set(f)
-		o := f.opts()
-		o.Model = "ollama/llama3"
-		if _, err := agent.New(context.Background(), o); err == nil {
-			t.Errorf("%s accepted", name)
-		}
+	o.Model = "ollama/llama3"
+	if _, err := agent.New(context.Background(), o); err == nil {
+		t.Error("relative config accepted")
 	}
 }
 
-// AG-FR-08, AG-C1
+// AG-FR-08, AG-C1: 모델 문제는 New 를 실패시키지 않고 Model()·Start 로 알린다.
 func TestAPIKey(t *testing.T) {
 	f := setup(t)
-	f.writeConfig(t, `{"providers":{"mine":{"api":"openai-chat","baseUrl":"http://127.0.0.1:1","apiKeyEnv":"MINE_KEY"}}}`)
-	o := f.opts()
-	o.Model = "nope/m"
-	if _, err := agent.New(context.Background(), o); err == nil || !strings.Contains(err.Error(), `unknown provider "nope"`) {
+	l := newLLM(t, textReply("ok"))
+	f.writeConfig(t, `{"providers":{"mine":{"api":"openai-chat","baseUrl":"`+l.URL+`","requiresKey":true}}}`)
+	newWith := func(model string) *agent.Agent {
+		t.Helper()
+		o := f.opts()
+		o.Model = model
+		a, err := agent.New(context.Background(), o)
+		if err != nil {
+			t.Fatalf("%s: New %v", model, err)
+		}
+		return a
+	}
+	a := newWith("nope/m")
+	if _, err := a.Model(); err == nil || err.Error() != `unknown provider "nope"` {
 		t.Fatalf("unknown provider: %v", err)
 	}
-	o.Model = "mine/m"
-	if _, err := agent.New(context.Background(), o); err == nil || !strings.Contains(err.Error(), "missing API key: set MINE_KEY") {
+	if _, err := a.Start(context.Background(), "", user("hi")); err == nil || err.Error() != `unknown provider "nope"` {
+		t.Fatalf("unknown provider Start: %v", err)
+	}
+	a = newWith("mine/m")
+	if _, err := a.Model(); !errors.Is(err, agent.ErrNoAPIKey) || err.Error() != `missing API key for "mine"` {
 		t.Fatalf("missing key: %v", err)
 	}
-	f.env["MINE_KEY"] = "sk-secret-value"
-	if _, err := agent.New(context.Background(), o); err != nil {
-		t.Fatalf("key present: %v", err)
+	if _, err := a.Start(context.Background(), "", user("hi")); !errors.Is(err, agent.ErrNoAPIKey) {
+		t.Fatalf("missing key Start: %v", err)
 	}
-	o.Model = "anthropic/claude-x"
-	_, err := agent.New(context.Background(), o)
-	if err == nil || !strings.Contains(err.Error(), "ANTHROPIC_API_KEY") || strings.Contains(err.Error(), "sk-secret-value") {
+	f.writeAuth(t, `{"mine":{"type":"api_key","key":"sk-secret-value"},"anthropic":{"type":"api_key","key":""}}`)
+	a = newWith("mine/m")
+	if ref, err := a.Model(); ref != "mine/m" || err != nil {
+		t.Fatalf("key present: %q %v", ref, err)
+	}
+	if s, _ := runOnce(t, a, "", "hi"); s.Reason != core.SettleCompleted || l.header(0).Get("Authorization") != "Bearer sk-secret-value" {
+		t.Fatalf("%+v %v", s, l.header(0))
+	}
+	_, err := newWith("anthropic/claude-x").Model()
+	if !errors.Is(err, agent.ErrNoAPIKey) || !strings.Contains(err.Error(), `"anthropic"`) || strings.Contains(err.Error(), "sk-secret-value") {
 		t.Fatalf("anthropic: %v", err)
 	}
 }
@@ -332,20 +361,17 @@ type observerFunc func(core.ObserverEvent)
 
 func (f observerFunc) Observe(ev core.ObserverEvent) { f(ev) }
 
-// AG-NFR-02: 실제 provider 는 DR_E2E_MODEL 과 키가 있을 때만.
+// AG-NFR-02: 실제 provider 는 테스트 전용 DR_E2E_MODEL·DR_E2E_KEY 가 있을 때만.
 func TestLiveProvider(t *testing.T) {
-	model := os.Getenv("DR_E2E_MODEL")
-	if model == "" {
-		t.Skip("DR_E2E_MODEL not set")
+	model, key := os.Getenv("DR_E2E_MODEL"), os.Getenv("DR_E2E_KEY")
+	if model == "" || key == "" {
+		t.Skip("DR_E2E_MODEL or DR_E2E_KEY not set")
 	}
-	sessions := t.TempDir()
-	getenv := func(k string) string {
-		if k == "DR_SESSION_DIR" {
-			return sessions
-		}
-		return os.Getenv(k)
-	}
-	a, err := agent.New(context.Background(), agent.Options{Cwd: t.TempDir(), Model: model, Getenv: getenv})
+	f := setup(t)
+	provider, _, _ := strings.Cut(model, "/")
+	auth, _ := json.Marshal(map[string]any{provider: map[string]string{"type": "api_key", "key": key}})
+	f.writeAuth(t, string(auth))
+	a, err := agent.New(context.Background(), agent.Options{Cwd: f.cwd, Model: model})
 	if err != nil {
 		t.Skipf("agent: %v", err)
 	}

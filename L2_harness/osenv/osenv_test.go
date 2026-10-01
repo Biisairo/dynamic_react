@@ -23,7 +23,7 @@ import (
 
 func mustNew(t *testing.T, cwd string) *osenv.Env {
 	t.Helper()
-	e, err := osenv.New(cwd)
+	e, err := osenv.New(cwd, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestNew(t *testing.T) {
 	file := filepath.Join(dir, "f")
 	os.WriteFile(file, nil, 0o644)
 	for name, cwd := range map[string]string{"relative": ".", "missing": filepath.Join(dir, "nope"), "file": file} {
-		if _, err := osenv.New(cwd); err == nil {
+		if _, err := osenv.New(cwd, ""); err == nil {
 			t.Errorf("%s cwd accepted", name)
 		}
 	}
@@ -69,18 +69,20 @@ func run(t *testing.T, e *osenv.Env, cmd string) string {
 	return out.String()
 }
 
-// OS-FR-01: 셸 = $SHELL, 비면 /bin/sh. New 에서 한 번 읽는다.
+// OS-FR-01: 셸 = 인자, 비면 /bin/bash. 환경변수 SHELL 은 보지 않는다.
 func TestShellSelection(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("SHELL", "")
-	if got := run(t, mustNew(t, dir), "echo $0"); strings.TrimSpace(got) != "/bin/sh" {
-		t.Errorf("fallback shell %q", got)
-	}
 	custom := filepath.Join(dir, "myshell")
 	os.WriteFile(custom, []byte("#!/bin/sh\necho custom-shell\nexec /bin/sh \"$@\"\n"), 0o755)
 	t.Setenv("SHELL", custom)
-	e := mustNew(t, dir)
+	if got := run(t, mustNew(t, dir), "echo $0"); strings.TrimSpace(got) != "/bin/bash" {
+		t.Errorf("default shell %q", got)
+	}
 	t.Setenv("SHELL", "")
+	e, err := osenv.New(dir, custom)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := run(t, e, "echo hi"); got != "custom-shell\nhi\n" {
 		t.Errorf("custom shell output %q", got)
 	}
@@ -281,8 +283,11 @@ func TestExecResults(t *testing.T) {
 	if _, err := e.Exec(ctx, env.ExecRequest{Command: "true", Dir: filepath.Join(dir, "nope")}, &out); err == nil {
 		t.Error("missing dir accepted")
 	}
-	t.Setenv("SHELL", filepath.Join(dir, "noshell"))
-	if _, err := mustNew(t, dir).Exec(ctx, env.ExecRequest{Command: "true", Dir: dir}, &out); err == nil {
+	noshell, err := osenv.New(dir, filepath.Join(dir, "noshell"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := noshell.Exec(ctx, env.ExecRequest{Command: "true", Dir: dir}, &out); err == nil {
 		t.Error("missing shell accepted")
 	}
 }
