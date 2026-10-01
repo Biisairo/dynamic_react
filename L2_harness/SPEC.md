@@ -1,7 +1,7 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.8 (초안)
+- 버전: 0.9 (초안)
 - 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
@@ -23,7 +23,7 @@ L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로**
   - 조립: `harness.New(Options)` → `Agent.Start` → `*core.Run` — 3.6
 - 제외 — 같은 L2 의 다른 모듈 (R17):
   - `Env` 의 OS 구현 (`os`·`os/exec`, 프로세스 그룹 kill, 임시 파일) → `L2_harness/osenv`
-  - `ModelCaller` 생성 (adapters.Client, API 키 환경변수), 설정 파일·환경변수 해석 → `L2_harness/agent`
+  - `ModelCaller` 생성 (adapters.Client, API 키 파일), 설정 파일·키 파일 해석 → `L2_harness/agent`
 - 제외 — L3 (R17): 터미널 입출력, 스트리밍 표시, 사용자 이미지 첨부 읽기, 시그널, 종료 코드, 검증용 CLI `L3_ui/cmd/dr-print`
 - 제외 — 다음 단계: 권한 승인, 서브에이전트, MCP, 병렬 도구 스케줄러 (sets 1.2 와 같음)
 
@@ -38,7 +38,7 @@ L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로**
 | 도구 결과 2000줄 / 50KB | pi `utils/truncate.ts` (sets 1.3 과 같음) |
 | 시스템 프롬프트 구조 (preamble·tools·rules·project_context·skills·cwd) | pi `coding-agent/src/core/system-prompt.ts` |
 | 요약 시스템 프롬프트·요약 프롬프트·갱신 프롬프트, 직렬화 | pi `coding-agent/src/core/compaction/utils.ts`·`compaction.ts` |
-| 기본 sessionDir `~/.dynamic_react/sessions`, `DR_SESSION_DIR` | impl-01 사용자 확정 (값의 해석은 `L2_harness/agent`, 3.3 HN-FR-15) |
+| 기본 sessionDir `~/.dynamic_react/sessions` | impl-01 사용자 확정 (값의 해석은 `L2_harness/agent`, 3.3 HN-FR-15) |
 
 ---
 
@@ -138,7 +138,7 @@ type Env interface {
 | HN-FR-12 | 줄 종류: `{"type":"message","message":Message}`, `{"type":"edit","edit":ContextEdit}`, `{"type":"state","ns":string,"delta":StateDelta}`. `Append*`·`SaveState` 호출 하나의 줄들은 `AppendFile` 한 번으로 쓴다. `Load` 는 `ReadFile` 후 순서대로 재생해 `sets.Session` 을 만든다 (state 는 delta 를 순서대로 적용). 파일이 없으면 빈 세션 |
 | HN-FR-13 | 개행으로 끝나지 않은 마지막 조각(쓰다 중단)이 깨져 있으면 `Load` 는 그것을 버리고 파일을 그 앞까지로 `WriteFile` 해 복구한다 (이후 append 가 깨진 줄 뒤에 붙지 않게). 개행으로 끝나지 않았지만 온전한 줄이면 개행을 붙여 복구한다. 개행으로 끝난 깨진 줄이나 모르는 type 은 에러 |
 | HN-FR-14 | sessionID 는 `[A-Za-z0-9._-]{1,128}` 이고 `.`·`..` 가 아니어야 한다. 어기면 에러 (경로 탈출 방지). `session.NewID(now, rand)` 는 `20060102-150405-<8 hex>` 형식 |
-| HN-FR-15 | `session.DefaultDir(getenv func(string) string, home string) string` = `getenv(session.DirEnv)`(상수 `"DR_SESSION_DIR"`) 가 있으면 그것, 없으면 `<home>/.dynamic_react/sessions`. 순수 함수이고 값을 읽어 넘기는 것은 `L2_harness/agent` 다 |
+| HN-FR-15 | `session.DefaultDir(home string) string` = `<home>/.dynamic_react/sessions`. 순수 함수이고 환경변수를 보지 않는다 (R21) |
 | HN-FR-16 | 동시 사용에 안전하다 (같은 Store 값). 프로세스 간 동시 쓰기는 보장하지 않는다 |
 
 ### 3.4 시스템 프롬프트 (`harness/prompt`)
@@ -325,6 +325,7 @@ func (a *Agent) Compact(ctx context.Context, sessionID string, config json.RawMe
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.9 | `session.DefaultDir(getenv, home)` 가 `DR_SESSION_DIR`(`session.DirEnv`)를 먼저 봄 | `session.DefaultDir(home)`, `DirEnv` 삭제 | R21 |
 | 0.1 | 옛 sets v0.2 의 3.3·3.4·3.5·3.8 | 라이브러리 모듈 하나 + 검증용 CLI | 사용자 (R14 초안) |
 | 0.1 | 세션 줄 `usage` | 제거 | usage 는 assistant 메시지에 있다 (contract CT-FR-01a) |
 | 0.2 | 도구·세션·프롬프트 수집이 파일·프로세스를 직접 접근, 기본 ModelCaller = adapters | 실제 I/O 는 `Env`·`ModelCaller` 로만 받음 (HN-C1), adapters 의존 제거 | 사용자: "실제 입출력도 다 L3, 여기서는 에이전트 함수 하나" — pi 새 harness(`ExecutionEnv`) 구조 채택 (R14, 안 C) |

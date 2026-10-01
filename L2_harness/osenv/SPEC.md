@@ -1,7 +1,7 @@
 # osenv — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.1 (초안)
+- 버전: 0.2 (초안)
 - 상위 근거: `docs/DECISIONS.md` (R8, R14, R17)
 - 의존 명세: `L2_harness/SPEC.md` 3.1 (Env 계약 HN-FR-01~04)
 - 사용하는 쪽: `L2_harness/agent`
@@ -21,7 +21,7 @@
 
 | 값 | 출처 |
 |---|---|
-| 셸 = `$SHELL -c`, 없으면 `/bin/sh` | 사용자 확정 (impl-03, R17). pi `nodejs.ts` 는 bash 우선이지만 채택하지 않음 |
+| 셸 = `New` 의 인자(agent 가 설정 `shellPath` 에서 넘김), 비면 `/bin/bash` | R21 (pi settings `shellPath`, bash 우선). impl-03 의 `$SHELL`·`/bin/sh` 를 대체 |
 | 프로세스 그룹으로 실행, 취소·timeout 시 그룹 SIGKILL | pi `packages/agent/src/harness/env/nodejs.ts` `killProcessTree` (`process.kill(-pid, "SIGKILL")`, `detached`) |
 
 ---
@@ -31,17 +31,17 @@
 ### 2.1 제품 관점
 
 ```text
- agent ── osenv.New(cwd) : env.Env ── harness.New(Options{Env, ...})
+ agent ── osenv.New(cwd, shell) : env.Env ── harness.New(Options{Env, ...})
                 │
                 ├─ FileSystem → os.ReadFile / os.WriteFile / os.OpenFile(O_APPEND) / os.Stat / os.ReadDir / os.CreateTemp
-                └─ Shell      → exec.Cmd{$SHELL -c cmd, Setpgid} → kill(-pgid, SIGKILL)
+                └─ Shell      → exec.Cmd{<shell> -c cmd, Setpgid} → kill(-pgid, SIGKILL)
 ```
 
 모듈 의존: osenv → `L2_harness/harness`(패키지 `env`, 테스트는 `envtest`), 표준 라이브러리.
 
 ### 2.2 제약
 - OS-C1. Env 계약(HN-FR-01~03)을 지킨다. `envtest.ConformanceFS`·`envtest.ConformanceShell` 을 통과하는 것이 계약 충족의 기준이다.
-- OS-C2. 전역 상태를 바꾸지 않는다 (`os.Chdir`, `os.Setenv` 금지). 셸 경로는 `New` 에서 한 번 읽는다.
+- OS-C2. 전역 상태를 바꾸지 않는다 (`os.Chdir`, `os.Setenv` 금지). 셸 경로는 `New` 의 인자로 받는다.
 
 ---
 
@@ -50,13 +50,13 @@
 ```go
 type Env struct{ /* cwd, home, shell */ }
 
-func New(cwd string) (*Env, error)
+func New(cwd, shell string) (*Env, error)
 // *Env 는 env.Env 를 구현한다.
 ```
 
 | id | 요구사항 |
 |---|---|
-| OS-FR-01 | `New(cwd)`: cwd 가 절대 경로가 아니거나 존재하는 디렉터리가 아니면 에러. `Cwd()` = `path.Clean(cwd)`. `Home()` = `os.UserHomeDir()`, 실패하면 "". 셸 = 환경변수 `SHELL`, 비면 `/bin/sh` |
+| OS-FR-01 | `New(cwd, shell)`: cwd 가 절대 경로가 아니거나 존재하는 디렉터리가 아니면 에러. `Cwd()` = `path.Clean(cwd)`. `Home()` = `os.UserHomeDir()`, 실패하면 "" (R21 ⑥ 예외). 셸 = 인자 `shell`, 비면 `/bin/bash`. 환경변수 `SHELL` 은 보지 않는다 (R21) |
 | OS-FR-02 | 모든 FileSystem 경로 인자와 `ExecRequest.Dir` 는 절대 경로여야 한다. 아니면 `*fs.PathError{Err: fs.ErrInvalid}` (envtest 와 같음) |
 | OS-FR-03 | FileSystem 연산은 시작 전에 `ctx.Err()` 를 검사해 취소됐으면 그 에러를 돌려준다. 연산 도중에는 끊지 않는다 |
 | OS-FR-04 | 없는 경로의 `ReadFile`·`Stat`·`ListDir` 는 `os` 에러를 그대로(또는 `%w` 로 감싸) 돌려줘 `errors.Is(err, fs.ErrNotExist)` 가 참이다 |
@@ -79,14 +79,14 @@ func New(cwd string) (*Env, error)
 |---|---|
 | OS-C1, FR-04~09 | `envtest.ConformanceFS(t, e, t.TempDir())` |
 | OS-C1, FR-10~12 | `envtest.ConformanceShell(t, e, dir)` (실제 셸에서 처음 검증) |
-| OS-FR-01 | 상대 cwd, 없는 cwd, 파일 cwd → 에러. `SHELL=""` → `/bin/sh` (`echo $0`), `SHELL=/bin/sh` 명시 → 그 셸 |
+| OS-FR-01 | 상대 cwd, 없는 cwd, 파일 cwd → 에러. shell "" → `/bin/bash` (`echo $0`), `/bin/sh` 명시 → 그 셸, 환경변수 `SHELL` 을 바꿔도 무관 |
 | OS-FR-02 | 상대 경로 인자 → `fs.ErrInvalid` (FileSystem 6종, Exec Dir) |
 | OS-FR-03 | 취소된 ctx → `context.Canceled`, 파일이 만들어지지 않음 |
 | OS-FR-05 | 0600 파일을 WriteFile 로 덮어써도 0600 유지 |
 | OS-FR-08 | 디렉터리를 가리키는 링크 → `IsDir=true`, 깨진 링크 → 포함·`IsDir=false` |
 | OS-FR-11 | 취소·Timeout 뒤 백그라운드 자식 pid 가 죽고 `waitDelay` 전에 반환. 파이프를 잡은 백그라운드 자식(`sleep 3 &`)이 있어도 `waitDelay` 뒤 종료 코드 0 으로 반환 |
 | OS-FR-10 | Dir 비면 Cwd 에서 실행(`pwd`), stdin 이 비어 있음(`cat` 즉시 종료) |
-| OS-FR-12 | `kill -TERM $$` → 143, 취소 → `context.Canceled`, 없는 Dir → error, 없는 셸(`SHELL=/nonexistent`) → error |
+| OS-FR-12 | `kill -TERM $$` → 143, 취소 → `context.Canceled`, 없는 Dir → error, 없는 셸(`New(dir, "/nonexistent")`) → error |
 | 공통 | `go test -race -count=3`, `GOWORK=off` 단독 테스트, 뮤테이션 확인 |
 
 ---
@@ -113,4 +113,5 @@ func New(cwd string) (*Env, error)
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.2 | `New(cwd)`, 셸 = `$SHELL`, 없으면 `/bin/sh` | `New(cwd, shell)`, 비면 `/bin/bash`, 환경변수를 보지 않음 | R21 |
 | 0.1 | `L3_ui/osenv` (R14) | `L2_harness/osenv` 별도 모듈 | 사용자: L2 부터 사용자 환경 위의 실제 에이전트 (R17), osenv 는 분리 모듈 |
