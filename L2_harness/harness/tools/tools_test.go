@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
@@ -392,5 +393,41 @@ func TestEditDiffHunks(t *testing.T) {
 		"@@ -14,7 +14,8 @@\n l14\n l15\n l16\n l17\n-l18\n+Y1\n+Y2\n l19\n l20\n"
 	if !strings.HasSuffix(got, want) {
 		t.Fatalf("diff:\n%s", got)
+	}
+}
+
+// HN-FR-33: 출력 조각을 UTF-8 경계에서 progress 로 흘린다.
+func TestBashProgress(t *testing.T) {
+	e := envtest.New("/w", "/h")
+	parts := []string{"ab", "c\xea\xb0", "\x80d\n", "\xea"}
+	e.SetScript(func(ctx context.Context, req env.ExecRequest, out io.Writer) (env.ExecResult, error) {
+		for _, p := range parts {
+			io.WriteString(out, p)
+		}
+		return env.ExecResult{}, nil
+	})
+	var got []string
+	var ids []string
+	ctx := tools.WithProgress(context.Background(), func(callID, chunk string) {
+		ids = append(ids, callID)
+		got = append(got, chunk)
+	})
+	b := tools.Bash(e)
+	b.Run(ctx, contract.ToolCall{ID: "c9", Name: "bash", Args: json.RawMessage(`{"command":"x"}`)})
+	if strings.Join(got, "") != strings.Join(parts, "") {
+		t.Fatalf("chunks %q", got)
+	}
+	for i, c := range got[:len(got)-1] {
+		if !utf8.ValidString(c) || c == "" {
+			t.Errorf("chunk %d %q splits a rune", i, c)
+		}
+	}
+	if got[1] != "c" || got[2] != "가d\n" || got[len(got)-1] != "\xea" || ids[0] != "c9" {
+		t.Fatalf("chunks %q ids %v", got, ids)
+	}
+	got = nil
+	b.Run(context.Background(), contract.ToolCall{ID: "c", Name: "bash", Args: json.RawMessage(`{"command":"x"}`)})
+	if got != nil {
+		t.Fatal("progress without WithProgress")
 	}
 }

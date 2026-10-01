@@ -114,8 +114,8 @@ func (a *Agent) SessionDir() string
 | AG-FR-14 | 대상: `bash` = 인자 `command`. `read`·`write`·`edit` = 인자 `path` 를 도구와 같은 규칙(HN-FR-05: 상대 = cwd 기준, `~` = home)으로 절대 경로로 바꾼 것. 패턴도 같은 규칙으로 절대 경로로 바꾼다 |
 | AG-FR-15 | 매칭: `bash` 패턴은 전체 문자열 일치이고 `*` 는 임의의 문자열(빈 문자열 포함)이다. 경로 패턴은 glob — `*` 는 `/` 를 넘지 않는 임의 문자열, `**` 는 0개 이상의 경로 단계. 이름 규칙은 그 도구의 모든 호출에 맞는다 |
 | AG-FR-16 | **복합 명령 방어**: `*` 가 든 `bash` allow 규칙은 command 에 `;` `&&` `\|\|` `\|` 백틱 `$(` 줄바꿈 중 하나라도 있으면 맞지 않는다. `*` 없는 allow 규칙(정확 일치)과 deny·ask 규칙에는 적용하지 않는다 (사용자가 그 문자열 전체를 적었으므로) |
-| AG-FR-17 | 평가: deny 에 맞으면 거부 → ask 에 맞으면 묻기 → allow 에 맞으면 허용 → 어디에도 안 맞으면 묻기. 이 세션에서 `allow_session` 으로 허용한 대상(AG-FR-19)은 allow 로 본다 (deny 가 여전히 먼저) |
-| AG-FR-18 | 묻기: `Options.Approver` 가 nil 이면 허용한다 (지금 동작 유지, HN-C3). 있으면 `Approve(ctx, ApprovalRequest{SessionID, RunID, Call, Rule, Target})` 를 부른다. 답 `allow` = 이번만, `allow_session` = AG-FR-19, `deny` = 거부. Approver 가 error 를 돌려주면: ctx 취소면 그 에러로 dispatch 실패(run 은 aborted), 그 외는 거부(사유 = 에러 문구) |
+| AG-FR-17 | 평가: deny 에 맞으면 거부 → 이 세션에서 `allow_session` 으로 허용한 대상(AG-FR-19)이면 허용 → ask 에 맞으면 묻기 → allow 에 맞으면 허용 → 어디에도 안 맞으면 묻기. (allow_session 이 ask 보다 먼저인 이유: ask 규칙에 걸린 대상을 "세션 동안 허용" 해도 다시 묻는다면 그 답이 의미가 없다) |
+| AG-FR-18 | 묻기: `Options.Approver` 가 nil 이면 허용한다 (지금 동작 유지, HN-C3). 있으면 `Approve(ctx, ApprovalRequest{SessionID, RunID, Call, Rule, Target})` 를 부른다. 답 `allow` = 이번만, `allow_session` = AG-FR-19, `deny` = 거부. Approver 가 error 를 돌려주면: ctx 가 취소됐으면 `Status: aborted` 결과(run 은 ctx 취소로 aborted 로 끝남), 그 외는 거부(사유 = 에러 문구). approval 이벤트는 `harness.Agent.Emit` 으로 낸다 (HN-FR-35) |
 | AG-FR-19 | `allow_session`: 그 세션에 `name(대상 그대로)`(대상이 없는 도구는 `name`) 정확 일치 allow 규칙을 **메모리에** 더한다. 프로세스가 끝나면 사라진다 |
 | AG-FR-20 | 거부된 호출의 결과는 `Status: error`, 내용 `denied: <사유>`(deny 규칙이면 `denied by rule <규칙>`)이고 모델에 전달된다. Approver 를 부른 경우와 deny 규칙으로 거부한 경우 `approval` 이벤트를 낸다 (Decision = 답 또는 `rule_deny`). allow 규칙·Approver 없음으로 허용한 경우는 이벤트가 없다 |
 
@@ -123,7 +123,7 @@ func (a *Agent) SessionDir() string
 
 | id | 요구사항 |
 |---|---|
-| AG-FR-21 | `Options.Tools` 가 nil 이 아니면 **상한**이다: 실제 도구 = `Options.Tools` ∩ (설정 `agent.tools`, 비면 레지스트리 전부). 합친 목록을 `agent.tools` 에 써서 sets 에 넘긴다. `Options.Tools` 에 레지스트리에 없는 이름이 있으면 `New` 에러 |
+| AG-FR-21 | `Options.Tools` 가 nil 이 아니면 **상한**이다: 실제 도구 = `Options.Tools` ∩ (설정 `agent.tools`, 비면 레지스트리 전부). 합친 목록을 `agent.tools` 에 써서 sets 에 넘긴다. `Options.Tools` 에 레지스트리에 없는 이름이 있거나 교집합이 비면 `New` 에러 (sets 는 빈 tools 를 "전부" 로 해석하므로 빈 결과를 넘기면 오히려 모든 도구가 켜진다) |
 
 ### 3.6 run 제어 (R18 ③⑥⑦)
 
@@ -146,7 +146,7 @@ var ErrSessionBusy, ErrRunDone error
 | AG-FR-23 | `Abort`: run 의 ctx 를 취소한다 → aborted (짝 없는 tool call 은 aborted 결과, D9). 대기 중인 FollowUp 은 버린다. 여러 번 불러도 된다 |
 | AG-FR-24 | `Steer`: `core.Run.Input(msg)` 로 입력함에 넣고 steer 수를 1 늘린다. Gate(HN-FR-30)는 `steer 수 > GateInput.InboxConsumed` 이면(= 아직 반영되지 않은 steer 가 있으면) 호출을 실행하지 않고 `Status: error`, 내용 `skipped: the user sent a new message` 로 돌려준다. 승인보다 먼저 판단한다. 메시지는 다음 턴 시작에 반영된다 (ST 2 turn.start) |
 | AG-FR-25 | `FollowUp`: 대기열에 넣는다. run 이 `completed`·`stopped` 로 끝나면 대기열 전부를 입력으로 같은 세션에 새 run 을 시작하고(잠금 유지), 대기열이 빌 때까지 반복한다. `failed`·`guard`·`aborted` 면 대기열을 버린다. `Wait` 는 연쇄 전체가 끝난 뒤 마지막 Settle 을 돌려준다 |
-| AG-FR-26 | surface 콜백 격리: `OnEvent`·`Approver` 는 dispatch 안에서 불리므로 panic 이 그 run 의 failed 가 된다 (HN-FR-34, IN-FR-11). `Observer` 는 core 가 dispatch 밖에서 부르므로 agent 가 감싸 recover 하고, panic 이면 그 run 을 취소한 뒤 `Wait` 는 `Settle{failed, ErrPanic}` 을 돌려준다. 다른 run·세션에는 영향이 없다 |
+| AG-FR-26 | surface 콜백 격리: `OnEvent`·`Approver` 는 dispatch 안에서 불리므로 panic 이 그 run 의 failed 가 된다 (HN-FR-34, IN-FR-11). `Observer` 는 core 가 dispatch 밖에서 부르므로 agent 가 run 마다 감싼 Observer 를 `RunRequest.Observer` 로 넘겨(HN-FR-27) recover 하고, panic 이면 그 run 을 취소한 뒤 `Wait` 는 `Settle{failed, core.ErrPanic 을 감싼 에러}` 를 돌려준다. 다른 run·세션에는 영향이 없다 |
 
 ### 3.7 이벤트 (R18 ④)
 

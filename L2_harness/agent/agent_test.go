@@ -111,11 +111,11 @@ func user(s string) []contract.Message {
 
 func runOnce(t *testing.T, a *agent.Agent, session, prompt string) (core.Settle, string) {
 	t.Helper()
-	r, id, err := a.Start(context.Background(), session, user(prompt))
+	r, err := a.Start(context.Background(), session, user(prompt))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return r.Wait(), id
+	return r.Wait(), r.SessionID()
 }
 
 // AG-FR-01

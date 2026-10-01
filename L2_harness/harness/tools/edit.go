@@ -42,7 +42,7 @@ func editTool(e env.Env, q *queue) sets.Tool {
 			if err := decode(call, &a); err != nil {
 				return errResult(call.ID, err.Error())
 			}
-			abs, err := resolve(e, a.Path)
+			abs, err := Resolve(e, a.Path)
 			if err != nil {
 				return errResult(call.ID, err.Error())
 			}

@@ -62,8 +62,8 @@ func (q *queue) lock(p string) func() {
 	return l.Unlock
 }
 
-// resolve 는 인자 경로를 절대 경로로 푼다 (HN-FR-05).
-func resolve(e env.Env, p string) (string, error) {
+// Resolve 는 인자 경로를 절대 경로로 푼다 (HN-FR-05).
+func Resolve(e env.Env, p string) (string, error) {
 	switch {
 	case p == "":
 		return "", fmt.Errorf("path is required")

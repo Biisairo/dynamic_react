@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
@@ -56,6 +57,9 @@ func runBash(ctx context.Context, e env.Env, call contract.ToolCall) contract.To
 		timeout = time.Duration(t * float64(time.Second))
 	}
 	c := &capture{ctx: ctx, fs: e}
+	if fn, ok := ctx.Value(progressKey{}).(func(callID, chunk string)); ok {
+		c.progress = func(chunk string) { fn(call.ID, chunk) }
+	}
 	res, execErr := e.Exec(ctx, env.ExecRequest{Command: a.Command, Dir: e.Cwd(), Timeout: timeout}, c)
 	text := c.finish()
 
@@ -96,6 +100,8 @@ type capture struct {
 	spill    io.WriteCloser
 	path     string
 	spillErr error
+	progress func(chunk string) // HN-FR-33
+	pending  []byte             // progress 로 아직 넘기지 않은 끊긴 문자
 }
 
 func (c *capture) Write(p []byte) (int, error) {
@@ -112,6 +118,14 @@ func (c *capture) Write(p []byte) (int, error) {
 		c.spill.Write(p)
 	}
 	c.buf = append(c.buf, p...)
+	if c.progress != nil {
+		data := append(c.pending, p...)
+		k := completeUpTo(data)
+		if k > 0 {
+			c.progress(string(data[:k]))
+		}
+		c.pending = append([]byte(nil), data[k:]...)
+	}
 	if c.spill == nil && c.spillErr == nil && len(c.buf) > spillAt {
 		c.openSpill()
 	}
@@ -136,6 +150,10 @@ func (c *capture) openSpill() {
 func (c *capture) finish() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.progress != nil && len(c.pending) > 0 {
+		c.progress(string(c.pending))
+		c.pending = nil
+	}
 	if c.total == 0 {
 		return ""
 	}
@@ -181,4 +199,24 @@ func (c *capture) finish() string {
 		note = fmt.Sprintf("[Showing lines %d-%d of %d. Full output: %s]", start, totalLines, totalLines, where)
 	}
 	return t.content + "\n\n" + note
+}
+
+type progressKey struct{}
+
+// WithProgress 는 bash 가 출력 조각을 넘길 fn 을 ctx 에 싣는다 (HN-FR-33).
+func WithProgress(ctx context.Context, fn func(callID, chunk string)) context.Context {
+	return context.WithValue(ctx, progressKey{}, fn)
+}
+
+// completeUpTo 는 b 의 앞에서 끊기지 않은 UTF-8 문자까지의 길이다.
+func completeUpTo(b []byte) int {
+	for i := len(b) - 1; i >= 0 && i >= len(b)-utf8.UTFMax; i-- {
+		if utf8.RuneStart(b[i]) {
+			if utf8.FullRune(b[i:]) {
+				return len(b)
+			}
+			return i
+		}
+	}
+	return len(b)
 }

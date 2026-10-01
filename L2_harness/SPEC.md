@@ -123,7 +123,7 @@ type Env interface {
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-05 | 경로 해석: 절대 경로는 그대로, `~`·`~/…` 는 `Home()` 기준(Home 이 ""면 error 결과), 그 외는 `Cwd()` 기준. `path.Clean` 으로 정리. 결과 문구에는 cwd 안이면 cwd 기준 상대 경로, 밖이면 절대 경로 |
+| HN-FR-05 | 경로 해석(`tools.Resolve(env, path)`, agent 승인 규칙도 같은 함수를 쓴다): 절대 경로는 그대로, `~`·`~/…` 는 `Home()` 기준(Home 이 ""면 error 결과), 그 외는 `Cwd()` 기준. `path.Clean` 으로 정리. 결과 문구에는 cwd 안이면 cwd 기준 상대 경로, 밖이면 절대 경로 |
 | HN-FR-06 | 도구 실행 에러(파일 없음, 매칭 실패, 타임아웃, 0 이 아닌 종료 코드, Env 에러)는 `Status: error` 결과다. Go panic·error 로 루프를 멈추지 않는다 |
 | HN-FR-07 | `read`·`bash` 는 자체 절단을 하므로 `Tool.Truncate` 를 항등 함수로 둔다 (sets 18 의 기본 절단이 이중으로 걸리지 않게). `write`·`edit` 는 nil |
 | HN-FR-08 | `InputSchema` 는 sets ST-FR-38 범위(객체·required·최상위 타입)로 검사 가능한 JSON Schema 다 |
@@ -177,6 +177,7 @@ type Options struct {
 type RunRequest struct {
     SessionID string                 // 비면 session.NewID
     Input     []contract.Message
+    Observer  core.Observer          // 이 run 에만 쓰는 Observer. 있으면 Options.Observer 대신 쓴다 (HN-FR-27)
     Config    json.RawMessage        // sets 설정 JSON (agent 가 설정 파일에서 읽은 그대로). sets.Config 값을 쓰지 않는 이유: zero 값 enabled=false 가 압축을 끔
 }
 ```
@@ -184,13 +185,13 @@ type RunRequest struct {
 | id | 요구사항 |
 |---|---|
 | HN-FR-26 | `harness.New(ctx, Options) (*Agent, error)`: 레지스트리(`tools.All(env)` + `Options.Tools`), 세션 Store, 요약기, 시스템 프롬프트(`ContextFiles`·`Skills` 포함)를 한 번 만들고 `inject.BindWith(sets.StateStoreOf(store), sets.Base(deps), sets.Resilient(deps), Extra...)` 로 Dispatcher 를 만든다. Env·Model·SessionDir 누락, Bind 실패, 프롬프트 수집의 Env 에러(없는 파일 제외)는 에러 |
-| HN-FR-27 | `Agent.Start(ctx, RunRequest) (*core.Run, string, error)`: Config 를 `sets.ParseConfig` 로 검사하고(실패하면 run 없이 에러), sessionID 를 검사·생성해 run 을 시작한다. 두 번째 반환값은 쓰인 sessionID |
+| HN-FR-27 | `Agent.Start(ctx, RunRequest) (*core.Run, string, error)`: Config 를 `sets.ParseConfig` 로 검사하고(실패하면 run 없이 에러), sessionID 를 검사·생성해 run 을 시작한다. 두 번째 반환값은 쓰인 sessionID. `RunRequest.Observer` 가 있으면 그 run 만 그 Observer 로 도는 Kernel(같은 Dispatcher)에서 시작한다 — core 의 RunID 는 내부에서 만들어지고 Observer 이벤트에 세션이 없으므로, run 별 Observer 가 panic 을 그 run 에 귀속시키는 유일한 방법이다 |
 | HN-FR-28 | 여러 run 을 동시에 시작할 수 있다 (세션이 다르면 독립). 같은 세션의 동시 run 은 보장하지 않는다 |
 | HN-FR-29 | `Agent.System() []contract.Block`, `Agent.Tools() sets.ToolRegistry` 로 조립 결과를 조회할 수 있다 (L3 표시용) |
 
 ### 3.6a surface 훅 (R18)
 
-agent(`L2_harness/agent`)가 surface 공통 계층을 만들 때 쓰는 훅이다. base·resilient 함수는 `sets.Deps` 가 있는 harness 안에서만 감쌀 수 있으므로(`Bind` 는 step 마다 마지막 함수 하나를 고른다, IN-FR-19) 여기서 `combine.Wrap` 으로 감싼다. 루프(L0)·sets(L1)는 바꾸지 않는다.
+agent(`L2_harness/agent`)가 surface 공통 계층을 만들 때 쓰는 훅이다. `Bind` 는 step 마다 nil 이 아닌 마지막 함수 하나를 고르므로(IN-FR-19) 덧붙이려면 그 함수를 감싸야 한다. 감싸기는 **그 함수를 가진 세트 안에서 제자리로** 한다 — 별도 세트로 겹치면 inner 의 상태 네임스페이스(세트 이름 기준)가 바뀌어 base 의 상태가 깨진다. 재시도 대기는 `sets.Deps.Sleep`, 압축은 `sets.Deps.Summarizer` 를 감싼다. 루프(L0)·sets(L1)는 바꾸지 않는다.
 
 ```go
 // harness.Options 추가
@@ -256,6 +257,7 @@ type Approval struct {
 |---|---|
 | HN-FR-32 | 순서 보장: 한 호출(tool call)의 `tool_start` 는 정확히 한 번, `tool_end` 도 정확히 한 번이고 그 사이에만 `tool_update`·`approval` 이 온다. 한 메시지는 `message_start` → `message_update`* → `message_end`. `run_end` 는 그 run 의 마지막 이벤트다. 스트림 도중 에러로 `message_end` 없이 끝날 수 있다 |
 | HN-FR-33 | `tools.WithProgress(ctx, fn func(callID, chunk string)) context.Context`: bash 는 ctx 에 fn 이 있으면 출력 조각을 받을 때마다 부른다. 조각은 UTF-8 문자 경계에서 자른다(끊긴 문자는 다음 조각으로). harness 는 `OnEvent` 가 있으면 `Start` 의 ctx 에 fn 을 실어 `tool_update` 로 바꾼다 |
+| HN-FR-35 | `Agent.Emit(ev Event)`: `OnEvent` 를 HN-FR-34 와 같은 직렬화로 부른다 (agent 의 `approval` 이벤트용). `OnEvent` 가 nil 이면 아무것도 하지 않는다 |
 | HN-FR-34 | `OnEvent` 호출은 **Agent 전체에서 직렬화**된다 (한 번에 하나, 병렬 도구 실행 중에도). 동기이며, 콜백이 오래 걸리면 run 이 그만큼 늦어진다 (R18: 동기만). dispatch 안에서 부르므로 콜백의 panic 은 그 dispatch 의 에러가 되어 run 이 failed 로 끝난다 (IN-FR-11) |
 
 ### 3.7 비기능

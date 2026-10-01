@@ -77,12 +77,12 @@ func runWith(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		fmt.Fprintf(stderr, "dr-print: %v\n", err)
 		return 1
 	}
-	r, id, err := a.Start(ctx, *sessionID, []contract.Message{userMessage(prompt)})
+	r, err := a.Start(ctx, *sessionID, []contract.Message{userMessage(prompt)})
 	if err != nil {
 		fmt.Fprintf(stderr, "dr-print: %v\n", err)
 		return 1
 	}
-	p.release("session: " + id + "\n")
+	p.release("session: " + r.SessionID() + "\n")
 	settle := r.Wait()
 	p.finish()
 	if settle.Reason == core.SettleFailed || settle.Reason == core.SettleGuard {

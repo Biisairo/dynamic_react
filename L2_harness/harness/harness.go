@@ -36,20 +36,26 @@ type Options struct {
 	Core       core.Options // Observer 는 위 필드가 이긴다
 	Now        func() time.Time
 	NewID      func() string
+	OnEvent    func(Event)                                                  // HN-FR-31
+	Gate       func(ctx context.Context, in GateInput) *contract.ToolResult // HN-FR-30
 }
 
 type RunRequest struct {
 	SessionID string // 비면 session.NewID
 	Input     []contract.Message
 	Config    json.RawMessage // sets 설정 JSON
+	Observer  core.Observer   // 이 run 에만 쓰는 Observer (HN-FR-27)
 }
 
 // Agent 는 조립된 에이전트다. 여러 run 을 동시에 시작할 수 있다 (HN-FR-28).
 type Agent struct {
 	kernel *core.Kernel
+	disp   core.Dispatcher
+	copts  core.Options
 	system []contract.Block
 	tools  *sets.Registry
 	now    func() time.Time
+	sf     *surface
 }
 
 // New 는 도구·세션·요약기·시스템 프롬프트를 한 번 만들고 base·resilient(+Extra) 로 Dispatcher 를 만든다 (HN-FR-26).
@@ -77,10 +83,19 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	sf := &surface{onEvent: o.OnEvent, gate: o.Gate}
+	var summarizer sets.Summarizer = summary.New(o.Model, o.Now)
+	var sleep func(context.Context, time.Duration) error
+	if o.OnEvent != nil {
+		summarizer, sleep = eventSummarizer{sf, summarizer}, sf.sleep
+	}
 	deps := sets.Deps{Model: o.Model, Tools: reg, Store: store, System: system,
-		Summarizer: summary.New(o.Model, o.Now), Now: o.Now, NewID: o.NewID}
-	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(store)},
-		append([]inject.FunctionSet{sets.Base(deps), sets.Resilient(deps)}, o.Extra...)...)
+		Summarizer: summarizer, Sleep: sleep, Now: o.Now, NewID: o.NewID}
+	fsets := append([]inject.FunctionSet{sets.Base(deps), sets.Resilient(deps)}, o.Extra...)
+	if sf.active() {
+		fsets = sf.wrap(fsets)
+	}
+	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(store)}, fsets...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +103,7 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if o.Observer != nil {
 		copts.Observer = o.Observer
 	}
-	return &Agent{kernel: core.New(disp, copts), system: system, tools: reg, now: o.Now}, nil
+	return &Agent{kernel: core.New(disp, copts), disp: disp, copts: copts, system: system, tools: reg, now: o.Now, sf: sf}, nil
 }
 
 func buildSystem(ctx context.Context, o Options, reg *sets.Registry) ([]contract.Block, error) {
@@ -125,7 +140,20 @@ func (a *Agent) Start(ctx context.Context, r RunRequest) (*core.Run, string, err
 	if err := session.CheckID(sid); err != nil {
 		return nil, "", err
 	}
-	return a.kernel.Start(ctx, core.RunInput{SessionID: sid, Input: r.Input, Config: r.Config}), sid, nil
+	if a.sf.active() {
+		rs := newRunState()
+		ctx = context.WithValue(ctx, runKey{}, rs)
+		if a.sf.onEvent != nil {
+			ctx = tools.WithProgress(ctx, a.sf.progress(rs))
+		}
+	}
+	k := a.kernel
+	if r.Observer != nil {
+		opts := a.copts
+		opts.Observer = r.Observer
+		k = core.New(a.disp, opts)
+	}
+	return k.Start(ctx, core.RunInput{SessionID: sid, Input: r.Input, Config: r.Config}), sid, nil
 }
 
 // System 은 조립된 시스템 프롬프트다 (HN-FR-29).
@@ -133,3 +161,6 @@ func (a *Agent) System() []contract.Block { return append([]contract.Block(nil),
 
 // Tools 는 도구 레지스트리다 (HN-FR-29).
 func (a *Agent) Tools() sets.ToolRegistry { return a.tools }
+
+// Emit 은 OnEvent 를 같은 직렬화로 부른다 (HN-FR-35).
+func (a *Agent) Emit(ev Event) { a.sf.emit(ev) }
