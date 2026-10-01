@@ -190,3 +190,27 @@ func TestImportsOnlyAllowed(t *testing.T) {
 		}
 	}
 }
+
+func TestReserveTokens(t *testing.T) {
+	cfg := func(r int) sets.Config {
+		var c sets.Config
+		c.Compaction.ReserveTokens = r
+		return c
+	}
+	cases := []struct {
+		name       string
+		reserve, w int
+		want       int
+	}{
+		{"configured wins", 5000, 200000, 5000},
+		{"floor 16384", 0, 100000, 16384},
+		{"15 percent", 0, 200000, 30000},
+		{"15 percent floor division", 0, 110001, 16500},
+		{"zero window", 0, 0, 16384},
+	}
+	for _, c := range cases {
+		if got := sets.ReserveTokens(cfg(c.reserve), c.w); got != c.want {
+			t.Errorf("%s: got %d want %d", c.name, got, c.want)
+		}
+	}
+}

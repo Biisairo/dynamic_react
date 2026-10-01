@@ -56,6 +56,10 @@ type Agent struct {
 	tools  *sets.Registry
 	now    func() time.Time
 	sf     *surface
+	store  *session.Store
+	model  sets.ModelCaller
+	sum    sets.Summarizer // run 밖에서는 이벤트 없이 통과한다 (HN-FR-36)
+	newID  func() string
 }
 
 // New 는 도구·세션·요약기·시스템 프롬프트를 한 번 만들고 base·resilient(+Extra) 로 Dispatcher 를 만든다 (HN-FR-26).
@@ -103,7 +107,12 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if o.Observer != nil {
 		copts.Observer = o.Observer
 	}
-	return &Agent{kernel: core.New(disp, copts), disp: disp, copts: copts, system: system, tools: reg, now: o.Now, sf: sf}, nil
+	newID := o.NewID
+	if newID == nil {
+		newID = randomID
+	}
+	return &Agent{kernel: core.New(disp, copts), disp: disp, copts: copts, system: system, tools: reg, now: o.Now, sf: sf,
+		store: store, model: o.Model, sum: summarizer, newID: newID}, nil
 }
 
 func buildSystem(ctx context.Context, o Options, reg *sets.Registry) ([]contract.Block, error) {

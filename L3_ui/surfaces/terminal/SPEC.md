@@ -101,7 +101,7 @@ var ErrNotTerminal error
 
 | id | 요구사항 |
 |---|---|
-| TM-FR-07 | `Run` 시작 시 `Out` 에 bracketed paste 켜기(`CSI ? 2004 h`)와 kitty 키보드 프로토콜 질의(`CSI > 1 u` `CSI ? u` `CSI c`)를 쓴다. 응답으로 `CSI ? <flags> u` 가 DA 응답(`CSI ? … c`)보다 먼저 오면 **kitty 모드**. DA 만 오면 `CSI > 4 ; 2 m` 을 써서 **modifyOtherKeys 모드**. 1초 안에 DA 가 오지 않으면 **기본 모드**(아무것도 켜지 않음). 협상 응답 바이트는 키로 해석하지 않는다. 협상 중 들어온 다른 바이트는 협상 뒤 키로 해석한다 |
+| TM-FR-07 | `Run` 시작 시 `Out` 에 bracketed paste 켜기(`CSI ? 2004 h`)와 kitty 키보드 프로토콜 질의(`CSI > 1 u` `CSI ? u` `CSI c`)를 쓴다. 응답으로 `CSI ? <flags> u` 가 DA 응답(`CSI ? … c`)보다 먼저 오면 **kitty 모드**. DA 만 오면 `CSI > 4 ; 2 m` 을 써서 **modifyOtherKeys 모드**. 1초 안에 DA 가 오지 않으면 **기본 모드**(아무것도 켜지 않음). 협상 응답은 키 해석기가 받아 협상에만 쓰고 키로 처리하지 않는다. 협상 중 들어온 다른 키는 바로 처리한다 (해석기가 세 인코딩을 모두 받으므로 협상 결과와 무관하게 같은 키다) |
 | TM-FR-08 | 해제: kitty 모드면 `CSI < u`, modifyOtherKeys 모드면 `CSI > 4 ; 0 m`, 그리고 `CSI ? 2004 l` |
 | TM-FR-09 | 키 해석은 세 인코딩을 모두 받는다 (모드와 무관하게 — 터미널이 섞어 보내도 같은 키): 기본(제어 바이트, `ESC` 접두 Alt, `CSI`/`SS3` 방향키·Home·End·Delete), kitty `CSI <code> [; <mod>] u`, modifyOtherKeys `CSI 27 ; <mod> ; <code> ~`. 키 하나가 여러 번의 read 로 쪼개져 와도 같은 키다. UTF-8 문자도 쪼개져 올 수 있다 |
 | TM-FR-10 | 해석 결과 키 (아래 표 외의 키·시퀀스는 무시) |
@@ -120,7 +120,7 @@ var ErrNotTerminal error
 | ←→↑↓ | `CSI D/C/A/B`, `SS3 D/C/A/B` | 같음 (수식자 붙은 형태 `CSI 1;<mod> X` 도 같은 키) |
 | Home, End | `CSI H`·`CSI F`·`CSI 1 ~`·`CSI 4 ~`·`SS3 H/F` | 같음 |
 | 문자 | 출력 가능한 UTF-8 (Tab 포함) | 같음, kitty `CSI <code> u`(수식자 없음)도 문자 |
-| 붙여넣기 | `CSI 200 ~` … `CSI 201 ~` 사이 전부 = 문자열 하나 (안의 `\r`·`\n` 은 줄바꿈, 제어 바이트는 버림) | 같음 |
+| 붙여넣기 | `CSI 200 ~` … `CSI 201 ~` 사이 전부 = 문자열 하나 (안의 `\r\n`·`\r`·`\n` 은 줄바꿈 하나, `\t` 외의 제어 바이트는 버림) | 같음 |
 
 ### 3.3 상태와 키 동작
 
@@ -151,7 +151,7 @@ var ErrNotTerminal error
 | id | 요구사항 |
 |---|---|
 | TM-FR-23 | user 줄: `> ` + 텍스트. 여러 줄이면 이어지는 줄은 `  ` 들여쓰기 |
-| TM-FR-24 | `message_update` 의 `text_delta` = Delta 의 텍스트를 그대로 덧붙인다. `thinking_delta` = 흐리게 덧붙인다. 한 메시지 안에서 text ↔ thinking 이 바뀌면 바뀌기 전 출력이 줄바꿈으로 끝나지 않았을 때 줄바꿈 하나를 넣는다. `toolcall_*` 는 그리지 않는다 |
+| TM-FR-24 | 그리는 모든 외부 텍스트(모델 출력, 도구 출력·결과, 에러 문구, 세션 제목)는 `\n` 외의 제어 문자를 버리고 탭을 공백 4칸으로 바꾼다 (터미널 시퀀스 주입과 폭 계산 어긋남 방지). 입력 줄의 탭도 표시만 공백 4칸이다. `message_update` 의 `text_delta` = Delta 의 텍스트를 그대로 덧붙인다. `thinking_delta` = 흐리게 덧붙인다. 한 메시지 안에서 text ↔ thinking 이 바뀌면 바뀌기 전 출력이 줄바꿈으로 끝나지 않았을 때 줄바꿈 하나를 넣는다. `toolcall_*` 는 그리지 않는다 |
 | TM-FR-25 | `message_end` 와 run 의 끝(`run_end`)에서, 출력이 줄바꿈으로 끝나지 않았으면 줄바꿈 하나를 넣는다. `message_end` 의 `Message.Usage` 를 그 run 의 합계에 더한다 (입력 = Input + CacheRead + CacheWrite, 출력 = Output) |
 | TM-FR-26 | `tool_start` 줄: `▸ <name>  <요약>`. 요약 = 인자 JSON 객체의 `command` 문자열 → 없으면 `path` 문자열 → 없으면 인자 JSON 그대로(공백 없는 직렬화). 요약은 첫 줄만, 줄 전체를 `Width()` 열에 맞게 잘라 끝에 `…`. 도구 이름으로 분기하지 않는다 |
 | TM-FR-27 | `tool_update`: Output 을 `  ` 들여쓰기 + 흐림으로 덧붙인다. 한 호출(Call.ID)에서 줄바꿈으로 끝난 줄이 **20줄**에 이르면 그 뒤 출력은 버리고 버린 줄 수(줄바꿈 수 + 마지막 꼬리가 있으면 1)를 센다 |
@@ -168,7 +168,7 @@ var ErrNotTerminal error
 |---|---|
 | TM-FR-34 | `Approve(ctx, req)` 는 한 번에 하나만 진행한다 (여러 고루틴이 부르면 차례로). 진행 중 상태는 승인이고, 입력 줄은 보존했다가 끝나면 되살린다 |
 | TM-FR-35 | 프롬프트는 다시 그리는 영역에 그린다 (덧붙이지 않음): `⚠ <name> 승인 필요  (규칙: <Rule>)` — Rule 이 비면 `(규칙 없음 — 기본 묻기)`. 다음 줄 `  <Target>`(비면 인자 JSON 요약, TM-FR-26 규칙), 인자 중 `command`·`path` 가 아닌 문자열 값은 `  <key>: <값의 앞 5줄>`(더 있으면 `  …`), 마지막 줄 `  [y] 이번만  [a] 이 세션 동안  [n] 거부` |
-| TM-FR-36 | 키: `y` → `Decision{allow}`, `a` → `Decision{allow_session}`, `n` → 마지막 줄이 `  거부 사유 (Enter 로 확정): ` + 입력 칸으로 바뀌고(TM-FR-11 편집, 줄바꿈 없음), Enter → `Decision{deny, Reason: 입력(앞뒤 공백 제거), 비면 "user denied"}`. Esc·Ctrl+C (사유 입력 중 포함) → 현재 run `Abort` 후 ctx 취소를 기다려 `ctx.Err()` 를 돌려준다. 그 밖의 키는 무시. 대소문자 `Y`·`A`·`N` 도 같다 |
+| TM-FR-36 | 키: `y` → `Decision{allow}`, `a` → `Decision{allow_session}`, `n` → 마지막 줄이 `  거부 사유 (Enter 로 확정): ` + 입력 칸으로 바뀌고(TM-FR-11 편집, 줄바꿈·기록 없음, 붙여넣기의 줄바꿈은 공백), Enter → `Decision{deny, Reason: 입력(앞뒤 공백 제거), 비면 "user denied"}`. Esc·Ctrl+C (사유 입력 중 포함) → 현재 run `Abort` 후 ctx 취소를 기다려 `ctx.Err()` 를 돌려준다. 그 밖의 키는 무시. 대소문자 `Y`·`A`·`N` 도 같다 |
 | TM-FR-37 | ctx 가 먼저 취소되면(예: 다른 경로의 Abort) 프롬프트를 지우고 `ctx.Err()` 를 돌려준다 |
 
 ### 3.7 세션
@@ -177,7 +177,7 @@ var ErrNotTerminal error
 |---|---|
 | TM-FR-38 | 시작: `Start.Session` 이 있으면 그 세션을 이어간다(TM-FR-41, `Sessions()` 에 없으면 헤더 없이 그 ID 를 현재 세션으로만 둠). `Continue` 면 `Sessions()` 의 첫 항목을 이어가고 목록이 비면 새 세션. `Pick` 이면 목록 화면(TM-FR-40)을 띄운다. 셋 다 아니면 새 세션(현재 세션 없음). `Sessions` 에러는 `✗ <에러>` 줄 후 새 세션 |
 | TM-FR-39 | 목록 줄: `<번호>  <상대 시각>  <Messages>msg  <Title>` (번호 1부터, 최대 20개, Title 이 비면 `(제목 없음)`, 줄은 `Width()` 로 자름). 상대 시각 = `Now() - Updated` 가 1분 미만 `방금`, 1시간 미만 `N분 전`, 1일 미만 `N시간 전`, 7일 미만 `N일 전`, 그 이상 `YYYY-MM-DD`(로컬). 목록이 비면 `(세션 없음)` |
-| TM-FR-40 | 선택 상태 (`Pick` 시작, 또는 TM-FR-44 `/resume` 인자 없음): 목록을 덧붙이고 입력 줄 프롬프트를 `번호 (Enter = 새 세션): ` 로 바꾼다. Enter → 비면 새 세션, 1..목록 수의 정수면 그 세션 이어가기, 그 밖이면 `✗ 잘못된 번호` 후 다시 입력. Esc·Ctrl+C → 새 세션. 그 밖의 편집은 TM-FR-11 |
+| TM-FR-40 | 선택 상태 (`Pick` 시작, 또는 TM-FR-44 `/resume` 인자 없음): 목록을 덧붙이고 입력 줄 프롬프트를 `번호 (Enter = 새 세션): ` 로 바꾼다. Enter → 비면 새 세션, 1..목록 수의 정수면 그 세션 이어가기, 그 밖이면 `✗ 잘못된 번호` 후 다시 입력. Esc·Ctrl+C → 새 세션. 그 밖의 편집은 TM-FR-11 (줄바꿈·기록 없음). 새 세션을 고르면 `── 새 세션` 줄 |
 | TM-FR-41 | 이어가기: 현재 세션 = ID. `── 세션 <id> · <Title> · <Messages> 메시지` 줄, 그리고 `Agent.History(ctx, id)` 를 그린다: `Omitted > 0` 이면 먼저 `⋯ 이전 <Omitted>개 메시지 압축됨`(흐림). 이어서 Messages 를 순서대로 — user = TM-FR-23, assistant = 블록 순서대로 text 그대로·thinking 흐림·tool_call 은 TM-FR-26 줄·image 는 `[image]`, tool_result = TM-FR-28 의 Status 줄. 메시지 사이 출력은 줄바꿈으로 끝나게 한다. History 에러는 `✗ <에러>` 줄 (현재 세션은 바꿈) |
 | TM-FR-42 | 세션 전환(`/resume`·`/new`)은 대기 상태에서만 한다. 다른 상태면 `✗ 실행 중에는 세션을 바꿀 수 없습니다` |
 

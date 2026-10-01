@@ -53,7 +53,8 @@ func Resilient(d Deps) inject.FunctionSet {
 	}
 }
 
-func reserveTokens(cfg Config, window int) int {
+// ReserveTokens 는 압축 임계치의 여유분이다 (3.5 의 reserve 식).
+func ReserveTokens(cfg Config, window int) int {
 	if cfg.Compaction.ReserveTokens > 0 {
 		return cfg.Compaction.ReserveTokens
 	}
@@ -66,7 +67,7 @@ func canCompact(d Deps, cfg Config) bool { return cfg.Compaction.Enabled && d.Su
 func compactConv(c context.Context, d Deps, cfg Config, model contract.ModelInfo, conv inject.Conv) (contract.ContextEdit, bool, error) {
 	proj := ApplyEdits(conv.Transcript(), conv.Edits())
 	return Compact(c, d.Summarizer, model.Ref, proj, cfg.Compaction.KeepRecentTokens,
-		reserveTokens(cfg, model.ContextWindow), model.MaxOutputTokens, d.Now(), d.NewID(), d.NewID())
+		ReserveTokens(cfg, model.ContextWindow), model.MaxOutputTokens, d.Now(), d.NewID(), d.NewID())
 }
 
 func recoveredThisTurn(st inject.State, fl inject.Flow) bool {
@@ -91,7 +92,7 @@ func ResilientContextMaintain(d Deps) inject.ContextMaintainFn {
 		if !canCompact(d, cfg) || model.ContextWindow <= 0 {
 			return nil, nil
 		}
-		threshold := model.ContextWindow - reserveTokens(cfg, model.ContextWindow)
+		threshold := model.ContextWindow - ReserveTokens(cfg, model.ContextWindow)
 		st, run := ctx.State(), ctx.Flow().RunID()
 		cs, _ := getJSON[compactionState](st, keyCompaction)
 		if cs.Run != run {
