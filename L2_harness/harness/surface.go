@@ -33,6 +33,7 @@ const (
 	EventApproval      EventKind = "approval"
 	EventRetry         EventKind = "retry"
 	EventCompaction    EventKind = "compaction"
+	EventInput         EventKind = "input"
 	EventTurnEnd       EventKind = "turn_end"
 	EventRunEnd        EventKind = "run_end"
 )
@@ -197,6 +198,18 @@ func (s *surface) wrap(fs []inject.FunctionSet) []inject.FunctionSet {
 				rs.mu.Unlock()
 			}
 			return inner(ctx, ri)
+		}
+	}
+	if f := last(func(f inject.FunctionSet) bool { return f.TurnStart != nil }); f != nil {
+		inner := f.TurnStart
+		f.TurnStart = func(ctx *inject.TurnStartCtx) ([]contract.Message, []inject.TurnStartSignal, error) {
+			msgs, sigs, err := inner(ctx)
+			if rs := stateOf(ctx.Context()); rs != nil && err == nil {
+				for _, m := range msgs {
+					s.emitRun(rs, Event{Kind: EventInput, Message: &m})
+				}
+			}
+			return msgs, sigs, err
 		}
 	}
 	if f := last(func(f inject.FunctionSet) bool { return f.StreamEvent != nil }); f != nil {

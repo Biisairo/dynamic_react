@@ -3,6 +3,7 @@ package harness_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L0_core/core"
+	"github.com/Biisairo/dynamic_react/L1_inject/inject"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness/env"
@@ -85,7 +87,7 @@ func TestEventsTextTurn(t *testing.T) {
 	if s, _ := start(t, a, "s1", user("u1", "hi")); s.Reason != core.SettleCompleted {
 		t.Fatalf("%+v", s)
 	}
-	if got := strings.Join(rec.kinds(), ","); got != "message_start,message_update,message_update,message_end,turn_end,run_end" {
+	if got := strings.Join(rec.kinds(), ","); got != "input,message_start,message_update,message_update,message_end,turn_end,run_end" {
 		t.Fatalf("kinds %s", got)
 	}
 	evs := rec.all()
@@ -94,6 +96,10 @@ func TestEventsTextTurn(t *testing.T) {
 			t.Fatalf("ids %+v", e)
 		}
 	}
+	if evs[0].Message == nil || evs[0].Message.ID != "u1" {
+		t.Fatalf("input %+v", evs[0])
+	}
+	evs = evs[1:]
 	partial := func(e harness.Event) string { return e.Message.Content[0].Text }
 	if evs[1].Delta.Delta != "he" || partial(evs[1]) != "he" || partial(evs[2]) != "hello" {
 		t.Fatalf("updates %+v %+v", evs[1], evs[2])
@@ -198,7 +204,7 @@ func TestEventsStreamError(t *testing.T) {
 	if s, _ := start(t, a, "s1", user("u1", "hi")); s.Reason != core.SettleFailed {
 		t.Fatalf("%+v", s)
 	}
-	if got := strings.Join(rec.kinds(), ","); got != "message_start,message_update,run_end" {
+	if got := strings.Join(rec.kinds(), ","); got != "input,message_start,message_update,run_end" {
 		t.Fatalf("kinds %s", got)
 	}
 }
@@ -438,4 +444,41 @@ func TestEmit(t *testing.T) {
 		t.Fatalf("%v", k)
 	}
 	newAgent(t, envtest.New("/w", "/h"), m, func(*harness.Options) {}).Emit(harness.Event{Kind: harness.EventApproval})
+}
+
+// HN-FR-31 input: turn.start 가 돌려준 메시지마다, 세트의 inject_input 포함.
+func TestEventsInput(t *testing.T) {
+	m := &fakeModel{script: func(n int, req contract.Request) []contract.StreamEvent {
+		return reply(fmt.Sprintf("a%d", n), contract.StopStop, text("ok"))
+	}}
+	rec := &recorder{}
+	nudge := func(d sets.Deps) inject.FunctionSet {
+		base := sets.BaseTurnFinish(d)
+		var calls atomic.Int32
+		return inject.FunctionSet{Name: "nudge", TurnFinish: func(ctx *inject.TurnFinishCtx) ([]inject.TurnFinishSignal, error) {
+			if calls.Add(1) > 1 {
+				return base(ctx)
+			}
+			return []inject.TurnFinishSignal{ctx.InjectInput(user("n1", "check again")), ctx.ContinueTurn()}, nil
+		}}
+	}
+	a := newAgent(t, envtest.New("/w", "/h"), m, func(o *harness.Options) {
+		o.OnEvent = rec.on
+		o.Sets = func(d sets.Deps) []inject.FunctionSet { return append(harness.DefaultSets(d), nudge(d)) }
+	})
+	if s, _ := start(t, a, "s1", user("u1", "hi"), user("u2", "there")); s.Reason != core.SettleCompleted {
+		t.Fatalf("%+v", s)
+	}
+	var got []string
+	for _, e := range rec.all() {
+		switch e.Kind {
+		case harness.EventInput:
+			got = append(got, "input:"+e.Message.ID)
+		case harness.EventMessageStart, harness.EventTurnEnd, harness.EventRunEnd:
+			got = append(got, string(e.Kind))
+		}
+	}
+	if strings.Join(got, ",") != "input:u1,input:u2,message_start,turn_end,input:n1,message_start,turn_end,run_end" {
+		t.Fatalf("order %v", got)
+	}
 }

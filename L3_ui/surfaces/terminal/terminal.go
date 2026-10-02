@@ -89,6 +89,7 @@ type Terminal struct {
 	// 렌더링 상태 (mu)
 	block     string
 	calls     map[string]*callOut
+	sent      map[string]bool // 이 Terminal 이 보낸 입력 메시지 ID (TM-FR-54)
 	tokIn     int
 	tokOut    int
 	followUps int
@@ -131,7 +132,7 @@ func New(o Options) *Terminal {
 	if o.EscTimeout <= 0 {
 		o.EscTimeout = defaultEscTimeout
 	}
-	t := &Terminal{o: o, calls: map[string]*callOut{}, stopped: make(chan struct{}), apprCh: make(chan *approval)}
+	t := &Terminal{o: o, calls: map[string]*callOut{}, sent: map[string]bool{}, stopped: make(chan struct{}), apprCh: make(chan *approval)}
 	t.scr = screen{out: o.Out, width: o.Width}
 	return t
 }
@@ -557,6 +558,9 @@ func (t *Terminal) submit(followUp bool) {
 		text = text[1:]
 	}
 	msg := newMessage(text, t.o.Now())
+	t.mu.Lock()
+	t.sent[msg.ID] = true
+	t.mu.Unlock()
 	if t.st != stRunning {
 		t.say(t.userLine(text, ""))
 		t.start([]contract.Message{msg})

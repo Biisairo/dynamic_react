@@ -113,6 +113,10 @@ func (t *Terminal) event(ev harness.Event) {
 			t.tokIn += u.Input + u.CacheRead + u.CacheWrite
 			t.tokOut += u.Output
 		}
+	case harness.EventInput:
+		if ev.Message != nil {
+			t.input(*ev.Message)
+		}
 	case harness.EventToolStart:
 		if ev.Call != nil {
 			t.line(t.toolLine(*ev.Call))
@@ -309,6 +313,29 @@ func formatTokens(n int) string {
 		return fmt.Sprint(n)
 	}
 	return fmt.Sprintf("%.1fk", float64(n)/1000)
+}
+
+// input 은 이 Terminal 이 보내지 않은 입력 메시지를 그린다 (TM-FR-54).
+func (t *Terminal) input(m contract.Message) {
+	if t.sent[m.ID] {
+		delete(t.sent, m.ID)
+		return
+	}
+	var parts []string
+	for _, b := range m.Content {
+		switch b.Kind {
+		case contract.BlockText:
+			parts = append(parts, b.Text)
+		case contract.BlockImage:
+			parts = append(parts, "[image]")
+		}
+	}
+	lines := strings.Split(sanitize(strings.Join(parts, "\n")), "\n")
+	shown := lines[:min(len(lines), maxToolLines)]
+	t.line(t.paint(sgrYellow, "»") + " " + strings.Join(shown, "\n  "))
+	if n := len(lines) - len(shown); n > 0 {
+		t.line(t.paint(sgrDim, fmt.Sprintf("  … +%d줄 생략", n)))
+	}
 }
 
 // userLine 은 user 입력 줄이다 (TM-FR-23).

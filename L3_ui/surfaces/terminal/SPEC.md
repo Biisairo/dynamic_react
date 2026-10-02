@@ -1,8 +1,8 @@
 # terminal — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.3 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20)
+- 버전: 0.4 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25)
 - 의존 명세: `L2_harness/agent/SPEC.md` v0.4 (3.4~3.12), `L2_harness/SPEC.md` v0.8 (3.6a Event)
 - 사용하는 쪽: `L3_ui/cmd/dr` (`L3_ui/cmd/dr/SPEC.md`)
 
@@ -161,6 +161,7 @@ var ErrNotTerminal error
 | TM-FR-31 | `compaction` 줄: Phase start → `⋯ 컨텍스트 압축 중`, end → Err 가 nil 이면 `✓ 압축 완료`, 아니면 `✗ 압축 실패: <Err>` |
 | TM-FR-32 | `run_end` 줄: `── <Settle.Reason> · 입력 <n> / 출력 <n> 토큰`. 수는 1000 미만이면 그대로, 이상이면 `12.3k`(소수 첫째 자리, 반올림). `failed`·`guard` 면 ` · <Settle.Err>` 를 붙인다. `aborted` 면 `── 중단됨` 만. 합계는 줄을 그린 뒤 0 으로 (연쇄 run 마다 따로) |
 | TM-FR-33 | `message_start`·`turn_end` 는 그리지 않는다 |
+| TM-FR-54 | `input` (R25): Message ID 가 이 Terminal 이 `Start`·`Steer`·`FollowUp` 으로 보낸 메시지(이미 TM-FR-23 으로 그림)면 그리지 않는다. 아니면(세트가 넣은 메시지) `» `(Color 면 노랑) + 텍스트 — text 블록을 줄바꿈으로 잇고 image 는 `[image]`, TM-FR-24 정리. 앞 20줄만 그리고 이어지는 줄은 `  ` 들여쓰기, 더 있으면 `  … +N줄 생략`(흐림). 보낸 메시지 ID 는 그 `input` 을 받으면 잊는다 |
 
 ### 3.6 승인 프롬프트
 
@@ -219,6 +220,7 @@ var ErrNotTerminal error
 | TM-FR-07~10 | 키 해석기 단위 테스트(표 기반): 표 10 의 모든 인코딩, 1바이트씩 쪼갠 입력, 쪼개진 UTF-8, 붙여넣기 안의 `\r`·제어 바이트, 모르는 CSI 무시, 단독 ESC 는 시간 초과 뒤 Esc·ESC+`\r` 은 Alt+Enter. 협상: 가짜 In 이 kitty 응답+DA / DA 만 / 무응답일 때 Out 에 쓰인 켜기·해제 시퀀스, 협상 응답이 키로 새지 않음 |
 | TM-FR-11 | 입력 줄 편집기 단위 테스트: 삽입·삭제·이동·줄 처음/끝·여러 줄·기록 ↑↓·한글(rune) |
 | TM-FR-19~22 | 렌더 단위 테스트: 가짜 Out 의 바이트를 가상 화면(행 배열 + 커서, 처리 시퀀스는 이 모듈이 쓰는 것만)으로 재생해 최종 화면을 비교. 꼬리 이어 붙이기, 넓은 문자 줄 높이, 줄 넘김, Color false 면 SGR 없음 |
+| TM-FR-54 | 가짜 Agent 로: 자기가 보낸 입력의 `input` 은 두 번 그려지지 않음, 모르는 ID 의 `input` 은 `» ` 줄·여러 줄 들여쓰기·21줄 이상이면 `+N줄 생략`·이미지 `[image]`·제어 문자 정리·색 |
 | TM-FR-23~33 | 이벤트 → 가상 화면: 각 종류, text↔thinking 줄바꿈, bash 20줄 상한과 `+N줄 생략`, tool_end 4종, run_end 토큰 형식(999·1000·12345)·aborted·failed |
 | TM-FR-34~37 | 실제 agent + httptest 모델 서버(dr-print 테스트와 같은 방식, `NoRemoteCatalog`)로 bash 호출 → 가짜 In 에 y / a(다음 같은 호출은 묻지 않음) / n+사유(모델 다음 요청에 `denied: <사유>`) / Esc(run aborted) / 동시 승인 2개 직렬 |
 | TM-FR-12~18 | 같은 종단 환경: 전송 → Start·`── 세션`, 실행 중 Enter → 다음 요청에 steer 메시지, Alt+Enter → 연쇄 run, Esc·Ctrl+C → `── 중단됨`, 대기 Ctrl+C 두 번·Ctrl+D·In EOF → Run nil, ctx 취소 → Run 이 ctx.Err() 와 해제 시퀀스, `//x` → 모델에 `/x` |
@@ -258,6 +260,7 @@ var ErrNotTerminal error
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.4 | 세트가 넣은 user 메시지는 화면에 나오지 않음 | `input` 이벤트를 `» ` 줄로 (TM-FR-54) | R25 |
 | 0.3 | 모델 선택에 키 없는 모델도 흐리게 표시(`(키 없음: ENV)`)하고 Enter 를 거부, 키는 환경변수로만 | 키 없는 provider 의 모델은 목록에 없음, `/login`·`/logout`(3.10), 시작 시 키 없음 → 키 입력, Start 에러에 ` (/login)` | R21 |
 | 0.2 | 모델 문제면 dr 이 시작하지 못함, `/model` 없음 | 시작 시 모델 선택 화면, `/model` (3.9, TM-FR-47a) | R20 |
 | 0.1 | 구체 surface 없음 (`surfaces/README.md` 만) | 대화형 터미널 surface 라이브러리 | 사용자: "대화형 터미널 해보자" (impl-04) |

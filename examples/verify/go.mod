@@ -12,8 +12,14 @@ require (
 )
 
 require (
+	golang.org/x/sys v0.35.0 // indirect
+	golang.org/x/term v0.34.0 // indirect
+)
+
+require (
 	github.com/Biisairo/dynamic_react/L1_inject/adapters v0.0.0 // indirect
 	github.com/Biisairo/dynamic_react/L2_harness/osenv v0.0.0 // indirect
+	github.com/Biisairo/dynamic_react/L3_ui/surfaces/terminal v0.0.0
 	golang.org/x/text v0.28.0 // indirect
 )
 
@@ -32,3 +38,5 @@ replace github.com/Biisairo/dynamic_react/L2_harness/agent => ../../L2_harness/a
 replace github.com/Biisairo/dynamic_react/L2_harness/harness => ../../L2_harness/harness
 
 replace github.com/Biisairo/dynamic_react/L2_harness/osenv => ../../L2_harness/osenv
+
+replace github.com/Biisairo/dynamic_react/L3_ui/surfaces/terminal => ../../L3_ui/surfaces/terminal

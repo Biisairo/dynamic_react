@@ -1,8 +1,8 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 1.1 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23)
+- 버전: 1.2 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
@@ -274,6 +274,7 @@ type Approval struct {
 | `approval` | agent 가 만든다 (harness 는 만들지 않음) | Call, Approval |
 | `retry` | resilient `call.error` 가 재시도를 결정했을 때 | Error, Attempt, Delay |
 | `compaction` | 요약기 호출 전·후 | Phase, Err |
+| `input` | `turn.start` 가 메시지를 돌려줬을 때 (에러 없이), 메시지마다 순서대로 (R25) | Message = 그 메시지 (surface 가 보낸 입력도 포함 — surface 는 자기 메시지 ID 로 거른다) |
 | `turn_end` | `turn.finish` 진입 | Message = 이 턴의 응답, Results |
 | `run_end` | `run.settled` | Settle |
 
@@ -338,7 +339,7 @@ func (a *Agent) Store() Store
 | HN-FR-11~16 | 왕복(메시지·편집·상태 → Load), 깨진 마지막 줄 무시, 깨진 중간 줄·모르는 type 에러, 잘못된 sessionID, 호출당 AppendFile 1회, 동시 Append(-race), DefaultDir |
 | HN-FR-17~21 | 골든: 기본 / 컨텍스트 파일 순서(루트 쪽 먼저, git 루트에서 멈춤) / 스킬 우선순위·깨진 frontmatter·home 없음 |
 | HN-FR-22~25 | 가짜 ModelCaller: 요청 모양(System·Previous·MaxTokens·Tools 없음), 직렬화 골든, length·error·빈 텍스트·done 없음 → 에러, 취소 |
-| HN-FR-30~34 | 가짜 ModelCaller·가짜 Env 로: Gate ShortCircuit 결과가 모델에 전달됨, Gate 는 base 검사 실패 호출에는 불리지 않음, 이벤트 순서(텍스트 턴·도구 턴·병렬 도구 2개·스트림 에러), message_update 의 누적본 = 앞 조각들의 합, tool_end 는 절단 뒤 결과, retry 의 Attempt·Delay, compaction start/end, run_end 가 마지막, bash progress 조각 합 = 전체 출력(UTF-8 경계), OnEvent 동시 호출 없음(-race), 콜백 panic → failed |
+| HN-FR-30~34 | 가짜 ModelCaller·가짜 Env 로: Gate ShortCircuit 결과가 모델에 전달됨, Gate 는 base 검사 실패 호출에는 불리지 않음, 이벤트 순서(텍스트 턴·도구 턴·병렬 도구 2개·스트림 에러), `input` 이 첫 턴의 입력·이후 턴의 입력함 메시지(세트의 `inject_input` 포함)마다 그 턴의 `message_start` 전에 옴·입력 없는 턴에는 없음, message_update 의 누적본 = 앞 조각들의 합, tool_end 는 절단 뒤 결과, retry 의 Attempt·Delay, compaction start/end, run_end 가 마지막, bash progress 조각 합 = 전체 출력(UTF-8 경계), OnEvent 동시 호출 없음(-race), 콜백 panic → failed |
 | HN-FR-36 | 가짜 ModelCaller(요약 응답)·가짜 Env: 긴 세션 → true·edit 저장·이어서 Start 한 run 의 요청에 요약 메시지·세션 파일의 edit 줄이 하나, 짧은 세션·빈 세션 → false, 요약 실패 → 에러·저장 없음, 잘못된 config·ID → 에러, Enabled false 여도 압축, compaction 이벤트 start/end(RunID ""), OnEvent panic → ErrPanic 에러 |
 | HN-FR-26~29 | New 에러 경로, Start 설정 검사·sessionID 검사, 동시 run 2개 |
 | HN-FR-37 | 여러 세션 파일 + 디렉터리·다른 확장자·잘못된 ID 이름 → 맞는 id 만 이름순, 없는 dir → 빈 목록, ListDir 에러 → 에러 |
@@ -377,6 +378,7 @@ func (a *Agent) Store() Store
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 1.2 | 이벤트 11종. 세트가 `inject_input` 으로 넣은 메시지를 surface 가 알 방법 없음 | `input` 이벤트 (HN-FR-31) | R25 |
 | 1.1 | 도구 4종, `tools.All` = read, bash, edit, write. 모델에 보내는 tools 4개, 시스템 프롬프트 rules 에 `Use bash for file operations like ls, rg, find` | 도구 7종 (3.2a), `tools.All` 끝에 grep, find, ls. 기본 프롬프트에서 그 rule 이 빠짐 (`prompt` 의 기존 pi 조건: bash 가 있고 grep·find·ls 가 모두 없을 때만 넣음) | R23 |
 | 1.1 | `env.FileInfo{Name, IsDir, Size}` | `Symlink` 추가 (envtest `SetSymlink`) | R23 ③: 순회가 링크 디렉터리를 구별해야 함 |
 | 1.0 | `Options.Tools []sets.Tool`(추가·교체), `Options.Extra`(base·resilient 위에 겹침). 저장소·시스템 프롬프트·요약기는 고정, base·resilient 는 뺄 수 없음 | `ToolSet`·`Sets`·`System`·`Summarizer`·`Store` 함수(기본값을 받아 바꾼 값을 돌려줌, nil = 기본), `DefaultSets`, `harness.Store`(`sets.Store` + `List`), `session.Store.List`, `Agent.Store()` (3.6c). `Tools`·`Extra` 삭제 (쓰는 곳 없음, 새 필드가 포함) | R22: core 외 전부 튜닝 |

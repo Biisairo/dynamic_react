@@ -265,7 +265,7 @@ func TestRunTurnAndQuit(t *testing.T) {
 	h.typ("hi\r")
 	h.wait("── completed · 입력 1.5k / 출력 20 토큰")
 	s := h.scr.text()
-	if !strings.Contains(s, "> hi\n── 세션 ") || !strings.Contains(s, "hello there") {
+	if !strings.Contains(s, "> hi\n── 세션 ") || !strings.Contains(s, "hello there") || strings.Contains(s, "»") {
 		t.Fatalf("%s", s)
 	}
 	h.typ("/quit\r")
@@ -502,7 +502,7 @@ func TestRunSteerFollowUp(t *testing.T) {
 	gate <- struct{}{}
 	h.waitCount("── completed", 2)
 	s := h.scr.text()
-	if !strings.Contains(s, "⤼ skipped") || !strings.Contains(s, "after steer") || !strings.Contains(s, "follow") {
+	if !strings.Contains(s, "⤼ skipped") || !strings.Contains(s, "after steer") || !strings.Contains(s, "follow") || strings.Contains(s, "»") {
 		t.Fatal(s)
 	}
 	if !strings.Contains(l.body(1), "change") || !strings.Contains(l.body(2), "later") {
@@ -674,12 +674,14 @@ func TestRunCompact(t *testing.T) {
 	h.wait("✗ 압축할 세션이 없습니다")
 	h.typ("hi\r")
 	h.wait("── completed")
+	h.waitFn("idle", func(s string) bool { return !strings.Contains(s, statusRun) })
 	h.typ("/compact\r")
 	h.wait("압축할 구간이 없습니다")
 	for i, p := range []string{"a", "b"} {
 		h.typ(p + strings.Repeat(" abcd", 50) + "\r")
 		h.waitCount("── completed", i+2)
 	}
+	h.waitFn("idle", func(s string) bool { return !strings.Contains(s, statusRun) })
 	h.typ("/compact\r")
 	h.wait("⋯ 컨텍스트 압축 중\n✓ 압축 완료")
 

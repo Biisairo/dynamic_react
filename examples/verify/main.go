@@ -24,6 +24,7 @@ import (
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 	"github.com/Biisairo/dynamic_react/L2_harness/agent"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness"
+	"github.com/Biisairo/dynamic_react/L3_ui/surfaces/terminal"
 )
 
 // ShellCheck 은 command 를 dir 에서 /bin/sh 로 실행하는 Check 다 (VX-FR-01).
@@ -53,6 +54,14 @@ func newID() string {
 	return hex.EncodeToString(b[:])
 }
 
+// hooks 는 테스트가 바꿔 넣는 것들이다. stdin·stdout 은 -i 의 TTY 다 (VX-FR-05).
+type hooks struct {
+	stdin, stdout *os.File
+	isTerminal    func(fd int) bool
+	open          func(*os.File) (func() error, func() int, error)
+	agentOptions  func(*agent.Options)
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	code := run(ctx, os.Args[1:], os.Stdout, os.Stderr)
@@ -61,10 +70,10 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	return runWith(ctx, args, stdout, stderr, nil)
+	return runWith(ctx, args, stdout, stderr, hooks{stdin: os.Stdin, stdout: os.Stdout})
 }
 
-func runWith(ctx context.Context, args []string, stdout, stderr io.Writer, mod func(*agent.Options)) int {
+func runWith(ctx context.Context, args []string, stdout, stderr io.Writer, h hooks) int {
 	fl := flag.NewFlagSet("verify-example", flag.ContinueOnError)
 	fl.SetOutput(stderr)
 	check := fl.String("check", "", "shell command that verifies the work")
@@ -72,6 +81,8 @@ func runWith(ctx context.Context, args []string, stdout, stderr io.Writer, mod f
 	model := fl.String("model", "", "provider/id")
 	cwd := fl.String("cwd", "", "working directory")
 	config := fl.String("config", "", "config file")
+	interactive := fl.Bool("i", false, "interactive terminal")
+	noColor := fl.Bool("no-color", false, "no ANSI colors (-i)")
 	if err := fl.Parse(args); err != nil {
 		return 1
 	}
@@ -79,21 +90,31 @@ func runWith(ctx context.Context, args []string, stdout, stderr io.Writer, mod f
 		fmt.Fprintln(stderr, "verify-example: -check is required")
 		return 1
 	}
-	prompt := strings.TrimSpace(strings.Join(fl.Args(), " "))
-	if prompt == "" {
-		fmt.Fprintln(stderr, "verify-example: empty prompt")
-		return 1
-	}
-	opts := sets.VerifyOptions{Check: ShellCheck(*cwd, *check, stderr), MaxAttempts: *attempts}
-	var wrote, endsNL = false, true
-	o := agent.Options{Cwd: *cwd, ConfigPath: *config, Model: *model,
-		Sets: func(d sets.Deps) []inject.FunctionSet {
+	verifySets := func(log io.Writer) func(d sets.Deps) []inject.FunctionSet {
+		opts := sets.VerifyOptions{Check: ShellCheck(*cwd, *check, log), MaxAttempts: *attempts}
+		return func(d sets.Deps) []inject.FunctionSet {
 			v, err := sets.Verify(d, opts)
 			if err != nil {
 				panic(err)
 			}
 			return append(harness.DefaultSets(d), v)
-		},
+		}
+	}
+	if *interactive {
+		if fl.NArg() > 0 {
+			fmt.Fprintln(stderr, "verify-example: -i takes no prompt arguments")
+			return 2
+		}
+		o := agent.Options{Cwd: *cwd, ConfigPath: *config, Model: *model, Sets: verifySets(io.Discard)}
+		return runInteractive(ctx, o, !*noColor, stderr, h)
+	}
+	prompt := strings.TrimSpace(strings.Join(fl.Args(), " "))
+	if prompt == "" {
+		fmt.Fprintln(stderr, "verify-example: empty prompt")
+		return 1
+	}
+	var wrote, endsNL = false, true
+	o := agent.Options{Cwd: *cwd, ConfigPath: *config, Model: *model, Sets: verifySets(stderr),
 		OnEvent: func(ev harness.Event) {
 			switch {
 			case ev.Kind == harness.EventMessageUpdate && ev.Delta.Kind == contract.EventTextDelta && ev.Delta.Delta != "":
@@ -106,8 +127,8 @@ func runWith(ctx context.Context, args []string, stdout, stderr io.Writer, mod f
 				fmt.Fprintf(stderr, "[tool] %s %s\n", ev.Call.Name, ev.Result.Status)
 			}
 		}}
-	if mod != nil {
-		mod(&o)
+	if h.agentOptions != nil {
+		h.agentOptions(&o)
 	}
 	a, err := agent.New(ctx, o)
 	if err != nil {
@@ -132,5 +153,57 @@ func runWith(ctx context.Context, args []string, stdout, stderr io.Writer, mod f
 		return 130
 	}
 	fmt.Fprintf(stderr, "verify-example: %s: %v\n", s.Reason, s.Err)
+	return 1
+}
+
+// runInteractive 는 dr 과 같은 대화형 터미널에 verify 세트를 끼운다 (VX-FR-05).
+func runInteractive(ctx context.Context, o agent.Options, color bool, stderr io.Writer, h hooks) int {
+	if h.isTerminal == nil {
+		h.isTerminal = terminal.IsTerminal
+	}
+	if h.open == nil {
+		h.open = terminal.Open
+	}
+	if h.stdin == nil || h.stdout == nil || !h.isTerminal(int(h.stdin.Fd())) || !h.isTerminal(int(h.stdout.Fd())) {
+		fmt.Fprintln(stderr, "verify-example: -i needs an interactive terminal")
+		return 2
+	}
+	restore, width, err := h.open(h.stdin)
+	if err != nil {
+		fmt.Fprintf(stderr, "verify-example: %v\n", err)
+		return 1
+	}
+	defer restore()
+	t := terminal.New(terminal.Options{In: h.stdin, Out: h.stdout, Width: width, Color: color})
+	o.Approver, o.OnEvent = t.Approver(), t.OnEvent
+	if h.agentOptions != nil {
+		h.agentOptions(&o)
+	}
+	a, err := agent.New(ctx, o)
+	if err != nil {
+		restore()
+		fmt.Fprintf(stderr, "verify-example: %v\n", err)
+		return 1
+	}
+	winch := make(chan os.Signal, 1)
+	signal.Notify(winch, syscall.SIGWINCH)
+	defer func() {
+		signal.Stop(winch)
+		close(winch)
+	}()
+	go func() {
+		for range winch {
+			t.Resize()
+		}
+	}()
+	err = t.Run(ctx, a, terminal.Start{})
+	restore()
+	switch {
+	case err == nil:
+		return 0
+	case ctx.Err() != nil:
+		return 130
+	}
+	fmt.Fprintf(stderr, "verify-example: %v\n", err)
 	return 1
 }

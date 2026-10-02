@@ -259,3 +259,37 @@ func TestView(t *testing.T) {
 		t.Fatalf("%q", v.status)
 	}
 }
+
+func inputEv(id string, blocks ...contract.Block) harness.Event {
+	return harness.Event{Kind: harness.EventInput, Message: &contract.Message{ID: id, Role: contract.RoleUser, Content: blocks}}
+}
+
+// TM-FR-54: 자기가 보낸 입력은 다시 그리지 않고, 세트가 넣은 입력은 » 줄로.
+func TestRenderInput(t *testing.T) {
+	term, v := newTestTerminal(40, false)
+	term.sent["mine"] = true
+	txt := func(s string) contract.Block { return contract.Block{Kind: contract.BlockText, Text: s} }
+	emit(term, inputEv("mine", txt("hello")))
+	if body(v) != "" || term.sent["mine"] {
+		t.Fatalf("own input drawn %q, remembered %v", body(v), term.sent["mine"])
+	}
+	emit(term, inputEv("x", txt("Verification failed\n\nFAIL\x1b[31m\tx"), contract.Block{Kind: contract.BlockImage}))
+	if want := "» Verification failed\n\n  FAIL[31m    x\n  [image]"; body(v) != want {
+		t.Fatalf("%q\nwant %q", body(v), want)
+	}
+	term, v = newTestTerminal(40, false)
+	var b strings.Builder
+	for i := 1; i <= 25; i++ {
+		fmt.Fprintf(&b, "l%d\n", i)
+	}
+	emit(term, inputEv("y", txt(strings.TrimSuffix(b.String(), "\n"))))
+	got := strings.Split(body(v), "\n")
+	if len(got) != 21 || got[0] != "» l1" || got[19] != "  l20" || got[20] != "  … +5줄 생략" {
+		t.Fatalf("%q", got)
+	}
+	term, v = newTestTerminal(40, true)
+	emit(term, inputEv("z", txt("a")))
+	if body(v) != "» a" || v.sgr < 2 {
+		t.Fatalf("color %q sgr %d", body(v), v.sgr)
+	}
+}
