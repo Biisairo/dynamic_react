@@ -33,23 +33,23 @@ type BindOptions struct {
 
 // Dispatcher 는 바인딩된 함수로 core.Dispatcher 를 구현한다. 불변이며 여러 Kernel 이 공유해도 된다 (IN-FR-20, 41).
 type Dispatcher struct {
-	fns   FunctionSet
-	owner map[core.Step]string
-	opts  BindOptions
+	sets   []FunctionSet
+	stacks map[core.Step][]int // step → 그 step 을 채운 sets 의 위치, 아래 층부터
+	opts   BindOptions
 
 	mu   sync.Mutex
 	runs map[string]*runState
 }
 
-// Bind 는 세트를 순서대로 겹쳐 step 마다 nil 이 아닌 마지막 함수를 고른다 (IN-FR-19).
+// Bind 는 step 마다 그 step 을 채운 세트들을 순서대로 쌓는다. 뒤의 세트가 위 층이다 (IN-FR-19).
 func Bind(sets ...FunctionSet) (*Dispatcher, error) {
 	return BindWith(BindOptions{}, sets...)
 }
 
 func BindWith(opts BindOptions, sets ...FunctionSet) (*Dispatcher, error) {
 	seen := map[string]bool{}
-	d := &Dispatcher{owner: map[core.Step]string{}, opts: opts, runs: map[string]*runState{}}
-	for _, s := range sets {
+	d := &Dispatcher{sets: append([]FunctionSet(nil), sets...), stacks: map[core.Step][]int{}, opts: opts, runs: map[string]*runState{}}
+	for i, s := range d.sets {
 		if s.Name == "" {
 			return nil, fmt.Errorf("%w: set without name", ErrBind)
 		}
@@ -57,11 +57,13 @@ func BindWith(opts BindOptions, sets ...FunctionSet) (*Dispatcher, error) {
 			return nil, fmt.Errorf("%w: duplicate set name %q", ErrBind, s.Name)
 		}
 		seen[s.Name] = true
-		overlay(&d.fns, s, d.owner)
+		for _, st := range filled(&s) {
+			d.stacks[st] = append(d.stacks[st], i)
+		}
 	}
 	var missing []string
 	for _, st := range core.Steps() {
-		if d.owner[st] == "" {
+		if len(d.stacks[st]) == 0 {
 			missing = append(missing, st.String())
 		}
 	}
@@ -71,13 +73,22 @@ func BindWith(opts BindOptions, sets ...FunctionSet) (*Dispatcher, error) {
 	return d, nil
 }
 
-// Binding 은 step → 세트 이름의 복사본이다.
+// Binding 은 step → 가장 위 층 세트 이름의 복사본이다 (IN-FR-21).
 func (d *Dispatcher) Binding() map[core.Step]string {
-	out := make(map[core.Step]string, len(d.owner))
-	for k, v := range d.owner {
-		out[k] = v
+	out := make(map[core.Step]string, len(d.stacks))
+	for st := range d.stacks {
+		out[st] = d.top(st).Name
 	}
 	return out
+}
+
+// top 은 step 의 가장 위 층 세트다. 바인딩되지 않은 step 이면 nil.
+func (d *Dispatcher) top(st core.Step) *FunctionSet {
+	stack := d.stacks[st]
+	if len(stack) == 0 {
+		return nil
+	}
+	return &d.sets[stack[len(stack)-1]]
 }
 
 func (d *Dispatcher) Dispatch(ctx context.Context, step core.Step, input any, view core.View) (core.Result, error) {
@@ -87,9 +98,12 @@ func (d *Dispatcher) Dispatch(ctx context.Context, step core.Step, input any, vi
 // DispatchSource 는 dispatch 한 번이다 (IN-FR-40 의 [1]~[8]).
 func (d *Dispatcher) DispatchSource(ctx context.Context, step core.Step, input any, view ViewSource) (core.Result, error) {
 	began := time.Now()
-	ns := d.owner[step] // [1]
-	rec := TraceRecord{Seq: view.Seq(), Step: step, Set: ns}
-	res, err := d.dispatch(ctx, step, input, view, ns, &rec)
+	fs := d.top(step) // [1]
+	rec := TraceRecord{Seq: view.Seq(), Step: step}
+	if fs != nil {
+		rec.Set = fs.Name
+	}
+	res, err := d.dispatch(ctx, step, input, view, fs, &rec)
 	if step == core.StepRunSettled {
 		d.mu.Lock()
 		delete(d.runs, view.RunID())
@@ -102,8 +116,8 @@ func (d *Dispatcher) DispatchSource(ctx context.Context, step core.Step, input a
 	return res, err // [8]
 }
 
-func (d *Dispatcher) dispatch(ctx context.Context, step core.Step, input any, view ViewSource, ns string, rec *TraceRecord) (core.Result, error) {
-	if ns == "" {
+func (d *Dispatcher) dispatch(ctx context.Context, step core.Step, input any, view ViewSource, fs *FunctionSet, rec *TraceRecord) (core.Result, error) {
+	if fs == nil {
 		return core.Result{}, fmt.Errorf("%w: step %s not bound", ErrBind, step)
 	}
 	run, err := d.runFor(ctx, step, view)
@@ -111,12 +125,13 @@ func (d *Dispatcher) dispatch(ctx context.Context, step core.Step, input any, vi
 		return core.Result{}, err
 	}
 	inv := &invocation{} // [2]
-	b := &base{inv: inv, ctx: ctx, view: view, d: d, st: newStateCtx(ns, run)}
-	out, rs, err := d.safeInvoke(b, step, input) // [3]
-	inv.expired.Store(true)                      // [4]
-	b.mu.Lock()
-	rec.Dropped = b.dropped
-	b.mu.Unlock()
+	c := &call{run: run}
+	b := &base{inv: inv, ctx: ctx, view: view, d: d, st: c.state(fs.Name), step: step, layer: len(d.stacks[step]) - 1, call: c}
+	out, rs, err := d.safeInvoke(fs, b, step, input) // [3]
+	inv.expired.Store(true)                          // [4]
+	c.mu.Lock()
+	rec.Dropped = c.dropped
+	c.mu.Unlock()
 	if err != nil {
 		return core.Result{}, err
 	}
@@ -125,14 +140,16 @@ func (d *Dispatcher) dispatch(ctx context.Context, step core.Step, input any, vi
 	if err != nil {
 		return core.Result{}, err
 	}
-	delta, keys := b.st.commit() // [6]
-	rec.StateKeysChanged = keys
-	if d.opts.StateStore != nil && !delta.empty() {
-		if err := d.opts.StateStore.Save(ctx, view.SessionID(), ns, delta); err != nil {
-			return core.Result{}, fmt.Errorf("inject: state save: %w", err)
+	for _, st := range c.states { // [6] 층마다 자기 네임스페이스 (IN-FR-61)
+		delta, keys := st.commit()
+		rec.StateKeysChanged = append(rec.StateKeysChanged, keys...)
+		if d.opts.StateStore != nil && !delta.empty() {
+			if err := d.opts.StateStore.Save(ctx, view.SessionID(), st.ns, delta); err != nil {
+				return core.Result{}, fmt.Errorf("inject: state save: %w", err)
+			}
 		}
 	}
-	return core.Result{Output: out, Signals: sigs, Origin: ns}, nil
+	return core.Result{Output: out, Signals: sigs, Origin: fs.Name}, nil
 }
 
 // runFor 는 run 의 상태를 찾고, run.start 에서는 StateStore 로 복원한다.
@@ -158,13 +175,13 @@ func (d *Dispatcher) runFor(ctx context.Context, step core.Step, view ViewSource
 	return r, nil
 }
 
-func (d *Dispatcher) safeInvoke(b *base, step core.Step, input any) (out any, rs []sig, err error) {
+func (d *Dispatcher) safeInvoke(fs *FunctionSet, b *base, step core.Step, input any) (out any, rs []sig, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			out, rs, err = nil, nil, fmt.Errorf("%w: %s: %v", ErrPanic, step, p)
 		}
 	}()
-	return invoke(&d.fns, b, step, input)
+	return invoke(fs, b, step, input)
 }
 
 // verify 는 토큰, 허용 표, 배열 규칙을 검사한다 (IN-FR-12, 40).

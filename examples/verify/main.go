@@ -20,7 +20,6 @@ import (
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L0_core/core"
-	"github.com/Biisairo/dynamic_react/L1_inject/inject"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 	"github.com/Biisairo/dynamic_react/L2_harness/agent"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness"
@@ -90,14 +89,14 @@ func runWith(ctx context.Context, args []string, stdout, stderr io.Writer, h hoo
 		fmt.Fprintln(stderr, "verify-example: -check is required")
 		return 1
 	}
-	verifySets := func(log io.Writer) func(d sets.Deps) []inject.FunctionSet {
+	verifySets := func(log io.Writer) func(d sets.Deps) []harness.SetEntry {
 		opts := sets.VerifyOptions{Check: ShellCheck(*cwd, *check, log), MaxAttempts: *attempts}
-		return func(d sets.Deps) []inject.FunctionSet {
+		return func(d sets.Deps) []harness.SetEntry {
 			v, err := sets.Verify(d, opts)
 			if err != nil {
 				panic(err)
 			}
-			return append(harness.DefaultSets(d), v)
+			return append(harness.DefaultSets(d), harness.SetEntry{Set: v, On: true})
 		}
 	}
 	if *interactive {

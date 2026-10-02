@@ -453,18 +453,19 @@ func TestEventsInput(t *testing.T) {
 	}}
 	rec := &recorder{}
 	nudge := func(d sets.Deps) inject.FunctionSet {
-		base := sets.BaseTurnFinish(d)
 		var calls atomic.Int32
 		return inject.FunctionSet{Name: "nudge", TurnFinish: func(ctx *inject.TurnFinishCtx) ([]inject.TurnFinishSignal, error) {
 			if calls.Add(1) > 1 {
-				return base(ctx)
+				return ctx.Next()
 			}
 			return []inject.TurnFinishSignal{ctx.InjectInput(user("n1", "check again")), ctx.ContinueTurn()}, nil
 		}}
 	}
 	a := newAgent(t, envtest.New("/w", "/h"), m, func(o *harness.Options) {
 		o.OnEvent = rec.on
-		o.Sets = func(d sets.Deps) []inject.FunctionSet { return append(harness.DefaultSets(d), nudge(d)) }
+		o.Sets = func(d sets.Deps) []harness.SetEntry {
+			return append(harness.DefaultSets(d), harness.SetEntry{Set: nudge(d), On: true})
+		}
 	})
 	if s, _ := start(t, a, "s1", user("u1", "hi"), user("u2", "there")); s.Reason != core.SettleCompleted {
 		t.Fatalf("%+v", s)

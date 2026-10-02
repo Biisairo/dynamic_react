@@ -12,7 +12,7 @@ import (
 var mustNotCompile = map[string]string{
 	"next not allowed at turn.finish": `
 func f(ctx *inject.TurnFinishCtx) ([]inject.TurnFinishSignal, error) {
-	return []inject.TurnFinishSignal{ctx.Next()}, nil
+	return []inject.TurnFinishSignal{ctx.NextSignal()}, nil
 }`,
 	"recall not allowed at request.build": `
 func f(ctx *inject.RequestBuildCtx) (contract.Request, []inject.RequestBuildSignal, error) {

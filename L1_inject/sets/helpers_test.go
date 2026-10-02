@@ -137,14 +137,19 @@ func deps(m *fakeModel, tools ...sets.Tool) sets.Deps {
 
 const cfgJSON = `{"model":{"provider":"p","id":"m"},"maxOutputTokens":1000}`
 
-// agent 는 base(+resilient) 로 core run 하나를 돌린다.
-func agent(t *testing.T, d sets.Deps, resilient bool, cfg string, input ...contract.Message) core.Settle {
-	t.Helper()
-	fs := []inject.FunctionSet{sets.Base(d)}
+// stack 은 v0.6 의 base(+resilient) 와 같은 동작이 되는 세트 조합이다 (ST-FR-51). top 은 그 위에 쌓인다.
+func stack(d sets.Deps, resilient bool, top ...inject.FunctionSet) []inject.FunctionSet {
+	fs := []inject.FunctionSet{sets.Base(d), sets.Require(d), sets.Cache(d), sets.Guard(d), sets.Truncate(d)}
 	if resilient {
 		fs = append(fs, sets.Resilient(d))
 	}
-	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, fs...)
+	return append(fs, top...)
+}
+
+// agent 는 stack 으로 core run 하나를 돌린다.
+func agent(t *testing.T, d sets.Deps, resilient bool, cfg string, input ...contract.Message) core.Settle {
+	t.Helper()
+	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, stack(d, resilient)...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,6 +169,21 @@ func agent(t *testing.T, d sets.Deps, resilient bool, cfg string, input ...contr
 // step 은 set 의 step 하나를 가짜 View 로 dispatch 한다.
 func step(t *testing.T, set inject.FunctionSet, st core.Step, input any, f injecttest.Facts) (core.Result, error) {
 	t.Helper()
+	return injecttest.Dispatch(context.Background(), set, st, input, stepFacts(st, f).View())
+}
+
+// stackStep 은 sets 를 쌓아 step 하나를 가짜 View 로 dispatch 한다. sets[0] 의 빈 step 은 Fill 로 채운다.
+func stackStep(t *testing.T, st core.Step, input any, f injecttest.Facts, sets ...inject.FunctionSet) (core.Result, error) {
+	t.Helper()
+	sets[0] = injecttest.Fill(sets[0])
+	disp, err := inject.Bind(sets...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return disp.DispatchSource(context.Background(), st, input, stepFacts(st, f).View())
+}
+
+func stepFacts(st core.Step, f injecttest.Facts) injecttest.Facts {
 	if f.Config == nil {
 		f.Config = json.RawMessage(cfgJSON)
 	}
@@ -171,7 +191,7 @@ func step(t *testing.T, set inject.FunctionSet, st core.Step, input any, f injec
 		f.RunID, f.SessionID = "r1", "s1"
 	}
 	f.Step = st
-	return injecttest.Dispatch(context.Background(), set, st, input, f.View())
+	return f
 }
 
 func kinds(sigs []core.Signal) string {

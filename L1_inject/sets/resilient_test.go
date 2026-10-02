@@ -334,16 +334,14 @@ func TestFollowUp(t *testing.T) {
 	d := deps(m)
 	runCh := make(chan *core.Run, 1)
 	var once bool
-	hook := sets.Base(d)
-	orig := hook.StreamEnd
 	wrapped := inject.FunctionSet{Name: "hook", StreamEnd: func(ctx *inject.StreamEndCtx, msg contract.Message) (core.StreamEndOut, []inject.StreamEndSignal, error) {
 		if !once {
 			once = true
 			(<-runCh).Input(user("f1", "follow up"))
 		}
-		return orig(ctx, msg)
+		return ctx.Next(msg)
 	}}
-	disp, _ := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, sets.Base(d), sets.Resilient(d), wrapped)
+	disp, _ := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, stack(d, true, wrapped)...)
 	r := core.New(disp, core.Options{}).Start(context.Background(), core.RunInput{SessionID: "s1", Input: []contract.Message{user("u1", "x")}, Config: json.RawMessage(cfgJSON)})
 	runCh <- r
 	if s := r.Wait(); s.Reason != core.SettleCompleted {

@@ -171,8 +171,8 @@ func (e eventSummarizer) Summarize(ctx context.Context, r sets.SummaryRequest) (
 	return text, err
 }
 
-// wrap 은 step 마다 실제로 쓰일 함수(nil 이 아닌 마지막 것, IN-FR-19)를 **그 세트 안에서** 감싼다.
-// 다른 세트로 겹치면 inner 의 상태 네임스페이스가 바뀌므로 제자리에서 바꾼다.
+// wrap 은 step 마다 가장 위 층 함수(nil 이 아닌 마지막 것, IN-FR-19)를 **그 세트 안에서** 감싼다 (HN-FR-41).
+// 위 층이 ctx.Next 로 아래 층을 부르므로 체인 전체가 감싸진다. 다른 세트로 겹치면 inner 의 상태 네임스페이스가 바뀌므로 제자리에서 바꾼다.
 func (s *surface) wrap(fs []inject.FunctionSet) []inject.FunctionSet {
 	fs = append([]inject.FunctionSet(nil), fs...)
 	last := func(has func(inject.FunctionSet) bool) *inject.FunctionSet {

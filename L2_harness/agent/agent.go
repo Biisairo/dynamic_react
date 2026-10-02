@@ -18,7 +18,6 @@ import (
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L0_core/core"
 	"github.com/Biisairo/dynamic_react/L1_inject/adapters"
-	"github.com/Biisairo/dynamic_react/L1_inject/inject"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness/session"
@@ -36,7 +35,7 @@ type Options struct {
 	Approver        Approver            // nil = 묻기 없이 허용 (AG-FR-18)
 	OnEvent         func(harness.Event) // AG-FR-27
 
-	Sets        func(d sets.Deps) []inject.FunctionSet      // AG-FR-40
+	Sets        func(d sets.Deps) []harness.SetEntry        // AG-FR-40
 	ToolSet     func(def []sets.Tool) []sets.Tool           // AG-FR-40
 	System      func(def []contract.Block) []contract.Block // AG-FR-40
 	Summarizer  func(def sets.Summarizer) sets.Summarizer   // AG-FR-40
@@ -74,6 +73,7 @@ type fileConfig struct {
 	Providers   json.RawMessage `json:"providers"`
 	Models      json.RawMessage `json:"models"`
 	Permissions *Permissions    `json:"permissions"`
+	Sets        json.RawMessage `json:"sets"`
 }
 
 // New 는 AG-FR-09 순서로 조립한다.
@@ -102,6 +102,10 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	cfg, model, err := agentConfig(fc.Agent, o.Model)
 	if err != nil {
 		return nil, err
+	}
+	layout, err := parseSets(fc.Sets)
+	if err != nil {
+		return nil, fmt.Errorf("agent: config: sets: %w", err)
 	}
 	var authPath string
 	if e.Home() != "" {
@@ -144,7 +148,7 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 		}
 	}
 	h, err := harness.New(ctx, harness.Options{Env: e, Model: caller, SessionDir: dir, OnEvent: o.OnEvent, Gate: a.gate,
-		Sets: o.Sets, ToolSet: o.ToolSet, System: o.System, Summarizer: o.Summarizer, Store: o.Store})
+		Sets: o.Sets, Layout: layout, ToolSet: o.ToolSet, System: o.System, Summarizer: o.Summarizer, Store: o.Store})
 	if err != nil {
 		return nil, fmt.Errorf("agent: %w", err)
 	}

@@ -108,7 +108,7 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-51 | `sets.Base`·`Require`·`Cache`·`Guard`·`Truncate`(각 `(Deps) inject.FunctionSet`)는 위 표의 step 만 채우고 `Description` 에 한 줄 설명을 둔다. `Bind(Base, Require, Cache, Guard, Truncate)` 의 동작은 v0.6 의 `Bind(Base)` 와 같고, 여기에 `Resilient` 를 더한 것은 v0.6 의 `Bind(Base, Resilient)` 와 같다 (모든 기존 base·resilient 테스트가 이 조합으로 통과) |
+| ST-FR-51 | `sets.Base`·`Require`·`Cache`·`Guard`·`Truncate`(각 `(Deps) inject.FunctionSet`)는 위 표의 step 만 채우고 `Description` 에 한 줄 설명을 둔다 (`Resilient`·`Verify` 도 Description 을 둔다). `Bind(Base, Require, Cache, Guard, Truncate)` 의 동작은 v0.6 의 `Bind(Base)` 와 같고, 여기에 `Resilient` 를 더한 것은 v0.6 의 `Bind(Base, Resilient)` 와 같다 (모든 기존 base·resilient 테스트가 이 조합으로 통과) |
 | ST-FR-52 | sets 는 세트의 순서·기본 켜짐·기본 목록을 갖지 않는다 (R26 ③). 테스트용 조합은 테스트 안에 둔다 |
 | ST-FR-53 | 상태 네임스페이스: base 의 키(ST-FR-43)는 `base` 에 그대로. require·cache·guard·truncate 는 상태를 쓰지 않는다 |
 
@@ -306,7 +306,7 @@ type Deps struct {
 | id | 요구사항 |
 |---|---|
 | ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`(각 `(Deps) inject.FunctionSet`), `Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식), `Verify`·`VerifyOptions`·`CheckResult`·`ErrVerifyFailed`(3.2a) |
-| ST-FR-42 | `Base`·`Resilient` 는 Deps 의 nil 을 한 번만 기본값으로 채워 모든 step 이 같은 값을 쓴다 (nil Store → 메모리 Store 하나). step 별 생성자를 따로 부르면 각자 채운다 |
+| ST-FR-42 | 세트 생성자(`Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`·`Verify`)는 Deps 의 nil 을 한 번만 기본값으로 채워 그 세트의 모든 step 이 같은 값을 쓴다 (nil Store → 메모리 Store 하나). 세트끼리는 각자 채우므로, 여러 세트가 같은 Store 를 써야 하면(base 의 저장과 require 의 짝 복구 기록) Deps 에 Store 를 채워 넘긴다. `Resilient<Step>` 생성자를 따로 부르면 각자 채운다 |
 | ST-FR-43 | base 상태 키: `input`(초기 입력, 2 가 한 번 준 뒤 삭제), `inbox.consumed`(int, publish), `edits.saved`(Store 에 기록한 편집 수). 1 이 run 마다 다시 쓴다 (상태는 Store 로 run 을 넘어 복원되므로) |
 | ST-FR-44 | resilient 상태는 run 을 넘어 복원되므로 RunID 를 함께 저장하고, RunID 가 다르면 초기 상태로 본다: `retry`{run, turn, class 별 횟수}(턴이 바뀌면 리셋), `recovered`{run, turn}(12·13 의 압축 복구), `compaction`{run, pending, invalid}, `compaction.blocked`(publish, `true`, 다른 run 에서는 삭제) |
 | ST-FR-45 | 해석 (스펙 공백): ① `compaction.enabled=false` 는 3·12·13 의 모든 압축 분기를 끈다 (pi `_checkCompaction` 와 같음). ② 무효 압축 판정은 pending 일 때 다음 3 에서 `LastUsage().Prompt() >= W − reserve`. ③ 절단 구간이 이전 요약 메시지 하나뿐이면 압축하지 않는다. ④ 설정 `tools` 의 없는 이름은 무시한다. ⑤ 17 은 결과의 CallID 를 호출 ID 로 맞춘다. ⑥ 18 의 기본 절단은 text 블록마다 적용한다. ⑦ 요약 메시지 = user 역할, 고정 머리말 + 요약 텍스트. ⑧ 1·7 의 aborted 결과는 text 블록 하나("aborted")를 담는다 |
@@ -366,6 +366,7 @@ type Deps struct {
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
 | 0.7 | `Base` 하나가 22 step 전부, step 별 생성자 `Base<Step>`, verify 의 `VerifyOptions.Next` | `Base`·`Require`·`Cache`·`Guard`·`Truncate` 로 분해(3.0), `Base<Step>` 삭제(ST-FR-04), verify 는 `ctx.Next()`. 전부 쌓으면 같은 동작(ST-FR-51) | R26 ② |
+| 0.7 | `Base(Deps{Store: nil})` 의 메모리 Store 하나를 22 step 이 공유 | 세트마다 따로 채움 (ST-FR-42). nil Store 면 require 의 짝 복구 기록이 base 가 읽는 Store 에 남지 않음 | 세트 분해의 결과 (생성자가 서로를 모름). 구현 중 확인 (impl-08) |
 | 0.6 | 세트 base·resilient | verify 세트 (3.2a) 추가. 기존 세트 동작 변화 없음 | R24 |
 | 0.2 | 9 model.call = adapters 가 제공한 `ModelCallFn` 을 그대로 바인딩 | sets 가 `adapters.Call` 의 이벤트 시퀀스를 `core.CallStream` 으로 감쌈 | R9: adapters 가 contract 만 의존 |
 | 0.2 | 19 = 결과를 세션에 기록 | 결과 메시지를 만들어 기록하고 출력 | core v0.2 CORE-FR-24a |

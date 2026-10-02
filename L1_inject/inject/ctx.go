@@ -24,6 +24,7 @@ var (
 	ErrInputType     = errors.New("inject: unexpected input type")
 	ErrPanic         = errors.New("inject: function panic")
 	ErrBind          = errors.New("inject: bind")
+	ErrNoNext        = errors.New("inject: no lower function")
 )
 
 // ViewSource 는 조회가 읽는 사실의 원천이다. core.View 가 그대로 만족한다 (IN-FR-47).
@@ -70,16 +71,51 @@ type sig struct {
 
 func (x sig) Kind() core.SignalKind { return x.s.Kind }
 
-// base 는 모든 step ctx 의 공통 부분이다.
+// base 는 모든 step ctx 의 공통 부분이다. 층마다 하나이고, 같은 dispatch 의 층들은 call 을 공유한다.
 type base struct {
-	inv  *invocation
-	ctx  context.Context
-	view ViewSource
-	d    *Dispatcher
-	st   *stateCtx
+	inv   *invocation
+	ctx   context.Context
+	view  ViewSource
+	d     *Dispatcher
+	st    *stateCtx
+	step  core.Step
+	layer int // d.stacks[step] 의 위치. 0 이 가장 아래
+	call  *call
+}
+
+// call 은 dispatch 한 번에서 층들이 함께 쓰는 것이다.
+type call struct {
+	run *runState
 
 	mu      sync.Mutex
 	dropped []core.Signal
+	states  []*stateCtx // 처음 쓰인 순서 (가장 위 층이 먼저)
+}
+
+// state 는 ns 네임스페이스의 쓰기 버퍼다. 같은 dispatch 에서 같은 ns 는 같은 버퍼다.
+func (c *call) state(ns string) *stateCtx {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, s := range c.states {
+		if s.ns == ns {
+			return s
+		}
+	}
+	s := newStateCtx(ns, c.run)
+	c.states = append(c.states, s)
+	return s
+}
+
+// lower 는 바로 아래 층의 base 와 그 세트다 (IN-FR-60~62).
+func (b *base) lower() (*base, *FunctionSet, error) {
+	b.check()
+	if b.layer == 0 {
+		return nil, nil, fmt.Errorf("%w: %s", ErrNoNext, b.step)
+	}
+	layer := b.layer - 1
+	fs := &b.d.sets[b.d.stacks[b.step][layer]]
+	lb := &base{inv: b.inv, ctx: b.ctx, view: b.view, d: b.d, st: b.call.state(fs.Name), step: b.step, layer: layer, call: b.call}
+	return lb, fs, nil
 }
 
 // check 는 폐기된 ctx 사용을 막는다 (IN-FR-11).
@@ -101,10 +137,10 @@ func (b *base) mk(s core.Signal) sig {
 
 func (b *base) drop(rs []sig) {
 	b.check()
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.call.mu.Lock()
+	defer b.call.mu.Unlock()
 	for _, r := range rs {
-		b.dropped = append(b.dropped, cloneSignal(r.s))
+		b.call.dropped = append(b.call.dropped, cloneSignal(r.s))
 	}
 }
 

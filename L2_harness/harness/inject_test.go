@@ -289,9 +289,9 @@ func TestSets(t *testing.T) {
 	m := textModel()
 	var deps sets.Deps
 	a := newAgent(t, e, m, func(o *harness.Options) {
-		o.Sets = func(d sets.Deps) []inject.FunctionSet {
+		o.Sets = func(d sets.Deps) []harness.SetEntry {
 			deps = d
-			return append(harness.DefaultSets(d), ruleSet())
+			return append(harness.DefaultSets(d), harness.SetEntry{Set: ruleSet(), On: true})
 		}
 	})
 	if deps.Model == nil || deps.Tools == nil || deps.Store == nil || len(deps.System) != 1 || deps.Summarizer == nil || deps.Now == nil || deps.NewID == nil {
@@ -309,14 +309,27 @@ func TestSets(t *testing.T) {
 		t.Fatal("ephemeral message was stored")
 	}
 
-	def := harness.DefaultSets(deps)
-	if len(def) != 2 || def[0].Name != "base" || def[1].Name != "resilient" {
-		t.Fatalf("DefaultSets %+v", def)
+	var names []string
+	for _, e := range harness.DefaultSets(deps) {
+		if !e.On {
+			t.Errorf("%s off by default", e.Set.Name)
+		}
+		names = append(names, e.Set.Name)
+	}
+	if strings.Join(names, ",") != "base,require,cache,guard,truncate,resilient" {
+		t.Fatalf("DefaultSets %v", names)
 	}
 
-	for name, fn := range map[string]func(sets.Deps) []inject.FunctionSet{
-		"missing steps":  func(sets.Deps) []inject.FunctionSet { return []inject.FunctionSet{ruleSet()} },
-		"duplicate name": func(d sets.Deps) []inject.FunctionSet { return append(harness.DefaultSets(d), ruleSet(), ruleSet()) },
+	rule := harness.SetEntry{Set: ruleSet(), On: true}
+	for name, fn := range map[string]func(sets.Deps) []harness.SetEntry{
+		"missing steps":  func(sets.Deps) []harness.SetEntry { return []harness.SetEntry{rule} },
+		"duplicate name": func(d sets.Deps) []harness.SetEntry { return append(harness.DefaultSets(d), rule, rule) },
+		"empty name": func(d sets.Deps) []harness.SetEntry {
+			return append(harness.DefaultSets(d), harness.SetEntry{On: false})
+		},
+		"duplicate off": func(d sets.Deps) []harness.SetEntry {
+			return append(harness.DefaultSets(d), rule, harness.SetEntry{Set: ruleSet(), On: false})
+		},
 	} {
 		o := options(envtest.New("/w", "/h"), textModel())
 		o.Sets = fn
@@ -326,7 +339,7 @@ func TestSets(t *testing.T) {
 	}
 }
 
-// HN-FR-41: 사용자 tool.before 를 덮어도 Gate·이벤트는 유지되고, base 를 부르지 않으면 기본 검사가 빠진다.
+// HN-FR-41: 사용자 tool.before 를 덮어도 Gate·이벤트는 유지되고, ctx.Next 를 부르지 않으면 guard 검사가 빠진다.
 func TestSetsToolBeforeKeepsGate(t *testing.T) {
 	for _, keepBase := range []bool{false, true} {
 		m := &fakeModel{script: func(n int, req contract.Request) []contract.StreamEvent {
@@ -347,18 +360,17 @@ func TestSetsToolBeforeKeepsGate(t *testing.T) {
 				mu.Unlock()
 				return &contract.ToolResult{Status: contract.StatusError, Content: []contract.Block{text("gated")}}
 			}
-			o.Sets = func(d sets.Deps) []inject.FunctionSet {
-				base := sets.BaseToolBefore(d)
+			o.Sets = func(d sets.Deps) []harness.SetEntry {
 				own := inject.FunctionSet{Name: "own", ToolBefore: func(ctx *inject.ToolBeforeCtx, c contract.ToolCall) (core.BeforeOut, []inject.ToolBeforeSignal, error) {
 					mu.Lock()
 					userCalls++
 					mu.Unlock()
 					if keepBase {
-						return base(ctx, c)
+						return ctx.Next(c)
 					}
 					return core.BeforeOut{Call: c}, nil, nil
 				}}
-				return append(harness.DefaultSets(d), own)
+				return append(harness.DefaultSets(d), harness.SetEntry{Set: own, On: true})
 			}
 		})
 		if s, _ := start(t, a, "s1", user("u1", "go")); s.Reason != core.SettleCompleted {

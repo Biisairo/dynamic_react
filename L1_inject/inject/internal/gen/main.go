@@ -96,6 +96,8 @@ type ctor struct {
 func ctorOf(k core.SignalKind) ctor {
 	c := ctor{Method: camel(strings.ReplaceAll(string(k), "_", ".")), Kind: "core.Sig" + camel(strings.ReplaceAll(string(k), "_", "."))}
 	switch k {
+	case core.SigNext:
+		c.Method = "NextSignal" // Next 는 아래 층 호출이다 (IN-FR-60)
 	case core.SigSkipTools:
 		c.Params, c.Payload = "results []contract.ToolResult", "Results: cloneResults(results)"
 	case core.SigFail:
@@ -120,6 +122,8 @@ type row struct {
 	StubParams   string // injecttest 용: ", _ core.RunInput"
 	StubResults  string // injecttest 용: 신호 타입에 inject. 접두어
 	StubReturn   string
+	NextParams   string          // Next 의 인자: "call contract.ToolCall"
+	NextZero     string          // Next 가 에러와 함께 돌려줄 0 값들: "core.BeforeOut{}, nil, "
 	CArgs        string          // 인자 이름: ", ev"
 	ResultDecl   string          // "out T, s []inject.XSignal, err error"
 	ResultVars   string          // "out, s, err"
@@ -151,6 +155,7 @@ func build(rows []stepspec.Row) []row {
 		}
 		if len(params) > 0 {
 			x.FnParams = ", " + strings.Join(params, ", ")
+			x.NextParams = strings.Join(params, ", ")
 			x.FnArgs = ", " + strings.Join(args, ", ")
 			x.StubParams = ", " + strings.Join(stub, ", ")
 			x.CArgs = ", " + strings.Join(names, ", ")
@@ -196,6 +201,9 @@ func build(rows []stepspec.Row) []row {
 		}
 		if !r.NoSignals {
 			zeros = append(zeros, "nil")
+		}
+		for _, z := range zeros {
+			x.NextZero += z + ", "
 		}
 		zeros = append(zeros, "missing("+x.Const+")")
 		x.StubReturn = strings.Join(zeros, ", ")
@@ -282,7 +290,16 @@ func (c *{{$r.Name}}Ctx) {{.}}() {{.}} { return c.b.group{{.}}() }
 func (c *{{$r.Name}}Ctx) {{.Method}}({{.Params}}) {{$r.Name}}Signal {
 	return {{$r.Lower}}Signal{c.b.mk(core.Signal{Kind: {{.Kind}}{{if .Payload}}, {{.Payload}}{{end}}})}
 }
-{{end}}{{if not .NoSignals}}
+{{end}}
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *{{.Name}}Ctx) Next({{.NextParams}}) {{.FnResults}} {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return {{.NextZero}}err
+	}
+	return fs.{{.Name}}(&{{.Name}}Ctx{lb}{{.CArgs}})
+}
+{{if not .NoSignals}}
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
 func (c *{{.Name}}Ctx) Dropped(sigs ...{{.Name}}Signal) {
 	rs, _ := rawAll(sigs)
@@ -293,17 +310,19 @@ type {{.Name}}Fn func(ctx *{{.Name}}Ctx{{.FnParams}}) {{.FnResults}}
 {{end}}
 // FunctionSet 은 이름을 가진 주입 함수 묶음이다 (IN-FR-18).
 type FunctionSet struct {
-	Name string
+	Name        string
+	Description string // 사람이 읽는 한 줄. 바인딩은 쓰지 않는다
 {{range .Rows}}	{{.Name}} {{.Name}}Fn
 {{end}}}
 
-// overlay 는 src 의 nil 이 아닌 함수로 dst 를 덮고, 덮은 step 의 주인을 기록한다.
-func overlay(dst *FunctionSet, src FunctionSet, owner map[core.Step]string) {
-{{range .Rows}}	if src.{{.Name}} != nil {
-		dst.{{.Name}} = src.{{.Name}}
-		owner[{{.Const}}] = src.Name
+// filled 는 s 가 채운(nil 이 아닌) step 이다.
+func filled(s *FunctionSet) []core.Step {
+	var out []core.Step
+{{range .Rows}}	if s.{{.Name}} != nil {
+		out = append(out, {{.Const}})
 	}
-{{end}}}
+{{end}}	return out
+}
 
 // invoke 는 step 의 함수를 부른다.
 func invoke(fns *FunctionSet, b *base, step core.Step, input any) (any, []sig, error) {

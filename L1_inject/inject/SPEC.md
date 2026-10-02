@@ -192,7 +192,7 @@ k := core.New(d, core.Options{})
 | IN-FR-20 | `Bind` 는 결과로 `core.Dispatcher` 를 구현하는 값을 돌려준다. 이 값은 불변이며 여러 Kernel 이 공유해도 안전하다 |
 | IN-FR-21 | 바인딩 결과(step → 가장 위 층 세트 이름)는 `ctx.Env().Binding()` 과 트레이스로 확인할 수 있다. 트레이스의 `Set` 은 가장 위 층이다 |
 | IN-FR-60 | **`ctx.Next(...)`** (R26): step 마다 ctx 에 `Next` 메서드가 있고, 인자는 그 step 함수의 ctx 뒤 인자들, 반환은 그 step 함수의 반환과 같다 (예: `TurnFinishCtx.Next() ([]TurnFinishSignal, error)`, `ToolBeforeCtx.Next(call) (core.BeforeOut, []ToolBeforeSignal, error)`). 바로 아래 층 함수를 같은 dispatch 안에서 부른다: 같은 invocation 이라 아래 층이 만든 신호를 위 층이 그대로 돌려줄 수 있고(IN-FR-12 통과), 위 층이 그 신호를 고치거나 버릴 수 있다 |
-| IN-FR-61 | 아래 층 함수의 ctx 는 **그 아래 층 세트의 상태 네임스페이스**를 쓴다 (IN-FR-23). 한 dispatch 안에서 여러 층이 쓴 상태는 각자의 네임스페이스로 버퍼링되고, dispatch 가 성공하면 모두 반영·저장된다(IN-FR-24·26, 네임스페이스마다 `Save`). 실패하면 어느 것도 반영되지 않는다 |
+| IN-FR-61 | 아래 층 함수의 ctx 는 **그 아래 층 세트의 상태 네임스페이스**를 쓴다 (IN-FR-23). 한 dispatch 안에서 여러 층이 쓴 상태는 각자의 네임스페이스로 버퍼링되고, dispatch 가 성공하면 모두 반영·저장된다(IN-FR-24·26, 네임스페이스마다 `Save`). 실패하면 어느 것도 반영되지 않는다. 트레이스의 `StateKeysChanged` 는 처음 쓰인 층 순서(가장 위 층부터)로 네임스페이스별 바뀐 키를 이어 붙인다 |
 | IN-FR-62 | 가장 아래 층에서 `Next` 를 부르면 `ErrNoNext`(`inject: no lower function`)를 감싼 에러를 돌려준다 (함수가 그 에러를 돌려주면 그 dispatch 는 실패). `Next` 는 여러 번 불러도 되고 부를 때마다 아래 층을 다시 부른다. 아래 층의 panic 은 그 dispatch 의 error 다 (IN-FR-11) |
 | IN-FR-63 | 조합 함수(3.7)는 하위 함수들에 같은 ctx 를 넘기므로, 조합 안의 함수가 `Next` 를 부르면 그 세트의 아래 층이 불린다 |
 | IN-FR-22 | 같은 이름의 세트를 두 번 넣으면 `Bind` 는 에러를 돌려준다 (상태 네임스페이스 충돌 방지) |
@@ -269,7 +269,7 @@ IN-FR-31~39 는 삭제됐다. 서드파티 세트도 Go FunctionSet 으로 `Bind
 | id | 요구사항 |
 |---|---|
 | IN-FR-44 | 생성 대상: `<Step>Fn`(함수 타입), `<Step>Ctx`(ctx), `<Step>Signal`(봉인 interface), `FunctionSet.<Step>`(필드). 함수 시그니처는 core CORE-FR-39 의 입출력을 따른다. 18 은 `(ctx, call, result)`, 19 는 `(ctx, calls, results)` 처럼 입력 구조체를 풀어서 받는다 |
-| IN-FR-45 | `<Step>Signal` 은 `Kind() core.SignalKind`, `WithReason(string) <Step>Signal`, 비공개 표지 메서드를 가진다. 생성자는 그 step 에 허용된 것만 ctx 메서드로 있다: `Next()`, `Recall()`, `Reselect()`, `Rebuild()`, `RestartTurn()`, `ContinueTurn()`, `SkipTools(results)`, `Settle()`, `Stop()`, `Fail(err)`, `Rewrite(edit)`, `InjectInput(msg)`, `StartTool(call)` |
+| IN-FR-45 | `<Step>Signal` 은 `Kind() core.SignalKind`, `WithReason(string) <Step>Signal`, 비공개 표지 메서드를 가진다. 생성자는 그 step 에 허용된 것만 ctx 메서드로 있다: `NextSignal()`(신호 `next` — `Next` 는 아래 층 호출 IN-FR-60 이 쓴다, R26), `Recall()`, `Reselect()`, `Rebuild()`, `RestartTurn()`, `ContinueTurn()`, `SkipTools(results)`, `Settle()`, `Stop()`, `Fail(err)`, `Rewrite(edit)`, `InjectInput(msg)`, `StartTool(call)` |
 | IN-FR-46 | 조회 그룹 타입: `Flow`, `Conv`, `Request`, `Stream`, `Output`, `Tools`, `Env`, `State` (3.4 표의 메서드). `Output.LastUsage()` = 현재 Response 의 Usage, 없으면 Transcript 중 이 run 에서 추가된(History 이후) 마지막 assistant 메시지의 Usage. `State` 메서드: `Get(key)`, `Set(key, v) error`(JSON 직렬화), `Delete(key)`, `Publish(key)`, `Read(ns, key)`(공개 키만) |
 | IN-FR-47 | 조회는 core View 를 직접 받지 않고 `ViewSource` interface(core.View 의 조회 메서드 집합)로 받는다. `core.View` 는 이를 그대로 만족한다. 테스트용 가짜 View 는 `inject/injecttest` 가 제공한다 (sets ST-NFR-01) |
 | IN-FR-48 | 조회 결과의 contract 값은 깊은 복사로 돌려준다 (IN-FR-17) |
@@ -341,6 +341,7 @@ IN-FR-31~39 는 삭제됐다. 서드파티 세트도 Go FunctionSet 으로 `Bind
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
 | 0.4 | `Bind` 는 step 마다 마지막 함수 하나만 남김. 아래 세트 함수를 쓰려면 그 함수 값을 직접 받아 부름(sets 의 step 별 생성자) | 층으로 쌓고 `ctx.Next` 로 아래 층 호출 (IN-FR-19, 60~63), `FunctionSet.Description`. Next 를 부르지 않는 세트는 이전과 같음 | R26 ① |
+| 0.4 | 신호 `next` 생성자 = `ctx.Next()` | `ctx.NextSignal()` (IN-FR-45) | 19개 step ctx 에서 IN-FR-60 의 `Next(...)` 와 이름 충돌 (Go 는 오버로드 없음). 사용자 결정 (impl-08) |
 | 0.2 | 상태 NS = "함수가 속한 세트" | 바인딩된 세트의 Name (IN-FR-23) | Go 함수 값에는 소속이 없음. 사용자 확정 (함수에 NS 부착안 기각) |
 | 0.2 | ctx 가 core View 를 직접 사용 | `ViewSource` interface (IN-FR-47) | core.View 는 외부에서 만들 수 없음: 가짜 View(sets 테스트)에 필요 |
 | 0.2 | O1·O2 미결 | Go 코드 / 직접 구현 | 사용자 확정 |

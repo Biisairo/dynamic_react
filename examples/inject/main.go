@@ -31,13 +31,12 @@ const Rule = "End every reply with the line: -- checked by example"
 const ruleID = "example-rule"
 
 // Sets 는 기본 세트 위에 Example 을 겹친다.
-func Sets(d sets.Deps) []inject.FunctionSet {
-	return append(harness.DefaultSets(d), Example(d))
+func Sets(d sets.Deps) []harness.SetEntry {
+	return append(harness.DefaultSets(d), harness.SetEntry{Set: Example(d), On: true})
 }
 
 // Example 은 context.inject 와 tool.before 만 채운 세트다 (EX-FR-01~03).
 func Example(d sets.Deps) inject.FunctionSet {
-	base := sets.BaseToolBefore(d)
 	return inject.FunctionSet{
 		Name: "example",
 		ContextInject: func(ctx *inject.ContextInjectCtx) ([]contract.Message, []inject.ContextInjectSignal, error) {
@@ -54,7 +53,7 @@ func Example(d sets.Deps) inject.FunctionSet {
 				return core.BeforeOut{Call: call, ShortCircuit: &contract.ToolResult{CallID: call.ID, Status: contract.StatusError,
 					Content: []contract.Block{{Kind: contract.BlockText, Text: "blocked by example: rm -rf"}}}}, nil, nil
 			}
-			return base(ctx, call)
+			return ctx.Next(call)
 		},
 	}
 }

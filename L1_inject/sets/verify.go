@@ -24,7 +24,6 @@ type VerifyOptions struct {
 	Check       func(ctx context.Context) (CheckResult, error)
 	MaxAttempts int
 	Tools       []string
-	Next        inject.TurnFinishFn
 }
 
 // ErrVerifyFailed 는 검증이 MaxAttempts 번 실패해 run 이 끝났다는 뜻이다 (ST-FR-48).
@@ -58,11 +57,8 @@ func Verify(d Deps, o VerifyOptions) (inject.FunctionSet, error) {
 	if o.Tools == nil {
 		o.Tools = verifyTools
 	}
-	if o.Next == nil {
-		o.Next = BaseTurnFinish(d)
-	}
-	return inject.FunctionSet{Name: "verify", TurnFinish: func(ctx *inject.TurnFinishCtx) ([]inject.TurnFinishSignal, error) {
-		sigs, err := o.Next(ctx)
+	return inject.FunctionSet{Name: "verify", Description: "run checks after changes before settling", TurnFinish: func(ctx *inject.TurnFinishCtx) ([]inject.TurnFinishSignal, error) {
+		sigs, err := ctx.Next()
 		if err != nil {
 			return nil, err
 		}

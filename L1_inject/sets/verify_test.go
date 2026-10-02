@@ -72,14 +72,14 @@ func scripted(replies ...string) *fakeModel {
 	}}
 }
 
-// verifyRun 은 base + resilient + verify 로 run 하나를 돌린다.
-func verifyRun(t *testing.T, d sets.Deps, o sets.VerifyOptions) core.Settle {
+// verifyRun 은 stack(+resilient) + below + verify 로 run 하나를 돌린다.
+func verifyRun(t *testing.T, d sets.Deps, o sets.VerifyOptions, below ...inject.FunctionSet) core.Settle {
 	t.Helper()
 	v, err := sets.Verify(d, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, sets.Base(d), sets.Resilient(d), v)
+	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, stack(d, true, append(below, v)...)...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,21 +223,21 @@ func TestVerifyCheckError(t *testing.T) {
 	}
 }
 
-// ST-FR-46: Next 주입. settle 을 내는 시점이 Next 를 따른다.
+// ST-FR-46: 아래 층을 바꿔 쌓으면 settle 을 내는 시점이 그 층을 따른다. 아래 층 에러는 그대로.
 func TestVerifyNext(t *testing.T) {
 	m := scripted("write", "unused")
 	chk := &fakeCheck{results: []sets.CheckResult{pass}}
 	next := func(ctx *inject.TurnFinishCtx) ([]inject.TurnFinishSignal, error) {
 		return []inject.TurnFinishSignal{ctx.Settle()}, nil
 	}
-	s := verifyRun(t, deps(m, writeTool()), sets.VerifyOptions{Check: chk.check, Next: next})
+	s := verifyRun(t, deps(m, writeTool()), sets.VerifyOptions{Check: chk.check}, inject.FunctionSet{Name: "lower", TurnFinish: next})
 	if s.Reason != core.SettleCompleted || chk.count() != 1 || len(m.requests()) != 1 {
 		t.Fatalf("settle %s checks %d reqs %d", s.Reason, chk.count(), len(m.requests()))
 	}
 	boom := func(ctx *inject.TurnFinishCtx) ([]inject.TurnFinishSignal, error) {
 		return nil, errors.New("next boom")
 	}
-	if s := verifyRun(t, deps(scripted("hi"), writeTool()), sets.VerifyOptions{Check: chk.check, Next: boom}); s.Reason != core.SettleFailed || !strings.Contains(s.Err.Error(), "next boom") {
+	if s := verifyRun(t, deps(scripted("hi"), writeTool()), sets.VerifyOptions{Check: chk.check}, inject.FunctionSet{Name: "lower", TurnFinish: boom}); s.Reason != core.SettleFailed || !strings.Contains(s.Err.Error(), "next boom") {
 		t.Fatalf("next error: %s %v", s.Reason, s.Err)
 	}
 }
@@ -294,7 +294,7 @@ func TestVerifyCheckedAfterPass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, sets.Base(d), sets.Resilient(d), v)
+	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, stack(d, true, v)...)
 	if err != nil {
 		t.Fatal(err)
 	}

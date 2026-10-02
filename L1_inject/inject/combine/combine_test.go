@@ -79,7 +79,7 @@ func TestFirstDecisive(t *testing.T) {
 // 판정 step 에서 [next] 는 결정적이 아니고 dropped 로 남는다. 10 은 입력이 있는 판정 step.
 func TestFirstDecisiveSkipsNextAndDropsIt(t *testing.T) {
 	next := func(ctx *inject.StreamEventCtx, ev contract.StreamEvent) ([]inject.StreamEventSignal, error) {
-		return []inject.StreamEventSignal{ctx.Next().WithReason("n")}, nil
+		return []inject.StreamEventSignal{ctx.NextSignal().WithReason("n")}, nil
 	}
 	recall := func(ctx *inject.StreamEventCtx, ev contract.StreamEvent) ([]inject.StreamEventSignal, error) {
 		if ev.Kind != contract.EventStart {
@@ -210,7 +210,7 @@ func TestPipeStopsAtDecisive(t *testing.T) {
 			if fail {
 				return r, []inject.ToolAfterSignal{ctx.Fail(errors.New(name))}, nil
 			}
-			return r, []inject.ToolAfterSignal{ctx.Next()}, nil
+			return r, []inject.ToolAfterSignal{ctx.NextSignal()}, nil
 		}
 	}
 	fn := combine.ToolAfter.Pipe(step("a", false), step("b", true), step("c", false))

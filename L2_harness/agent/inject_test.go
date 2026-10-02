@@ -28,7 +28,7 @@ func TestInjectSets(t *testing.T) {
 	l := newLLM(t, toolReply("bash", `{"command":"rm -rf x"}`), textReply("done"))
 	os.WriteFile(filepath.Join(f.cwd, "x"), []byte("keep"), 0o644)
 	a := newAgent(t, f, testConfig(l.URL, `,"permissions":{"deny":["bash(rm *)"]}`), func(o *agent.Options) {
-		o.Sets = func(d sets.Deps) []inject.FunctionSet {
+		o.Sets = func(d sets.Deps) []harness.SetEntry {
 			own := inject.FunctionSet{Name: "own",
 				ContextInject: func(ctx *inject.ContextInjectCtx) ([]contract.Message, []inject.ContextInjectSignal, error) {
 					m := contract.Message{ID: "rule-" + ctx.Flow().RunID(), Role: contract.RoleUser, Timestamp: time.Now(),
@@ -38,7 +38,7 @@ func TestInjectSets(t *testing.T) {
 				ToolBefore: func(ctx *inject.ToolBeforeCtx, c contract.ToolCall) (core.BeforeOut, []inject.ToolBeforeSignal, error) {
 					return core.BeforeOut{Call: c}, nil, nil
 				}}
-			return append(harness.DefaultSets(d), own)
+			return append(harness.DefaultSets(d), harness.SetEntry{Set: own, On: true})
 		}
 	})
 	if s, _ := runOnce(t, a, "s1", "go"); s.Reason != core.SettleCompleted {

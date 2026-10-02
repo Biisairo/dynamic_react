@@ -46,7 +46,7 @@
 
 ## 완성된 에이전트에서의 표현 (R22)
 
-위 28개는 L1 세트(`inject.FunctionSet`)로 표현한다. impl-06 부터 이 세트를 **완성된 에이전트(`agent.New`)에 그대로 끼울 수 있다**: `agent.Options.Sets func(sets.Deps) []inject.FunctionSet` 이 기본 세트(`harness.DefaultSets` = base + resilient)를 받아 겹치기·감싸기·교체를 하고, 함수가 쓰는 부품(도구·시스템 프롬프트·요약기·세션 저장소·모델 호출)도 `ToolSet`·`System`·`Summarizer`·`Store`·`ModelCaller` 로 바꾼다. 사용법은 [`INJECT.md`](INJECT.md).
+위 28개는 L1 세트(`inject.FunctionSet`)로 표현한다. impl-06 부터 이 세트를 **완성된 에이전트(`agent.New`)에 그대로 끼울 수 있다**: `agent.Options.Sets func(sets.Deps) []harness.SetEntry` 가 기본 세트(`harness.DefaultSets` = base·require·cache·guard·truncate·resilient, R26)를 받아 층으로 쌓기(`ctx.Next`)·덮기·교체를 하고, 함수가 쓰는 부품(도구·시스템 프롬프트·요약기·세션 저장소·모델 호출)도 `ToolSet`·`System`·`Summarizer`·`Store`·`ModelCaller` 로 바꾼다. 사용법은 [`INJECT.md`](INJECT.md).
 
 | 표현 경로 | 실제 모델(deepseek)로 확인한 것 |
 |---|---|

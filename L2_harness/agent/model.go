@@ -122,6 +122,21 @@ func (a *Agent) SetModel(ctx context.Context, ref string) error {
 
 // saveModel 은 사용자 설정 파일의 agent.model 만 바꿔 쓴다 (AG-FR-34).
 func (a *Agent) saveModel(ctx context.Context, provider, id string) error {
+	return a.saveConfig(ctx, func(top map[string]json.RawMessage) error {
+		ag := top["agent"]
+		if len(ag) == 0 {
+			ag = json.RawMessage(`{}`)
+		}
+		var err error
+		if top["agent"], err = withModel(ag, provider, id); err != nil {
+			return fmt.Errorf("agent: config: %s: agent: %w", a.cfgPath, err)
+		}
+		return nil
+	})
+}
+
+// saveConfig 는 사용자 설정 파일을 읽어 change 로 최상위 키를 바꾸고 다시 쓴다. 다른 키는 그대로 둔다 (AG-FR-34, 45).
+func (a *Agent) saveConfig(ctx context.Context, change func(top map[string]json.RawMessage) error) error {
 	b, err := a.env.ReadFile(ctx, a.cfgPath)
 	switch {
 	case errors.Is(err, fs.ErrNotExist) && !a.cfgExplicit:
@@ -138,12 +153,8 @@ func (a *Agent) saveModel(ctx context.Context, provider, id string) error {
 	if top == nil {
 		top = map[string]json.RawMessage{}
 	}
-	ag := top["agent"]
-	if len(ag) == 0 {
-		ag = json.RawMessage(`{}`)
-	}
-	if top["agent"], err = withModel(ag, provider, id); err != nil {
-		return fmt.Errorf("agent: config: %s: agent: %w", a.cfgPath, err)
+	if err := change(top); err != nil {
+		return err
 	}
 	out, err := json.MarshalIndent(top, "", "  ")
 	if err != nil {

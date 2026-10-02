@@ -46,6 +46,7 @@ func Resilient(d Deps) inject.FunctionSet {
 	d = d.filled()
 	return inject.FunctionSet{
 		Name:             "resilient",
+		Description:      "retry, overflow recovery, threshold compaction, follow-up",
 		ContextMaintain:  ResilientContextMaintain(d),
 		CallError:        ResilientCallError(d),
 		ResponseClassify: ResilientResponseClassify(d),
@@ -122,7 +123,7 @@ func ResilientContextMaintain(d Deps) inject.ContextMaintainFn {
 			used := EstimateContext(ApplyEdits(conv.Transcript(), edits), edits, d.System, toolSpecs(d.Tools, cfg.Tools))
 			if used > threshold {
 				if edit, ok, err := compactConv(ctx.Context(), d, cfg, model, conv); err == nil && ok {
-					sigs = []inject.ContextMaintainSignal{ctx.Rewrite(edit), ctx.Next()}
+					sigs = []inject.ContextMaintainSignal{ctx.Rewrite(edit), ctx.NextSignal()}
 					cs.Pending = true
 				}
 			}

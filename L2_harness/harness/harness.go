@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L0_core/core"
-	"github.com/Biisairo/dynamic_react/L1_inject/inject"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness/env"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness/prompt"
@@ -31,7 +31,8 @@ type Options struct {
 	Model      sets.ModelCaller                            // 필수
 	SessionDir string                                      // 필수, 절대 경로
 	ToolSet    func(def []sets.Tool) []sets.Tool           // HN-FR-38, nil → def
-	Sets       func(d sets.Deps) []inject.FunctionSet      // HN-FR-38, nil → DefaultSets(d)
+	Sets       func(d sets.Deps) []SetEntry                // HN-FR-38, nil → DefaultSets(d)
+	Layout     []SetState                                  // HN-FR-52, 처음 배치 (nil = Sets 순서·켜짐)
 	System     func(def []contract.Block) []contract.Block // HN-FR-38, nil → def
 	Summarizer func(def sets.Summarizer) sets.Summarizer   // HN-FR-38, nil → def
 	Store      func(def Store) Store                       // HN-FR-38, nil → def
@@ -49,11 +50,6 @@ type Store interface {
 	List(ctx context.Context) ([]string, error)
 }
 
-// DefaultSets 는 기본 세트 목록이다 (HN-FR-39).
-func DefaultSets(d sets.Deps) []inject.FunctionSet {
-	return []inject.FunctionSet{sets.Base(d), sets.Resilient(d)}
-}
-
 type RunRequest struct {
 	SessionID string // 비면 session.NewID
 	Input     []contract.Message
@@ -63,6 +59,9 @@ type RunRequest struct {
 
 // Agent 는 조립된 에이전트다. 여러 run 을 동시에 시작할 수 있다 (HN-FR-28).
 type Agent struct {
+	reg    []SetEntry
+	mu     sync.Mutex // layout·disp·kernel (HN-FR-54)
+	layout []SetState
 	kernel *core.Kernel
 	disp   core.Dispatcher
 	copts  core.Options
@@ -128,17 +127,13 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	}
 	deps := sets.Deps{Model: o.Model, Tools: reg, Store: store, System: system,
 		Summarizer: summarizer, Sleep: sleep, Now: o.Now, NewID: o.NewID}
-	var fsets []inject.FunctionSet
+	var entries []SetEntry
 	if o.Sets != nil {
-		fsets = o.Sets(deps)
+		entries = o.Sets(deps)
 	} else {
-		fsets = DefaultSets(deps)
+		entries = DefaultSets(deps)
 	}
-	if sf.active() {
-		fsets = sf.wrap(fsets)
-	}
-	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(store)}, fsets...)
-	if err != nil {
+	if err := checkEntries(entries); err != nil {
 		return nil, err
 	}
 	copts := o.Core
@@ -149,8 +144,14 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if newID == nil {
 		newID = randomID
 	}
-	return &Agent{kernel: core.New(disp, copts), disp: disp, copts: copts, system: system, tools: reg, now: o.Now, sf: sf,
-		store: store, model: o.Model, sum: summarizer, newID: newID}, nil
+	a := &Agent{reg: entries, layout: initialLayout(entries, o.Layout), copts: copts, system: system, tools: reg, now: o.Now, sf: sf,
+		store: store, model: o.Model, sum: summarizer, newID: newID}
+	disp, err := a.bind(a.layout)
+	if err != nil {
+		return nil, err
+	}
+	a.disp, a.kernel = disp, core.New(disp, copts)
+	return a, nil
 }
 
 func buildSystem(ctx context.Context, o Options, reg *sets.Registry) ([]contract.Block, error) {
@@ -194,11 +195,13 @@ func (a *Agent) Start(ctx context.Context, r RunRequest) (*core.Run, string, err
 			ctx = tools.WithProgress(ctx, a.sf.progress(rs))
 		}
 	}
-	k := a.kernel
+	a.mu.Lock()
+	k, disp := a.kernel, a.disp
+	a.mu.Unlock()
 	if r.Observer != nil {
 		opts := a.copts
 		opts.Observer = r.Observer
-		k = core.New(a.disp, opts)
+		k = core.New(disp, opts)
 	}
 	return k.Start(ctx, core.RunInput{SessionID: sid, Input: r.Input, Config: r.Config}), sid, nil
 }

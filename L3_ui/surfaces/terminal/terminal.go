@@ -783,7 +783,8 @@ func (t *Terminal) resume(info agent.SessionInfo) {
 const helpText = `키: Enter 전송(실행 중 steer) · Alt+Enter follow-up · Shift+Enter/Ctrl+J 줄바꿈
      Esc/Ctrl+C 실행 중 중단 · Ctrl+C 입력 지우기(빈 줄에서 두 번 = 종료) · Ctrl+D 빈 줄에서 종료 · ↑↓ 기록
 명령: /help · /sessions · /resume [번호|id] · /new · /compact · /quit · /exit · //글 = '/글' 전송
-     /model [provider/id] · /login [provider] · /logout [provider]`
+     /model [provider/id] · /login [provider] · /logout [provider]
+     /sets · /set <name> on|off|to <n>`
 
 // command 는 3.8 이다.
 func (t *Terminal) command(text string) {
@@ -861,6 +862,14 @@ func (t *Terminal) command(text string) {
 		}
 	case "/login", "/logout":
 		t.keyCommand(name, args)
+	case "/sets":
+		t.showSets()
+	case "/set":
+		if !idle {
+			t.say(t.paint(sgrRed, "✗") + " 실행 중에는 세트를 바꿀 수 없습니다")
+			return
+		}
+		t.setCommand(args)
 	case "/quit", "/exit":
 		t.quit()
 	default:

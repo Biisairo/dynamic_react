@@ -38,7 +38,7 @@ func (c *RunStartCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *RunStartCtx) State() State { return c.b.groupState() }
 
-func (c *RunStartCtx) Next() RunStartSignal {
+func (c *RunStartCtx) NextSignal() RunStartSignal {
 	return runStartSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
@@ -52,6 +52,15 @@ func (c *RunStartCtx) Fail(err error) RunStartSignal {
 
 func (c *RunStartCtx) Rewrite(edit contract.ContextEdit) RunStartSignal {
 	return runStartSignal{c.b.mk(core.Signal{Kind: core.SigRewrite, Edit: &edit})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *RunStartCtx) Next(in core.RunInput) (core.RunInit, []RunStartSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return core.RunInit{}, nil, err
+	}
+	return fs.RunStart(&RunStartCtx{lb}, in)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -95,7 +104,7 @@ func (c *TurnStartCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *TurnStartCtx) State() State { return c.b.groupState() }
 
-func (c *TurnStartCtx) Next() TurnStartSignal {
+func (c *TurnStartCtx) NextSignal() TurnStartSignal {
 	return turnStartSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
@@ -109,6 +118,15 @@ func (c *TurnStartCtx) Stop() TurnStartSignal {
 
 func (c *TurnStartCtx) Fail(err error) TurnStartSignal {
 	return turnStartSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *TurnStartCtx) Next() ([]contract.Message, []TurnStartSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, nil, err
+	}
+	return fs.TurnStart(&TurnStartCtx{lb})
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -154,7 +172,7 @@ func (c *ContextMaintainCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ContextMaintainCtx) State() State { return c.b.groupState() }
 
-func (c *ContextMaintainCtx) Next() ContextMaintainSignal {
+func (c *ContextMaintainCtx) NextSignal() ContextMaintainSignal {
 	return contextMaintainSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
@@ -168,6 +186,15 @@ func (c *ContextMaintainCtx) Fail(err error) ContextMaintainSignal {
 
 func (c *ContextMaintainCtx) Rewrite(edit contract.ContextEdit) ContextMaintainSignal {
 	return contextMaintainSignal{c.b.mk(core.Signal{Kind: core.SigRewrite, Edit: &edit})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ContextMaintainCtx) Next() ([]ContextMaintainSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, err
+	}
+	return fs.ContextMaintain(&ContextMaintainCtx{lb})
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -213,12 +240,21 @@ func (c *ContextInjectCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ContextInjectCtx) State() State { return c.b.groupState() }
 
-func (c *ContextInjectCtx) Next() ContextInjectSignal {
+func (c *ContextInjectCtx) NextSignal() ContextInjectSignal {
 	return contextInjectSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
 func (c *ContextInjectCtx) Fail(err error) ContextInjectSignal {
 	return contextInjectSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ContextInjectCtx) Next() ([]contract.Message, []ContextInjectSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, nil, err
+	}
+	return fs.ContextInject(&ContextInjectCtx{lb})
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -264,12 +300,21 @@ func (c *ContextProjectCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ContextProjectCtx) State() State { return c.b.groupState() }
 
-func (c *ContextProjectCtx) Next() ContextProjectSignal {
+func (c *ContextProjectCtx) NextSignal() ContextProjectSignal {
 	return contextProjectSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
 func (c *ContextProjectCtx) Fail(err error) ContextProjectSignal {
 	return contextProjectSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ContextProjectCtx) Next() ([]contract.Message, []ContextProjectSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, nil, err
+	}
+	return fs.ContextProject(&ContextProjectCtx{lb})
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -315,12 +360,21 @@ func (c *RequestBuildCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *RequestBuildCtx) State() State { return c.b.groupState() }
 
-func (c *RequestBuildCtx) Next() RequestBuildSignal {
+func (c *RequestBuildCtx) NextSignal() RequestBuildSignal {
 	return requestBuildSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
 func (c *RequestBuildCtx) Fail(err error) RequestBuildSignal {
 	return requestBuildSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *RequestBuildCtx) Next() (contract.Request, []RequestBuildSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return contract.Request{}, nil, err
+	}
+	return fs.RequestBuild(&RequestBuildCtx{lb})
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -366,12 +420,21 @@ func (c *RequestFinalizeCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *RequestFinalizeCtx) State() State { return c.b.groupState() }
 
-func (c *RequestFinalizeCtx) Next() RequestFinalizeSignal {
+func (c *RequestFinalizeCtx) NextSignal() RequestFinalizeSignal {
 	return requestFinalizeSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
 func (c *RequestFinalizeCtx) Fail(err error) RequestFinalizeSignal {
 	return requestFinalizeSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *RequestFinalizeCtx) Next(req contract.Request) (contract.Request, []RequestFinalizeSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return contract.Request{}, nil, err
+	}
+	return fs.RequestFinalize(&RequestFinalizeCtx{lb}, req)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -417,7 +480,7 @@ func (c *ModelSelectCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ModelSelectCtx) State() State { return c.b.groupState() }
 
-func (c *ModelSelectCtx) Next() ModelSelectSignal {
+func (c *ModelSelectCtx) NextSignal() ModelSelectSignal {
 	return modelSelectSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
@@ -431,6 +494,15 @@ func (c *ModelSelectCtx) Stop() ModelSelectSignal {
 
 func (c *ModelSelectCtx) Fail(err error) ModelSelectSignal {
 	return modelSelectSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ModelSelectCtx) Next(req contract.Request) (contract.ModelInfo, []ModelSelectSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return contract.ModelInfo{}, nil, err
+	}
+	return fs.ModelSelect(&ModelSelectCtx{lb}, req)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -472,12 +544,21 @@ func (c *ModelCallCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ModelCallCtx) State() State { return c.b.groupState() }
 
-func (c *ModelCallCtx) Next() ModelCallSignal {
+func (c *ModelCallCtx) NextSignal() ModelCallSignal {
 	return modelCallSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
 func (c *ModelCallCtx) Fail(err error) ModelCallSignal {
 	return modelCallSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ModelCallCtx) Next(req contract.Request) (core.CallStream, []ModelCallSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return core.CallStream{}, nil, err
+	}
+	return fs.ModelCall(&ModelCallCtx{lb}, req)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -523,7 +604,7 @@ func (c *StreamEventCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *StreamEventCtx) State() State { return c.b.groupState() }
 
-func (c *StreamEventCtx) Next() StreamEventSignal {
+func (c *StreamEventCtx) NextSignal() StreamEventSignal {
 	return streamEventSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
@@ -553,6 +634,15 @@ func (c *StreamEventCtx) InjectInput(msg contract.Message) StreamEventSignal {
 
 func (c *StreamEventCtx) StartTool(call contract.ToolCall) StreamEventSignal {
 	return streamEventSignal{c.b.mk(core.Signal{Kind: core.SigStartTool, Call: &call})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *StreamEventCtx) Next(ev contract.StreamEvent) ([]StreamEventSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, err
+	}
+	return fs.StreamEvent(&StreamEventCtx{lb}, ev)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -598,7 +688,7 @@ func (c *StreamEndCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *StreamEndCtx) State() State { return c.b.groupState() }
 
-func (c *StreamEndCtx) Next() StreamEndSignal {
+func (c *StreamEndCtx) NextSignal() StreamEndSignal {
 	return streamEndSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
@@ -612,6 +702,15 @@ func (c *StreamEndCtx) RestartTurn() StreamEndSignal {
 
 func (c *StreamEndCtx) Fail(err error) StreamEndSignal {
 	return streamEndSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *StreamEndCtx) Next(msg contract.Message) (core.StreamEndOut, []StreamEndSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return core.StreamEndOut{}, nil, err
+	}
+	return fs.StreamEnd(&StreamEndCtx{lb}, msg)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -687,6 +786,15 @@ func (c *CallErrorCtx) Rewrite(edit contract.ContextEdit) CallErrorSignal {
 	return callErrorSignal{c.b.mk(core.Signal{Kind: core.SigRewrite, Edit: &edit})}
 }
 
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *CallErrorCtx) Next(ce contract.CallError) ([]CallErrorSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, err
+	}
+	return fs.CallError(&CallErrorCtx{lb}, ce)
+}
+
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
 func (c *CallErrorCtx) Dropped(sigs ...CallErrorSignal) {
 	rs, _ := rawAll(sigs)
@@ -730,7 +838,7 @@ func (c *ResponseClassifyCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ResponseClassifyCtx) State() State { return c.b.groupState() }
 
-func (c *ResponseClassifyCtx) Next() ResponseClassifySignal {
+func (c *ResponseClassifyCtx) NextSignal() ResponseClassifySignal {
 	return responseClassifySignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
@@ -760,6 +868,15 @@ func (c *ResponseClassifyCtx) Fail(err error) ResponseClassifySignal {
 
 func (c *ResponseClassifyCtx) Rewrite(edit contract.ContextEdit) ResponseClassifySignal {
 	return responseClassifySignal{c.b.mk(core.Signal{Kind: core.SigRewrite, Edit: &edit})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ResponseClassifyCtx) Next() ([]ResponseClassifySignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, err
+	}
+	return fs.ResponseClassify(&ResponseClassifyCtx{lb})
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -805,12 +922,21 @@ func (c *ResponseCommitCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ResponseCommitCtx) State() State { return c.b.groupState() }
 
-func (c *ResponseCommitCtx) Next() ResponseCommitSignal {
+func (c *ResponseCommitCtx) NextSignal() ResponseCommitSignal {
 	return responseCommitSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
 func (c *ResponseCommitCtx) Fail(err error) ResponseCommitSignal {
 	return responseCommitSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ResponseCommitCtx) Next() ([]ResponseCommitSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, err
+	}
+	return fs.ResponseCommit(&ResponseCommitCtx{lb})
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -858,7 +984,7 @@ func (c *ToolsPlanCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ToolsPlanCtx) State() State { return c.b.groupState() }
 
-func (c *ToolsPlanCtx) Next() ToolsPlanSignal {
+func (c *ToolsPlanCtx) NextSignal() ToolsPlanSignal {
 	return toolsPlanSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
@@ -868,6 +994,15 @@ func (c *ToolsPlanCtx) SkipTools(results []contract.ToolResult) ToolsPlanSignal 
 
 func (c *ToolsPlanCtx) Fail(err error) ToolsPlanSignal {
 	return toolsPlanSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ToolsPlanCtx) Next(calls []contract.ToolCall) (core.Plan, []ToolsPlanSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return core.Plan{}, nil, err
+	}
+	return fs.ToolsPlan(&ToolsPlanCtx{lb}, calls)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -909,12 +1044,21 @@ func (c *ToolBeforeCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ToolBeforeCtx) State() State { return c.b.groupState() }
 
-func (c *ToolBeforeCtx) Next() ToolBeforeSignal {
+func (c *ToolBeforeCtx) NextSignal() ToolBeforeSignal {
 	return toolBeforeSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
 func (c *ToolBeforeCtx) Fail(err error) ToolBeforeSignal {
 	return toolBeforeSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ToolBeforeCtx) Next(call contract.ToolCall) (core.BeforeOut, []ToolBeforeSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return core.BeforeOut{}, nil, err
+	}
+	return fs.ToolBefore(&ToolBeforeCtx{lb}, call)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -956,12 +1100,21 @@ func (c *ToolExecuteCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ToolExecuteCtx) State() State { return c.b.groupState() }
 
-func (c *ToolExecuteCtx) Next() ToolExecuteSignal {
+func (c *ToolExecuteCtx) NextSignal() ToolExecuteSignal {
 	return toolExecuteSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
 func (c *ToolExecuteCtx) Fail(err error) ToolExecuteSignal {
 	return toolExecuteSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ToolExecuteCtx) Next(call contract.ToolCall) (contract.ToolResult, []ToolExecuteSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return contract.ToolResult{}, nil, err
+	}
+	return fs.ToolExecute(&ToolExecuteCtx{lb}, call)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -1003,12 +1156,21 @@ func (c *ToolAfterCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ToolAfterCtx) State() State { return c.b.groupState() }
 
-func (c *ToolAfterCtx) Next() ToolAfterSignal {
+func (c *ToolAfterCtx) NextSignal() ToolAfterSignal {
 	return toolAfterSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
 func (c *ToolAfterCtx) Fail(err error) ToolAfterSignal {
 	return toolAfterSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ToolAfterCtx) Next(call contract.ToolCall, res contract.ToolResult) (contract.ToolResult, []ToolAfterSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return contract.ToolResult{}, nil, err
+	}
+	return fs.ToolAfter(&ToolAfterCtx{lb}, call, res)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -1054,12 +1216,21 @@ func (c *ToolsCommitCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *ToolsCommitCtx) State() State { return c.b.groupState() }
 
-func (c *ToolsCommitCtx) Next() ToolsCommitSignal {
+func (c *ToolsCommitCtx) NextSignal() ToolsCommitSignal {
 	return toolsCommitSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
 func (c *ToolsCommitCtx) Fail(err error) ToolsCommitSignal {
 	return toolsCommitSignal{c.b.mk(core.Signal{Kind: core.SigFail, Err: err})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *ToolsCommitCtx) Next(calls []contract.ToolCall, results []contract.ToolResult) ([]contract.Message, []ToolsCommitSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, nil, err
+	}
+	return fs.ToolsCommit(&ToolsCommitCtx{lb}, calls, results)
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -1131,6 +1302,15 @@ func (c *TurnFinishCtx) InjectInput(msg contract.Message) TurnFinishSignal {
 	return turnFinishSignal{c.b.mk(core.Signal{Kind: core.SigInjectInput, Message: &msg})}
 }
 
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *TurnFinishCtx) Next() ([]TurnFinishSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, err
+	}
+	return fs.TurnFinish(&TurnFinishCtx{lb})
+}
+
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
 func (c *TurnFinishCtx) Dropped(sigs ...TurnFinishSignal) {
 	rs, _ := rawAll(sigs)
@@ -1176,7 +1356,7 @@ func (c *RunBeforeSettleCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *RunBeforeSettleCtx) State() State { return c.b.groupState() }
 
-func (c *RunBeforeSettleCtx) Next() RunBeforeSettleSignal {
+func (c *RunBeforeSettleCtx) NextSignal() RunBeforeSettleSignal {
 	return runBeforeSettleSignal{c.b.mk(core.Signal{Kind: core.SigNext})}
 }
 
@@ -1194,6 +1374,15 @@ func (c *RunBeforeSettleCtx) Fail(err error) RunBeforeSettleSignal {
 
 func (c *RunBeforeSettleCtx) InjectInput(msg contract.Message) RunBeforeSettleSignal {
 	return runBeforeSettleSignal{c.b.mk(core.Signal{Kind: core.SigInjectInput, Message: &msg})}
+}
+
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *RunBeforeSettleCtx) Next() ([]RunBeforeSettleSignal, error) {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return nil, err
+	}
+	return fs.RunBeforeSettle(&RunBeforeSettleCtx{lb})
 }
 
 // Dropped 는 채택하지 않은 신호를 트레이스에 남긴다 (IN-FR-49).
@@ -1225,11 +1414,21 @@ func (c *RunSettledCtx) Env() Env { return c.b.groupEnv() }
 
 func (c *RunSettledCtx) State() State { return c.b.groupState() }
 
+// Next 는 바로 아래 층의 함수를 같은 dispatch 안에서 부른다 (IN-FR-60~62).
+func (c *RunSettledCtx) Next(s core.Settle) error {
+	lb, fs, err := c.b.lower()
+	if err != nil {
+		return err
+	}
+	return fs.RunSettled(&RunSettledCtx{lb}, s)
+}
+
 type RunSettledFn func(ctx *RunSettledCtx, s core.Settle) error
 
 // FunctionSet 은 이름을 가진 주입 함수 묶음이다 (IN-FR-18).
 type FunctionSet struct {
 	Name             string
+	Description      string // 사람이 읽는 한 줄. 바인딩은 쓰지 않는다
 	RunStart         RunStartFn
 	TurnStart        TurnStartFn
 	ContextMaintain  ContextMaintainFn
@@ -1254,96 +1453,76 @@ type FunctionSet struct {
 	RunSettled       RunSettledFn
 }
 
-// overlay 는 src 의 nil 이 아닌 함수로 dst 를 덮고, 덮은 step 의 주인을 기록한다.
-func overlay(dst *FunctionSet, src FunctionSet, owner map[core.Step]string) {
-	if src.RunStart != nil {
-		dst.RunStart = src.RunStart
-		owner[core.StepRunStart] = src.Name
+// filled 는 s 가 채운(nil 이 아닌) step 이다.
+func filled(s *FunctionSet) []core.Step {
+	var out []core.Step
+	if s.RunStart != nil {
+		out = append(out, core.StepRunStart)
 	}
-	if src.TurnStart != nil {
-		dst.TurnStart = src.TurnStart
-		owner[core.StepTurnStart] = src.Name
+	if s.TurnStart != nil {
+		out = append(out, core.StepTurnStart)
 	}
-	if src.ContextMaintain != nil {
-		dst.ContextMaintain = src.ContextMaintain
-		owner[core.StepContextMaintain] = src.Name
+	if s.ContextMaintain != nil {
+		out = append(out, core.StepContextMaintain)
 	}
-	if src.ContextInject != nil {
-		dst.ContextInject = src.ContextInject
-		owner[core.StepContextInject] = src.Name
+	if s.ContextInject != nil {
+		out = append(out, core.StepContextInject)
 	}
-	if src.ContextProject != nil {
-		dst.ContextProject = src.ContextProject
-		owner[core.StepContextProject] = src.Name
+	if s.ContextProject != nil {
+		out = append(out, core.StepContextProject)
 	}
-	if src.RequestBuild != nil {
-		dst.RequestBuild = src.RequestBuild
-		owner[core.StepRequestBuild] = src.Name
+	if s.RequestBuild != nil {
+		out = append(out, core.StepRequestBuild)
 	}
-	if src.RequestFinalize != nil {
-		dst.RequestFinalize = src.RequestFinalize
-		owner[core.StepRequestFinalize] = src.Name
+	if s.RequestFinalize != nil {
+		out = append(out, core.StepRequestFinalize)
 	}
-	if src.ModelSelect != nil {
-		dst.ModelSelect = src.ModelSelect
-		owner[core.StepModelSelect] = src.Name
+	if s.ModelSelect != nil {
+		out = append(out, core.StepModelSelect)
 	}
-	if src.ModelCall != nil {
-		dst.ModelCall = src.ModelCall
-		owner[core.StepModelCall] = src.Name
+	if s.ModelCall != nil {
+		out = append(out, core.StepModelCall)
 	}
-	if src.StreamEvent != nil {
-		dst.StreamEvent = src.StreamEvent
-		owner[core.StepStreamEvent] = src.Name
+	if s.StreamEvent != nil {
+		out = append(out, core.StepStreamEvent)
 	}
-	if src.StreamEnd != nil {
-		dst.StreamEnd = src.StreamEnd
-		owner[core.StepStreamEnd] = src.Name
+	if s.StreamEnd != nil {
+		out = append(out, core.StepStreamEnd)
 	}
-	if src.CallError != nil {
-		dst.CallError = src.CallError
-		owner[core.StepCallError] = src.Name
+	if s.CallError != nil {
+		out = append(out, core.StepCallError)
 	}
-	if src.ResponseClassify != nil {
-		dst.ResponseClassify = src.ResponseClassify
-		owner[core.StepResponseClassify] = src.Name
+	if s.ResponseClassify != nil {
+		out = append(out, core.StepResponseClassify)
 	}
-	if src.ResponseCommit != nil {
-		dst.ResponseCommit = src.ResponseCommit
-		owner[core.StepResponseCommit] = src.Name
+	if s.ResponseCommit != nil {
+		out = append(out, core.StepResponseCommit)
 	}
-	if src.ToolsPlan != nil {
-		dst.ToolsPlan = src.ToolsPlan
-		owner[core.StepToolsPlan] = src.Name
+	if s.ToolsPlan != nil {
+		out = append(out, core.StepToolsPlan)
 	}
-	if src.ToolBefore != nil {
-		dst.ToolBefore = src.ToolBefore
-		owner[core.StepToolBefore] = src.Name
+	if s.ToolBefore != nil {
+		out = append(out, core.StepToolBefore)
 	}
-	if src.ToolExecute != nil {
-		dst.ToolExecute = src.ToolExecute
-		owner[core.StepToolExecute] = src.Name
+	if s.ToolExecute != nil {
+		out = append(out, core.StepToolExecute)
 	}
-	if src.ToolAfter != nil {
-		dst.ToolAfter = src.ToolAfter
-		owner[core.StepToolAfter] = src.Name
+	if s.ToolAfter != nil {
+		out = append(out, core.StepToolAfter)
 	}
-	if src.ToolsCommit != nil {
-		dst.ToolsCommit = src.ToolsCommit
-		owner[core.StepToolsCommit] = src.Name
+	if s.ToolsCommit != nil {
+		out = append(out, core.StepToolsCommit)
 	}
-	if src.TurnFinish != nil {
-		dst.TurnFinish = src.TurnFinish
-		owner[core.StepTurnFinish] = src.Name
+	if s.TurnFinish != nil {
+		out = append(out, core.StepTurnFinish)
 	}
-	if src.RunBeforeSettle != nil {
-		dst.RunBeforeSettle = src.RunBeforeSettle
-		owner[core.StepRunBeforeSettle] = src.Name
+	if s.RunBeforeSettle != nil {
+		out = append(out, core.StepRunBeforeSettle)
 	}
-	if src.RunSettled != nil {
-		dst.RunSettled = src.RunSettled
-		owner[core.StepRunSettled] = src.Name
+	if s.RunSettled != nil {
+		out = append(out, core.StepRunSettled)
 	}
+	return out
 }
 
 // invoke 는 step 의 함수를 부른다.

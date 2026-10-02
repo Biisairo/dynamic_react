@@ -1,6 +1,6 @@
-# 주입 가이드 (R22)
+# 주입 가이드 (R22, R26)
 
-완성된 에이전트(`L2_harness/agent`)를 core(L0, 22 step 루프)만 고정한 채 튜닝하는 방법이다. L1 을 포크하지 않고 `agent.New` 를 부를 때 Go 함수로 바꾼다. 근거는 `docs/DECISIONS.md` D12·R22, 요구사항은 `L2_harness/SPEC.md` 3.6c(HN-FR-37~42)와 `L2_harness/agent/SPEC.md` 3.14(AG-FR-40~43)다.
+완성된 에이전트(`L2_harness/agent`)를 core(L0, 22 step 루프)만 고정한 채 튜닝하는 방법이다. L1 을 포크하지 않고 `agent.New` 를 부를 때 Go 함수로 바꾼다. 근거는 `docs/DECISIONS.md` D12·R22, 요구사항은 `L2_harness/SPEC.md` 3.6c·3.6d(HN-FR-37~42, 51~54)와 `L2_harness/agent/SPEC.md` 3.14·3.14a(AG-FR-40~46), 층 바인딩은 `L1_inject/inject/SPEC.md` 3.5(IN-FR-19, 60~63)다.
 
 ## 1. 무엇을 바꿀 수 있나
 
@@ -8,7 +8,7 @@
 
 | `agent.Options` 필드 | 기본값 | 결과가 nil·빈 값이면 |
 |---|---|---|
-| `Sets func(d sets.Deps) []inject.FunctionSet` | `harness.DefaultSets(d)` = `[sets.Base(d), sets.Resilient(d)]` | 빈 step 이 생겨 `Bind` 에러 |
+| `Sets func(d sets.Deps) []harness.SetEntry` | `harness.DefaultSets(d)` = base·require·cache·guard·truncate·resilient, 전부 `On: true` | 빈 step 이 생겨 `Bind` 에러 |
 | `ToolSet func(def []sets.Tool) []sets.Tool` | `tools.All(env)` = read·bash·edit·write | 도구 없는 에이전트 |
 | `System func(def []contract.Block) []contract.Block` | 기본 시스템 프롬프트 (preamble·tools·rules·AGENTS.md·skills·cwd) | 시스템 프롬프트 없음 |
 | `Summarizer func(def sets.Summarizer) sets.Summarizer` | pi 요약 프롬프트를 쓰는 요약기 | 자동 압축 끔, `Compact` 는 에러 |
@@ -24,46 +24,74 @@ harness 를 직접 쓸 때는 `harness.Options` 의 같은 이름 필드(ModelCa
 ② Store(session.New(env, dir))     → 저장소
 ③ System(기본 조립(①))              → 시스템 프롬프트
 ④ Summarizer(summary.New(model))   → 요약기 (OnEvent 가 있으면 compaction 이벤트로 감쌈)
-⑤ Sets(Deps{Model, Tools: ①, Store: ②, System: ③, Summarizer: ④, Sleep, Now, NewID})
-   → surface 래핑(승인·이벤트) → inject.BindWith(StateStore: ②)
+⑤ Sets(Deps{Model, Tools: ①, Store: ②, System: ③, Summarizer: ④, Sleep, Now, NewID})  → 등록 목록
+   → 배치(Layout / 설정 sets) → 켜진 세트를 배치 순서로 surface 래핑(승인·이벤트) → inject.BindWith(StateStore: ②)
 ```
 
 `Sets` 가 받는 `Deps` 에는 ①~④ 의 결과가 들어 있다. 그래서 사용자 세트도 같은 도구·저장소·요약기를 쓴다.
 
 ## 2. 세트 다루기
 
-`Bind` 는 step 마다 **nil 이 아닌 마지막 함수**를 고른다 (IN-FR-19). 따라서:
+### 층 바인딩 (IN-FR-19, 60~63)
+
+`Bind` 는 step 마다 그 step 을 채운 세트들을 **목록 순서대로 쌓는다 — 뒤의 세트가 위 층**이다. dispatch 는 가장 위 층 함수를 부른다. 위 층 함수는 `ctx.Next(...)`(인자는 그 step 함수의 ctx 뒤 인자들, 반환도 같음)로 바로 아래 층을 부를 수 있고, 부르지 않으면 아래 층을 덮는다. 가장 아래 층에서 `ctx.Next` 를 부르면 `inject.ErrNoNext` 를 감싼 에러다 (그 dispatch 실패). 신호 `next` 의 생성자는 `ctx.NextSignal()` 이다.
 
 | 하려는 것 | 방법 |
 |---|---|
-| step 하나를 덮기 | 그 step 만 채운 세트를 `DefaultSets(d)` 뒤에 붙인다 |
-| 기본 함수를 감싸기 | 기본 생성자(`sets.Base<Step>(d)`, `sets.Resilient<Step>(d)`)를 받아 안에서 부른다. 조합 함수는 `inject/combine` 의 `Wrap`·`Concat` 등 |
-| 기본 세트를 고치기 | `b := sets.Base(d); b.ToolBefore = …` 처럼 원소를 고쳐 목록에 넣는다 |
+| step 하나를 덮기 | 그 step 만 채운 세트를 위에 쌓고 `ctx.Next` 를 부르지 않는다 |
+| 아래 층을 감싸기 | 위에 쌓고 `ctx.Next(...)` 의 결과·신호를 고치거나 그대로 돌려준다 (아래 층 신호를 그대로 돌려줘도 된다) |
+| 기본 세트를 빼기·바꾸기 | `DefaultSets(d)` 의 원소를 빼거나 고친다. base·require 도 사용자가 넣는 부품이다 |
 | 전부 바꾸기 | `DefaultSets` 를 쓰지 않고 22 step 을 모두 채운다 |
 
-세트 이름은 상태 네임스페이스다 (IN-FR-23). 같은 이름을 두 번 넣으면 `Bind` 에러이고, 기본 세트의 상태(`base` 의 `edits.saved`·`inbox.consumed` 등)에 기대는 함수를 다른 이름의 세트로 옮기면 상태가 이어지지 않는다.
+세트 이름은 상태 네임스페이스다 (IN-FR-23). 아래 층 함수는 **자기 세트의** 네임스페이스를 쓴다 (IN-FR-61). 같은 이름을 두 번 넣으면 에러이고, 기본 세트의 상태(`base` 의 `edits.saved`·`inbox.consumed` 등)에 기대는 함수를 다른 이름의 세트로 옮기면 상태가 이어지지 않는다.
+
+### 기본 세트 (sets 3.0)
+
+| 세트 | 채우는 것 | 아래 층 필요 |
+|---|---|---|
+| `base` | 세션 로드·저장, 입력·입력함, 편집 적용, 도구 실행, 16·18 통과 | 없음 |
+| `require` | 요청 조립·모델 호출·응답 확정·실패·순차 계획·턴 루프(R2)·짝 복구, 빈 step | run.start |
+| `cache` | 요청의 캐시 힌트 | request.finalize |
+| `guard` | 없는 도구·인자 스키마 검사 | tool.before |
+| `truncate` | 도구 결과 절단 | tool.after |
+| `resilient` | 재시도·overflow 복구·임계치 압축·follow-up | 없음 |
+| `verify` (주입용) | 변경 뒤 끝낼 때 검증 | turn.finish |
+
+목록·순서·기본 켜짐은 L2 `harness.DefaultSets` 한 곳의 프리셋이다 (L0·L1 은 순서를 모른다). 아래 층이 필요한 세트를 같은 step 을 채운 세트보다 아래로 옮기면, 실행할 때 그 step 이 `ErrNoNext` 로 실패한다 (Bind 는 알 수 없음).
 
 ```go
 a, err := agent.New(ctx, agent.Options{
-    Sets: func(d sets.Deps) []inject.FunctionSet {
-        base := sets.BaseToolBefore(d)
-        mine := inject.FunctionSet{Name: "mine",
+    Sets: func(d sets.Deps) []harness.SetEntry {
+        mine := inject.FunctionSet{Name: "mine", Description: "rules and rm -rf block",
             // 4 context.inject: 이번 턴의 요청에만 붙고 세션에 저장되지 않는다
             ContextInject: func(ctx *inject.ContextInjectCtx) ([]contract.Message, []inject.ContextInjectSignal, error) {
                 return []contract.Message{rule(d.Now())}, nil, nil
             },
-            // 16 tool.before: 막을 호출은 ShortCircuit, 나머지는 base 검사로
+            // 16 tool.before: 막을 호출은 ShortCircuit, 나머지는 아래 층(guard → base)으로
             ToolBefore: func(ctx *inject.ToolBeforeCtx, c contract.ToolCall) (core.BeforeOut, []inject.ToolBeforeSignal, error) {
                 if blocked(c) {
                     return core.BeforeOut{Call: c, ShortCircuit: &contract.ToolResult{CallID: c.ID, Status: contract.StatusError,
                         Content: []contract.Block{{Kind: contract.BlockText, Text: "blocked"}}}}, nil, nil
                 }
-                return base(ctx, c)
+                return ctx.Next(c)
             }}
-        return append(harness.DefaultSets(d), mine)
+        return append(harness.DefaultSets(d), harness.SetEntry{Set: mine, On: true})
     },
 })
 ```
+
+### 배치 바꾸기 (R26, HN-FR-51~54, AG-FR-44~46)
+
+배치 = 등록된 세트 전부의 순서 + 각 켜짐. 실행 중에 켜기·끄기·순서를 바꿀 수 있고 **다음 run 부터** 적용된다 (실행 중인 run 은 그대로).
+
+| 어디서 | 방법 |
+|---|---|
+| dr | `/sets` 로 보기, `/set <name> on|off|to <n>` 로 바꾸기 (대기 상태에서만) |
+| Go (agent) | `a.Sets()`, `a.ArrangeSets(ctx, layout)` — 성공하면 사용자 설정 `sets` 에 저장. 저장 실패면 배치를 되돌린다 |
+| Go (harness) | `h.Sets()`, `h.Arrange(layout)` (저장 없음), 처음 배치는 `harness.Options.Layout` |
+| 설정 파일 | `"sets": [{"name": "guard", "on": false}, …]` — 등록되지 않은 이름은 무시, 빠진 등록 세트는 등록 순서·기본 켜짐으로 뒤에 |
+
+`Arrange` 의 layout 은 등록된 이름 전부를 한 번씩 담아야 한다 (아니면 `harness.ErrSetLayout`). 다시 묶어 빈 step 이 생기면(예: require 끔) 거부하고 지금 배치를 유지한다.
 
 ## 3. 부품 다루기
 
@@ -89,9 +117,9 @@ agent.Options{
 
 | 항목 | 사용자 세트를 넣었을 때 |
 |---|---|
-| 승인 (permissions 규칙, Approver, deny) | **항상 유지.** surface 래핑이 step 마다 실제로 쓰이는 `tool.before` 바깥을 감싼다 (HN-FR-41) |
+| 승인 (permissions 규칙, Approver, deny) | **항상 유지.** surface 래핑이 step 마다 가장 위 층 `tool.before` 바깥을 감싼다 (HN-FR-41). 배치를 바꿔도 같다 |
 | 이벤트 (OnEvent: message·tool·turn·run_end 등) | **항상 유지.** 같은 방식 |
-| base 기본 검사 (없는 도구, 인자 스키마, ST-FR-38) | `tool.before` 를 덮으면서 `sets.BaseToolBefore(d)` 를 부르지 않으면 **빠진다.** 이때 승인 Gate 는 검사 없이 그 호출에 불린다. 사용자 책임 |
+| 기본 검사 (없는 도구, 인자 스키마, ST-FR-38) | `guard` 세트다. 끄거나, 그 위에 `ctx.Next` 를 부르지 않는 `tool.before` 를 쌓으면 **빠진다.** 이때 승인 Gate 는 검사 없이 그 호출에 불리고, 없는 도구는 base 의 실행 단계에서 `unknown tool:` 결과가 된다. 사용자 책임 |
 | Steer 의 남은 도구 건너뛰기 | `base` 세트의 공개 상태 `inbox.consumed` 를 읽는다. `base` 를 빼고 그 상태를 갱신하지 않으면 Steer 한 번 뒤의 도구 호출이 계속 skipped 된다 (AG-FR-42) |
 | 도구 상한·설정 `agent.tools`·이름 규칙 | `ToolSet` 적용 뒤 registry 기준. 추가한 도구도 대상이다 |
 | 패턴 규칙 `tool(pattern)` | `bash`·`read`·`write`·`edit`·`grep`·`find`·`ls` 이름에만 쓴다 (추가 도구에 쓰면 `New` 에러). 비교 값은 인자 `command`/`path` 에서 꺼낸다 — 같은 이름으로 바꾼 도구에 그 인자가 없으면 패턴 규칙(deny 포함)이 **맞지 않는다.** 이름 규칙(`bash`)은 맞는다 |
@@ -101,7 +129,7 @@ agent.Options{
 `examples/inject` (스펙 `examples/inject/SPEC.md`): 기본 세트 위에 `example` 세트 하나를 겹친다.
 
 - `context.inject`: 매 턴 `End every reply with the line: -- checked by example` 를 덧붙인다 (저장되지 않음)
-- `tool.before`: `rm -rf` 가 든 bash 호출을 `blocked by example: rm -rf` 로 막고, 나머지는 `sets.BaseToolBefore` 로 넘긴다 (기본 검사 유지)
+- `tool.before`: `rm -rf` 가 든 bash 호출을 `blocked by example: rm -rf` 로 막고, 나머지는 `ctx.Next(call)` 로 아래 층에 넘긴다 (기본 검사 유지)
 
 ```sh
 cd examples/inject && go run . "질문"          # 플래그: -model provider/id, -cwd, -config
@@ -111,6 +139,6 @@ cd examples/inject && go run . "질문"          # 플래그: -model provider/id
 
 ## 6. 범위 밖
 
-- 설정 파일로 세트를 고르기 — 세트는 Go 코드다 (D12). 이미 빌드된 `dr`·`dr-print` 에는 끼울 수 없고, 자기 프로그램에서 `agent.New` 를 부른다.
-- 실행 중(run 도중·run 사이)에 세트·부품 바꾸기 — 뒤로 미룸 (R22 비목표).
+- 새 세트를 설정 파일로 등록하기 — 세트는 Go 코드다 (D12). 설정 `sets` 는 이미 등록된 세트의 켜짐·순서만 정한다. `dr` 에 등록된 세트는 `DefaultSets` 뿐이고, 다른 세트는 자기 프로그램에서 `agent.New` 를 부른다.
+- run 도중의 세트 교체, 실행 중 부품 교체, 프로젝트별 배치, Bind 시점의 `ctx.Next` 검사 — R26 비목표.
 - 사용자 도구에 패턴 규칙의 비교 값을 꺼내는 함수 붙이기 — 필요해지면 추가.

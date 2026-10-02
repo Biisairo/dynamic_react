@@ -9,23 +9,24 @@
 ```text
  L3_ui       input/output over the finished agent: terminal,
              stream display, signals, exit codes
-             surfaces/terminal  interactive terminal library    (spec v0.4)
+             surfaces/terminal  interactive terminal library    (spec v0.5)
              cmd/dr        interactive entry point              (spec v0.3)
              cmd/dr-print  non-interactive test CLI             (spec v0.2)
  ─────────────────────────────────────────────────────────────────
  L2_harness  the real agent on the user's environment (R17)
-             harness   agent assembly over Env + ModelCaller:   (spec v1.2)
+             harness   agent assembly over Env + ModelCaller:   (spec v1.3)
                        tool logic, JSONL sessions, prompt,
                        summarizer (no real I/O itself)
              osenv     Env on the OS: files, shell, groups      (spec v0.3)
-             agent     config + auth.json + osenv + adapters    (spec v0.7)
+             agent     config + auth.json + osenv + adapters    (spec v0.8)
                        -> harness.New (the finished agent),
                        surface layer: approval, steer, models
  ─────────────────────────────────────────────────────────────────
  L1_inject   user-modifiable layer
-             inject    function interfaces, per-step ctx,       (spec v0.3)
-                       binding, combinators
-             sets      function sets: base, resilient, verify (spec v0.6)
+             inject    function interfaces, per-step ctx,       (spec v0.4)
+                       layered binding (ctx.Next), combinators
+             sets      function sets: base, require, cache,     (spec v0.7)
+                       guard, truncate, resilient, verify
              adapters  dialects: Anthropic, Chat, Responses;    (spec v0.6)
                        provider profiles, model catalog
  ─────────────────────────────────────────────────────────────────
@@ -57,17 +58,17 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 |---|---|---|
 | [`L0_core/contract/`](L0_core/contract/SPEC.md) | 공유 데이터 계약 | 스펙 v0.4, 구현 |
 | [`L0_core/core/`](L0_core/core/SPEC.md) | 루프 본체 | 스펙 v0.2, 구현 |
-| [`L1_inject/inject/`](L1_inject/inject/SPEC.md) | 함수 주입 프레임워크 + 조합 함수 | 스펙 v0.3, 구현 |
-| [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 함수 세트 (기본 base·resilient, 주입용 verify) | 스펙 v0.6, 구현 |
+| [`L1_inject/inject/`](L1_inject/inject/SPEC.md) | 함수 주입 프레임워크 + 층 바인딩(`ctx.Next`) + 조합 함수 | 스펙 v0.4, 구현 |
+| [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 함수 세트 부품 (base·require·cache·guard·truncate·resilient, 주입용 verify) | 스펙 v0.7, 구현 |
 | [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그 | 스펙 v0.6, 구현 |
-| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 7종 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입 | 스펙 v1.2, 구현 |
+| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 7종 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입, 세트 배치(켜기·끄기·순서) | 스펙 v1.3, 구현 |
 | [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.3, 구현 |
-| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키), 주입 통로 | 스펙 v0.7, 구현 |
-| [`L3_ui/surfaces/terminal/`](L3_ui/surfaces/terminal/SPEC.md) | 대화형 터미널 surface 라이브러리 | 스펙 v0.4, 구현 |
+| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키·세트 배치 저장), 주입 통로 | 스펙 v0.8, 구현 |
+| [`L3_ui/surfaces/terminal/`](L3_ui/surfaces/terminal/SPEC.md) | 대화형 터미널 surface 라이브러리 | 스펙 v0.5, 구현 |
 | [`L3_ui/cmd/dr/`](L3_ui/cmd/dr/SPEC.md) | 대화형 진입점 | 스펙 v0.3, 구현 |
 | [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 비대화형 검증용 CLI (입출력만) | 스펙 v0.2, 구현 |
-| [`examples/inject/`](examples/inject/SPEC.md) | 주입 예시: 매 턴 규칙 덧붙이기 + `rm -rf` 차단 | 스펙 v0.1, 구현 |
-| [`examples/verify/`](examples/verify/SPEC.md) | 자기검증 세트 예시: 변경 뒤 끝낼 때 셸 명령으로 검증, 실패하면 출력을 모델에 돌려줌, `-i` 대화형 | 스펙 v0.2, 구현 |
+| [`examples/inject/`](examples/inject/SPEC.md) | 주입 예시: 매 턴 규칙 덧붙이기 + `rm -rf` 차단 | 스펙 v0.2, 구현 |
+| [`examples/verify/`](examples/verify/SPEC.md) | 자기검증 세트 예시: 변경 뒤 끝낼 때 셸 명령으로 검증, 실패하면 출력을 모델에 돌려줌, `-i` 대화형 | 스펙 v0.3, 구현 |
 | [`docs/`](docs/DECISIONS.md) | 결정 기록, 주입 가이드([`INJECT.md`](docs/INJECT.md)), 22 step 표현 검증, 인계 문서 | — |
 
 ## 실행
@@ -79,11 +80,11 @@ cd L3_ui/cmd/dr-print && go run . "질문"        # 비대화형 (stdin 도 받�
 
 - 처음 실행하면 모델이 없으므로 모델 선택 화면이 뜬다. 키가 필요한 provider 는 `/login <provider>` 로 키를 넣어야 목록에 나온다. 고른 모델은 설정 파일에 저장된다.
 - dr 플래그: `-model provider/id`(이번 실행만, 저장 안 함) · `-cwd` · `-config` · `-session <id>` / `-c`(최근 세션) / `-r`(세션 목록) · `-no-color`.
-- 명령: `/model [provider/id]` · `/login [provider]` · `/logout [provider]` · `/sessions` · `/resume [번호|id]` · `/new` · `/compact` · `/help` · `/quit`. 키: Enter 전송(실행 중 steer), Alt+Enter follow-up, Shift+Enter·Ctrl+J 줄바꿈, Esc·Ctrl+C 실행 중 중단.
+- 명령: `/model [provider/id]` · `/login [provider]` · `/logout [provider]` · `/sets` · `/set <name> on|off|to <n>` · `/sessions` · `/resume [번호|id]` · `/new` · `/compact` · `/help` · `/quit`. 키: Enter 전송(실행 중 steer), Alt+Enter follow-up, Shift+Enter·Ctrl+J 줄바꿈, Esc·Ctrl+C 실행 중 중단.
 
 | 파일 | 내용 |
 |---|---|
-| `~/.dynamic_react/config.json` | 사용자 설정: `sessionDir`·`shellPath`(기본 `/bin/bash`)·`agent`(모델·thinking·tools·compaction·retry)·`providers`·`models`·`permissions`. 키 필드는 없다 |
+| `~/.dynamic_react/config.json` | 사용자 설정: `sessionDir`·`shellPath`(기본 `/bin/bash`)·`agent`(모델·thinking·tools·compaction·retry)·`providers`·`models`·`permissions`·`sets`(세트 배치, `/set` 이 쓴다). 키 필드는 없다 |
 | `~/.dynamic_react/auth.json` | API 키 (`{"<provider>": {"type": "api_key", "key": "…"}}`, 0600). `/login` 이 쓴다. 저장소에 넣지 않는다 |
 | `~/.dynamic_react/sessions/` | 세션 JSONL (기본 위치) |
 | `<cwd>/.dynamic_react/config.json` | 프로젝트 설정: `permissions` 만 |
@@ -105,7 +106,7 @@ core(22 step 루프) 외의 모든 것은 `agent.New` 를 부를 때 Go 함수�
 
 | 필드 | 바꾸는 것 |
 |---|---|
-| `Sets func(sets.Deps) []inject.FunctionSet` | 함수 세트 목록. 기본 = `harness.DefaultSets(d)` (base + resilient). 겹치기·감싸기·교체·전부 교체 |
+| `Sets func(sets.Deps) []harness.SetEntry` | 등록할 함수 세트 목록과 기본 켜짐. 기본 = `harness.DefaultSets(d)` (base → require → cache → guard → truncate → resilient, 전부 켬). 뒤의 세트가 위 층이고 `ctx.Next` 로 아래 층을 부른다 |
 | `ToolSet func([]sets.Tool) []sets.Tool` | 도구 목록 (추가·제거·같은 이름 교체) |
 | `System func([]contract.Block) []contract.Block` | 시스템 프롬프트 |
 | `Summarizer func(sets.Summarizer) sets.Summarizer` | 요약기 (nil 을 돌려주면 압축 끔) |
@@ -114,8 +115,7 @@ core(22 step 루프) 외의 모든 것은 `agent.New` 를 부를 때 Go 함수�
 
 ```go
 a, err := agent.New(ctx, agent.Options{
-    Sets: func(d sets.Deps) []inject.FunctionSet {
-        base := sets.BaseToolBefore(d)
+    Sets: func(d sets.Deps) []harness.SetEntry {
         mine := inject.FunctionSet{Name: "mine",
             ContextInject: func(ctx *inject.ContextInjectCtx) ([]contract.Message, []inject.ContextInjectSignal, error) {
                 return []contract.Message{rule()}, nil, nil // 이번 턴의 요청에만 들어가고 저장되지 않는다
@@ -124,14 +124,15 @@ a, err := agent.New(ctx, agent.Options{
                 if blocked(c) {
                     return core.BeforeOut{Call: c, ShortCircuit: &contract.ToolResult{CallID: c.ID, Status: contract.StatusError}}, nil, nil
                 }
-                return base(ctx, c) // base 를 부르면 기본 검사(없는 도구·스키마)가 남는다
+                return ctx.Next(c) // 아래 층(guard → base)을 부르면 기본 검사(없는 도구·스키마)가 남는다
             }}
-        return append(harness.DefaultSets(d), mine) // step 마다 마지막 세트가 이긴다
+        return append(harness.DefaultSets(d), harness.SetEntry{Set: mine, On: true}) // 뒤의 세트가 위 층
     },
 })
 ```
 
-- 승인 규칙·Approver·이벤트는 사용자 세트가 무엇이든 유지된다. base 의 기본 검사는 base 를 감싸지 않고 바꾸면 빠진다 (사용자 책임).
+- 승인 규칙·Approver·이벤트는 사용자 세트·배치가 무엇이든 유지된다. 기본 검사는 `guard` 세트다 — 끄거나 `ctx.Next` 를 부르지 않고 덮으면 빠진다 (사용자 책임).
+- 실행 중 배치: dr 의 `/sets` 로 보고 `/set guard off`·`/set guard to 1` 로 켜기·끄기·순서를 바꾼다. 다음 run 부터 적용되고 설정 `sets` 에 저장된다. 빈 step 이 생기는 배치(예: `/set require off`)는 거부된다. Go 에서는 `Agent.Sets()`·`ArrangeSets`.
 - 추가 도구도 도구 상한·설정 `agent.tools`·이름 규칙의 대상이다. 패턴 규칙은 `bash`·`read`·`write`·`edit`·`grep`·`find`·`ls` 에만 쓴다.
 - 실행 가능한 전체 예시: [`examples/inject`](examples/inject/main.go) (`cd examples/inject && go run . "질문"`). 자기검증: [`examples/verify`](examples/verify/main.go) (`go run . -check "go test ./..." "질문"`).
 - 자세한 규칙(만드는 순서, 세트 이름과 상태, 저장소 계약, 사용자 책임): [`docs/INJECT.md`](docs/INJECT.md).

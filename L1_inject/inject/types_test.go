@@ -27,7 +27,7 @@ var specGroups = []string{
 var groupNames = []string{"Flow", "Conv", "Request", "Stream", "Output", "Tools", "Env", "State"}
 
 var ctorNames = map[core.SignalKind]string{
-	core.SigNext: "Next", core.SigRecall: "Recall", core.SigReselect: "Reselect", core.SigRebuild: "Rebuild",
+	core.SigNext: "NextSignal", core.SigRecall: "Recall", core.SigReselect: "Reselect", core.SigRebuild: "Rebuild",
 	core.SigRestartTurn: "RestartTurn", core.SigContinueTurn: "ContinueTurn", core.SigSkipTools: "SkipTools",
 	core.SigSettle: "Settle", core.SigStop: "Stop", core.SigFail: "Fail", core.SigRewrite: "Rewrite",
 	core.SigInjectInput: "InjectInput", core.SigStartTool: "StartTool",
@@ -36,7 +36,7 @@ var ctorNames = map[core.SignalKind]string{
 // ctxOf 는 FunctionSet 의 step 필드 함수 타입과 그 ctx 타입이다.
 func ctxOf(t *testing.T, i int) (reflect.Type, reflect.Type) {
 	fs := reflect.TypeOf(inject.FunctionSet{})
-	f := fs.Field(i + 1) // 0 = Name
+	f := fs.Field(i + 2) // 0 = Name, 1 = Description
 	fn := f.Type
 	if fn.Kind() != reflect.Func || fn.In(0).Kind() != reflect.Pointer {
 		t.Fatalf("field %s is not a step function", f.Name)
@@ -44,15 +44,15 @@ func ctxOf(t *testing.T, i int) (reflect.Type, reflect.Type) {
 	return fn, fn.In(0)
 }
 
-// IN-FR-05, 08, 14, 18, 44, 45: 생성된 타입이 core 3.1·3.4 와 inject 3.4 를 따른다.
+// IN-FR-05, 08, 14, 18, 44, 45, 60: 생성된 타입이 core 3.1·3.4 와 inject 3.4 를 따른다.
 func TestGeneratedTypes(t *testing.T) {
 	fs := reflect.TypeOf(inject.FunctionSet{})
-	if fs.NumField() != 23 || fs.Field(0).Name != "Name" {
+	if fs.NumField() != 24 || fs.Field(0).Name != "Name" || fs.Field(1).Name != "Description" || fs.Field(1).Type.Kind() != reflect.String {
 		t.Fatalf("FunctionSet has %d fields", fs.NumField())
 	}
 	for i, st := range core.Steps() {
 		fn, ctx := ctxOf(t, i)
-		field := fs.Field(i + 1).Name
+		field := fs.Field(i + 2).Name
 		if ctx.Elem().Name() != field+"Ctx" || fn.Name() != field+"Fn" {
 			t.Errorf("%s: field %s ctx %s fn %s", st, field, ctx.Elem().Name(), fn.Name())
 		}
@@ -73,6 +73,22 @@ func TestGeneratedTypes(t *testing.T) {
 			_, has := ctx.MethodByName(name)
 			if has != allowed[name] {
 				t.Errorf("%s: ctor %s present=%v", st, name, has)
+			}
+		}
+		// 아래 층 호출 Next: 인자는 ctx 뒤 인자들, 반환은 함수와 같다 (IN-FR-60)
+		if m, ok := ctx.MethodByName("Next"); !ok {
+			t.Errorf("%s: no Next", st)
+		} else {
+			mt := m.Type
+			same := mt.NumIn() == fn.NumIn() && mt.NumOut() == fn.NumOut()
+			for k := 1; same && k < fn.NumIn(); k++ {
+				same = mt.In(k) == fn.In(k)
+			}
+			for k := 0; same && k < fn.NumOut(); k++ {
+				same = mt.Out(k) == fn.Out(k)
+			}
+			if !same {
+				t.Errorf("%s: Next %s, fn %s", st, mt, fn)
 			}
 		}
 		// 결과: 마지막은 error, 신호 슬라이스는 그 step 전용 타입
