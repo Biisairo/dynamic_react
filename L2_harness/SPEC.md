@@ -1,8 +1,8 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 1.2 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25)
+- 버전: 1.3 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
@@ -27,7 +27,7 @@ L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로**
   - `ModelCaller` 생성 (adapters.Client, API 키 파일), 설정 파일·키 파일 해석 → `L2_harness/agent`
 - 제외 — L3 (R17): 터미널 입출력, 스트리밍 표시, 사용자 이미지 첨부 읽기, 시그널, 종료 코드, 검증용 CLI `L3_ui/cmd/dr-print`
 - 제외 — 다음 단계: 권한 승인, 서브에이전트, MCP, 병렬 도구 스케줄러 (sets 1.2 와 같음)
-- 제외 — R22 비목표: 설정 파일로 세트 고르기, 실행 중(run 도중·run 사이) 세트·부품 교체
+- 제외 — 비목표: run 도중 세트 교체, 실행 중 부품(도구·저장소·프롬프트·요약기) 교체. 세트의 켜짐·순서는 run 사이에 바꾼다 (3.6d, R26). 설정 파일 해석은 agent
 
 위 레이어가 쓰는 통로: 스트림·생명주기 = `core.Observer`, 사용자 입력(텍스트·이미지) = `contract.Message`, follow-up = `core.Run.Input`.
 
@@ -189,7 +189,8 @@ type Options struct {
     Model      sets.ModelCaller      // 필수
     SessionDir string                // 필수, 절대 경로
     ToolSet    func(def []sets.Tool) []sets.Tool             // HN-FR-38, nil → def
-    Sets       func(d sets.Deps) []inject.FunctionSet        // HN-FR-38, nil → DefaultSets(d)
+    Sets       func(d sets.Deps) []SetEntry                  // HN-FR-38, nil → DefaultSets(d) (R26)
+    Layout     []SetState                                    // HN-FR-52, 처음 배치 (nil = Sets 순서·켜짐 그대로)
     System     func(def []contract.Block) []contract.Block   // HN-FR-38, nil → def
     Summarizer func(def sets.Summarizer) sets.Summarizer     // HN-FR-38, nil → def
     Store      func(def Store) Store                         // HN-FR-38, nil → def
@@ -306,17 +307,35 @@ type Store interface {
     List(ctx context.Context) ([]string, error) // 저장된 세션 ID, 중복 없음, 순서 무관
 }
 
-func DefaultSets(d sets.Deps) []inject.FunctionSet // [sets.Base(d), sets.Resilient(d)]
+type SetEntry struct { Set inject.FunctionSet; On bool }          // 등록 항목: 세트와 기본 켜짐
+type SetState struct { Name, Description string; On bool }       // 배치의 한 칸
+
+func DefaultSets(d sets.Deps) []SetEntry // base, require, cache, guard, truncate, resilient — 전부 On
 func (a *Agent) Store() Store
 ```
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-38 | `New` 는 아래 순서로 만든다. ① 도구: def = `tools.All(Env)`. `ToolSet(def)` 의 결과를 순서대로 `sets.NewRegistry` 에 넣는다 (같은 이름은 뒤의 것이 앞의 자리를 덮음, ST-FR-41). 빈 결과는 허용한다 (도구 없는 에이전트) ② 저장소: def = `session.New(Env, SessionDir)` (SessionDir 은 여전히 필수). `Store(def)` 가 nil 이면 에러 `harness: Store returned nil` ③ 시스템 프롬프트: def = 3.4 의 조립(①의 registry 기준). `System(def)` 의 결과를 그대로 쓴다 (nil·빈 결과 = 시스템 프롬프트 없음, HN-C4 는 그대로) ④ 요약기: def = `summary.New(Model, Now)`. `Summarizer(def)` 가 nil 이면 압축을 끈다 (ST-FR-36, 수동 압축은 HN-FR-36 의 에러). `OnEvent` 가 있으면 nil 이 아닐 때만 compaction 이벤트로 감싼다 (3.6a) ⑤ 세트: `sets.Deps{Model, Tools: ①, Store: ②, System: ③, Summarizer: ④, Sleep, Now, NewID}` 로 `Sets(deps)` 를 부르고(nil → `DefaultSets(deps)`), 그 결과에 3.6a 래핑(HN-FR-41)을 한 뒤 `inject.BindWith(StateStore: sets.StateStoreOf(②))`. 빈 step·같은 이름 세트는 Bind 에러 그대로 (IN-FR-19, 22) |
-| HN-FR-39 | `DefaultSets(d)` = `[sets.Base(d), sets.Resilient(d)]`. 사용자는 이것에 덧붙이거나(겹치기), 원소를 고치거나(감싸기·교체), 쓰지 않는다(전부 교체) |
+| HN-FR-38 | `New` 는 아래 순서로 만든다. ① 도구: def = `tools.All(Env)`. `ToolSet(def)` 의 결과를 순서대로 `sets.NewRegistry` 에 넣는다 (같은 이름은 뒤의 것이 앞의 자리를 덮음, ST-FR-41). 빈 결과는 허용한다 (도구 없는 에이전트) ② 저장소: def = `session.New(Env, SessionDir)` (SessionDir 은 여전히 필수). `Store(def)` 가 nil 이면 에러 `harness: Store returned nil` ③ 시스템 프롬프트: def = 3.4 의 조립(①의 registry 기준). `System(def)` 의 결과를 그대로 쓴다 (nil·빈 결과 = 시스템 프롬프트 없음, HN-C4 는 그대로) ④ 요약기: def = `summary.New(Model, Now)`. `Summarizer(def)` 가 nil 이면 압축을 끈다 (ST-FR-36, 수동 압축은 HN-FR-36 의 에러). `OnEvent` 가 있으면 nil 이 아닐 때만 compaction 이벤트로 감싼다 (3.6a) ⑤ 세트: `sets.Deps{Model, Tools: ①, Store: ②, System: ③, Summarizer: ④, Sleep, Now, NewID}` 로 `Sets(deps)` 를 **한 번** 부르고(nil → `DefaultSets(deps)`) 등록 목록으로 둔다. 이름이 비거나 겹치면 에러. `Layout` 으로 처음 배치를 정하고(HN-FR-52) 켜진 세트를 배치 순서대로 3.6a 래핑(HN-FR-41)한 뒤 `inject.BindWith(StateStore: sets.StateStoreOf(②))`. Bind 에러(빈 step 등)는 `harness: sets: …` 에러 |
+| HN-FR-39 | `DefaultSets(d)` = `[Base, Require, Cache, Guard, Truncate, Resilient]`(sets 3.0) 전부 `On: true` — 이 순서·켜짐이 기본 구성(프리셋)이고 harness 가 갖는 유일한 순서 지식이다 (R26 ③). 전부 켜면 v1.2 의 기본 동작과 같다. 사용자는 이것에 덧붙이거나, 원소를 고치거나, 쓰지 않는다(base·require 포함 전부 교체) |
 | HN-FR-40 | `Store` 의 `List` 는 그 저장소에 저장된 세션 ID 를 돌려준다. `Load` 는 저장되지 않은 ID 에 빈 세션을 돌려준다 (`sets.Store` 와 같음). run·수동 압축·state 저장(`StateStoreOf`)·agent 의 목록과 이력(AG-FR-29·30)이 모두 이 하나의 저장소를 쓴다 |
-| HN-FR-41 | 사용자 세트와 surface 래핑: 3.6a 래핑은 `Sets` 결과에서 step 마다 실제로 쓰이는 함수를 그 세트 안에서 감싼다. 그래서 **승인(Gate)과 이벤트(OnEvent)는 사용자 세트가 무엇이든 유지된다.** base 의 기본 검사(ST-FR-38)는 base `tool.before` 의 일부다 — 사용자 세트가 `tool.before` 를 덮으면서 base 의 함수(`sets.BaseToolBefore(d)`)를 부르지 않으면 검사가 빠지고, Gate 는 검사 없이 그 호출에 불린다. 이것은 사용자의 책임이다. base 공개 상태 `inbox.consumed`(HN-FR-30)를 쓰는 기능(agent 의 Steer, AG-FR-24)은 이름이 `base` 인 세트가 그 상태를 갱신할 때만 맞게 동작한다 |
+| HN-FR-41 | 사용자 세트와 surface 래핑: 3.6a 래핑은 켜진 세트들 중 step 마다 **가장 위 층** 함수를 그 세트 안에서 감싼다 (위 층이 `ctx.Next` 로 아래 층을 부르므로 체인 전체가 감싸진다). 그래서 **승인(Gate)과 이벤트(OnEvent)는 사용자 세트·배치가 무엇이든 유지된다.** 없는 도구·스키마 검사(ST-FR-38)는 `guard` 세트다 — 끄거나 base 위에 `ctx.Next` 를 부르지 않는 `tool.before` 를 쌓으면 검사가 빠지고, Gate 는 검사 없이 그 호출에 불린다. 이것은 사용자의 책임이다. base 공개 상태 `inbox.consumed`(HN-FR-30)를 쓰는 기능(agent 의 Steer, AG-FR-24)은 이름이 `base` 인 세트가 그 상태를 갱신할 때만 맞게 동작한다 |
 | HN-FR-42 | `Agent.Store()` 는 HN-FR-38 ②의 결과다 |
+
+### 3.6d 세트 배치 (R26 ④)
+
+```go
+func (a *Agent) Sets() []SetState                  // 지금 배치: 등록된 모든 세트, 배치 순서, 켜짐
+func (a *Agent) Arrange(layout []SetState) error   // 배치 바꾸기 — 다음 Start 부터
+var ErrSetLayout error                              // "harness: invalid set layout"
+```
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-51 | 배치 = 등록된 세트 이름 전부의 순서 + 각 켜짐. `Sets()` 는 그 복사본이고 `Description` 은 세트의 것 |
+| HN-FR-52 | 처음 배치(`New`): `Layout` 의 항목 중 등록된 이름을 그 순서·켜짐으로 앞에 두고(같은 이름 두 번 → 뒤의 것은 무시), `Layout` 에 없는 등록 세트는 등록 순서·기본 켜짐(`SetEntry.On`)으로 뒤에 붙인다. 등록되지 않은 이름은 무시한다. 이 배치로 Bind 가 실패하면 `New` 에러 |
+| HN-FR-53 | `Arrange(layout)`: layout 은 등록된 이름 전부를 정확히 한 번씩 담아야 한다 (빠짐·중복·모르는 이름 → `ErrSetLayout` 을 감싼 에러). 켜진 세트로 다시 래핑·Bind 하고, 실패하면 그 에러를 돌려주고 배치를 바꾸지 않는다. 성공하면 이후 `Start` 가 새 dispatcher 를 쓴다. 이미 시작한 run 은 자기 dispatcher 로 끝까지 간다. `Description` 은 무시 |
+| HN-FR-54 | `Sets`·`Arrange`·`Start`·`Compact` 는 동시에 불러도 안전하다. 같은 세트 값(FunctionSet)을 다시 쓰므로 세트 함수는 여러 dispatcher 에서 불려도 안전해야 한다 (sets 의 세트는 상태를 ctx.State 에만 둠) |
 
 ### 3.7 비기능
 
@@ -344,6 +363,7 @@ func (a *Agent) Store() Store
 | HN-FR-26~29 | New 에러 경로, Start 설정 검사·sessionID 검사, 동시 run 2개 |
 | HN-FR-37 | 여러 세션 파일 + 디렉터리·다른 확장자·잘못된 ID 이름 → 맞는 id 만 이름순, 없는 dir → 빈 목록, ListDir 에러 → 에러 |
 | HN-FR-38~42 | 가짜 ModelCaller·가짜 Env 로: nil 함수 = 지금 동작(기존 테스트 그대로), `ToolSet` 추가 도구가 모델 요청의 tools 와 시스템 프롬프트에 들어감·기본 도구 제거·같은 이름 교체·빈 결과, `Store` 가 감싼 저장소에 run 의 메시지·state 가 기록됨·`Agent.Store()` 가 그것·nil 결과 → New 에러, `System` 결과가 요청의 System·nil 결과 → System 없음, `Summarizer` 감싸기가 압축에 쓰임·nil 결과 → 압축 없음·`Compact` 에러, `Sets` 로 덧붙인 세트의 `context.inject` 가 요청에 들어감·base 를 빼면 Bind 에러(빈 step)·같은 이름 → Bind 에러, `Sets` 결과의 `tool.before` 를 덮어도 Gate 결과가 모델에 전달되고 tool_start/end 이벤트가 옴, base 를 부르지 않는 `tool.before` 면 없는 도구 호출에도 Gate 가 불림(검사 빠짐), base 를 부르면 없는 도구 호출에 Gate 가 불리지 않음 |
+| HN-FR-51~54 | 가짜 ModelCaller 로: 기본 배치 = 등록 순서·켜짐, `Layout` 반영(앞으로·모르는 이름 무시·중복 무시·빠진 등록 세트는 뒤에), `Layout` 으로 빈 step → New 에러, `Arrange` 로 guard 끔 → 다음 run 에서 없는 도구가 base 17 의 `unknown tool` 결과·Gate 는 불림, 순서 바꿈(두 정책 세트가 같은 step) → 다음 run 요청에 반영, 실행 중 Arrange → 그 run 은 옛 구성·다음 run 새 구성, 빠짐·중복·모르는 이름 → ErrSetLayout·배치 그대로, require 끔 → Bind 에러·배치 그대로, 이벤트·Gate 는 배치를 바꿔도 유지, 동시 Arrange·Start(-race) |
 | HN-NFR-02~04 | 종단 시나리오, `go list -deps` |
 
 ---
@@ -378,6 +398,7 @@ func (a *Agent) Store() Store
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 1.3 | `Sets func(Deps) []inject.FunctionSet`, `DefaultSets` = [Base, Resilient], 세트는 `New` 에서 고정 | `Sets` 는 `[]SetEntry`(기본 켜짐 포함), `Layout`, `DefaultSets` = base·require·cache·guard·truncate·resilient, `Agent.Sets`·`Arrange`(run 사이 배치 변경, 3.6d) | R26 |
 | 1.2 | 이벤트 11종. 세트가 `inject_input` 으로 넣은 메시지를 surface 가 알 방법 없음 | `input` 이벤트 (HN-FR-31) | R25 |
 | 1.1 | 도구 4종, `tools.All` = read, bash, edit, write. 모델에 보내는 tools 4개, 시스템 프롬프트 rules 에 `Use bash for file operations like ls, rg, find` | 도구 7종 (3.2a), `tools.All` 끝에 grep, find, ls. 기본 프롬프트에서 그 rule 이 빠짐 (`prompt` 의 기존 pi 조건: bash 가 있고 grep·find·ls 가 모두 없을 때만 넣음) | R23 |
 | 1.1 | `env.FileInfo{Name, IsDir, Size}` | `Symlink` 추가 (envtest `SetSymlink`) | R23 ③: 순회가 링크 디렉터리를 구별해야 함 |

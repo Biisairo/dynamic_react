@@ -1,8 +1,8 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.6 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24)
+- 버전: 0.7 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 - 사용하는 쪽: `L2_harness` (도구·저장소·프롬프트·요약기 구현을 주입)
 
@@ -15,7 +15,7 @@
 
 ### 1.2 범위
 - 포함:
-  - `base` 세트: 22 step 전부 (상태는 run 메모리 + 주입된 Store)
+  - 부품 세트 (R26 ②): `base`·`require`(둘이 22 step 을 모두 채움), 정책 `cache`·`guard`·`truncate` — 3.0. 순서·기본 켜짐은 갖지 않는다 (R26 ③, 기본 구성은 L2 harness)
   - `resilient` 세트: 에러 재시도, overflow 복구, 임계치 압축 판정, follow-up
   - 의존 interface: `ModelCaller`, `ToolRegistry`, `Store`, `Summarizer` (2.3)
   - 메모리 Store, 도구 레지스트리(맵), 토큰 추정, 압축 절단점, 루프 설정 스키마
@@ -47,7 +47,7 @@
 ```text
  L2_harness ── deps: Model(adapters.Client), Tools, Store, System, Summarizer
                         │
- sets.Base(deps)        22 step defaults ── store ── estimate
+ sets.Base / Require / Cache / Guard / Truncate (deps)   parts of the former base (3.0) ── store ── estimate
  sets.Resilient(deps)   overrides: 3 context.maintain, 12 call.error, 13 response.classify, 21 run.beforeSettle
                         │
  inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(store)}, base, resilient)
@@ -92,7 +92,27 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 
 ## 3. 상세 요구사항
 
-### 3.1 base 세트 — step 별 기본 동작
+### 3.0 세트 분해 (R26 ②)
+
+3.1 의 표는 각 step 의 기본 **동작**이다. 그 동작들은 아래 세트로 나뉜다. 세트들은 inject 체인 바인딩(IN-FR-19, 60)으로 쌓이고, 위 층은 `ctx.Next` 로 아래 층을 부른다. 표의 "아래 층 필요" 는 그 함수가 `ctx.Next` 를 부른다는 뜻이다 — 같은 step 을 채운 세트가 아래에 없으면 그 dispatch 는 `ErrNoNext` 로 실패한다 (IN-FR-62).
+
+| 세트 (`Name`) | 채우는 step 과 동작 (3.1 의 해당 부분) | 아래 층 필요 | 근거 |
+|---|---|---|---|
+| `base` | 1 History·이전 편집 복원, 편집 수 기록, 초기 입력 보관 / 2 입력·입력함, `inbox.consumed` 공개 / 5 편집 적용·Ephemeral·미기록 편집 저장 / 14 응답 저장 / 16 통과(`BeforeOut{Call}`) / 17 `Tool.Run` / 18 통과(결과 그대로) / 19 결과 메시지 저장 | 없음 | L2·L3 가 기대는 계약: agent History·Sessions·`/resume`(저장), Steer(`inbox.consumed`, AG-FR-24), Gate·이벤트가 감싸는 16·17·18 |
+| `require` | 1 짝 복구(ST-FR-40, base 의 결과에 덧붙임) / 3·4·10·13·21·22 아무것도 안 함 / 6 요청 조립 / 7 짝 검증·복구(캐시 힌트 없음) / 8 모델 선택 / 9 모델 호출 / 11 응답 확정 / 12 재시도 없이 fail / 15 순차 계획 / 20 도구 호출이 있으면 continue_turn, 없으면 settle (R2) | 1 | 동작에 필수 (없으면 루프가 묶이지 않거나 provider 가 요청을 거부) |
+| `cache` | 7 캐시 힌트(system 마지막 블록, 마지막 메시지) | 7 | 정책 |
+| `guard` | 16 없는 도구·스키마 검사(ST-FR-38), 통과하면 아래 층 | 16 | 정책 |
+| `truncate` | 18 `Tool.Truncate`, 없으면 2000줄 / 50KB 기본 절단 (아래 층 결과에) | 18 | 정책 |
+| `resilient` | 3.2 그대로 (3·12·13·21) | 없음 | 정책 |
+| `verify` | 3.2a (20) | 20 | 정책 |
+
+| id | 요구사항 |
+|---|---|
+| ST-FR-51 | `sets.Base`·`Require`·`Cache`·`Guard`·`Truncate`(각 `(Deps) inject.FunctionSet`)는 위 표의 step 만 채우고 `Description` 에 한 줄 설명을 둔다. `Bind(Base, Require, Cache, Guard, Truncate)` 의 동작은 v0.6 의 `Bind(Base)` 와 같고, 여기에 `Resilient` 를 더한 것은 v0.6 의 `Bind(Base, Resilient)` 와 같다 (모든 기존 base·resilient 테스트가 이 조합으로 통과) |
+| ST-FR-52 | sets 는 세트의 순서·기본 켜짐·기본 목록을 갖지 않는다 (R26 ③). 테스트용 조합은 테스트 안에 둔다 |
+| ST-FR-53 | 상태 네임스페이스: base 의 키(ST-FR-43)는 `base` 에 그대로. require·cache·guard·truncate 는 상태를 쓰지 않는다 |
+
+### 3.1 step 별 기본 동작 (3.0 의 세트들이 나눠 가짐)
 
 | # | step | 기본 동작 | 신호 |
 |---|---|---|---|
@@ -121,8 +141,8 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-03 | `sets.Base(deps)` 는 위 표대로 22개 step 을 모두 채운 FunctionSet(`Name: "base"`)을 돌려준다 |
-| ST-FR-04 | base 의 각 함수는 exported 로 따로 제공해, 사용자가 조합 함수(inject 3.7)로 감쌀 수 있게 한다 (예: `sets.BaseTurnFinish(deps)`). 상태를 쓰는 함수를 다른 세트에서 감싸면 그 세트의 네임스페이스를 쓰므로 base 의 상태와 공유되지 않는다 (inject IN-FR-23). step 간에 공유할 상태는 publish 키로 읽는다 |
+| ST-FR-03 | 위 표의 동작은 3.0 의 세트들이 나눠 가지며, `Base`·`Require` 두 세트가 22 step 을 모두 채운다 |
+| ST-FR-04 | (v0.7 삭제) step 별 생성자 `Base<Step>(Deps)` 는 없다 — 아래 층 동작을 감싸려면 자기 세트를 위에 쌓고 `ctx.Next` 를 부른다 (inject IN-FR-60). step 간에 공유할 상태는 publish 키로 읽는다 |
 | ST-FR-40 | 1 의 짝 복구는 **마지막 assistant 메시지**(그 뒤에는 그 메시지의 결과만 있는 경우)의 짝 없는 호출만 History 끝에 aborted 결과로 붙이고 Store 에 기록한다 (Store 는 append-only). 그 밖의 짝 없는 호출은 7 이 요청 안에서 그 호출 바로 뒤에 끼운다 |
 | ST-FR-38 | 16 의 스키마 검사 범위: 인자가 객체인지, `required` 키가 있는지, `properties` 에 선언된 최상위 키의 JSON 타입(`string`·`number`·`integer`·`boolean`·`array`·`object`·`null`)이 맞는지. 그 밖의 JSON Schema 키워드는 검사하지 않는다 (표준 라이브러리에 검증기가 없음) |
 
@@ -176,7 +196,7 @@ if used > W - reserve and not blocked and Summarizer != nil:
 
 ### 3.2a verify 세트 — 자기검증 (R24)
 
-`sets.Verify(deps, opts)` 는 `Name: "verify"` 이고 **20 turn.finish 만** 채운다. 기본 세트 위에 겹쳐 쓴다: `Bind(Base, Resilient, verify)` (harness `Sets` 주입).
+`sets.Verify(deps, opts)` 는 `Name: "verify"` 이고 **20 turn.finish 만** 채운다. 기본 세트 위에 쌓아 쓴다: `Bind(Base, Require, …, Resilient, verify)` (harness `Sets` 주입). 아래 층의 turn.finish 는 `ctx.Next()` 로 부른다.
 
 ```go
 type CheckResult struct { OK bool; Report string }
@@ -184,7 +204,6 @@ type VerifyOptions struct {
     Check       func(ctx context.Context) (CheckResult, error) // 필수
     MaxAttempts int                 // 0 이하 → 3
     Tools       []string            // nil → write, edit, bash (빈 슬라이스 = 변경 도구 없음 → 실패 뒤 재검증만)
-    Next        inject.TurnFinishFn // nil → BaseTurnFinish(deps)
 }
 var ErrVerifyFailed = errors.New("verify: checks still failing")
 func Verify(d Deps, o VerifyOptions) (inject.FunctionSet, error) // Check nil → 에러 "sets: verify: Check is required"
@@ -192,7 +211,7 @@ func Verify(d Deps, o VerifyOptions) (inject.FunctionSet, error) // Check nil �
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-46 | turn.finish 는 먼저 `Next(ctx)` 를 부른다. 에러면 그 에러, 신호 중 `settle` 이 없으면 그 신호를 그대로 돌려준다. `settle` 이 있으면 ST-FR-47 로 검증할지 정하고, 하지 않으면 그대로 돌려준다 |
+| ST-FR-46 | turn.finish 는 먼저 `ctx.Next()`(아래 층, 보통 require 의 R2 판정) 를 부른다. 에러면 그 에러, 신호 중 `settle` 이 없으면 그 신호를 그대로 돌려준다. `settle` 이 있으면 ST-FR-47 로 검증할지 정하고, 하지 않으면 그대로 돌려준다 |
 | ST-FR-47 | 검증 조건: ① 마지막 검증 뒤(이 run 에서 아직 검증하지 않았으면 이 run 의 처음 = `len(Conv().History())` 부터 — Transcript 는 History 로 시작한다, core CORE-FR-31a) `Conv().Transcript()` 에 들어온 tool_result 메시지 중 `Status: ok` 이고 호출 이름(같은 Transcript 의 assistant `tool_call` 블록에서 CallID 로 찾음)이 `Tools` 에 있는 것이 있거나 ② 이 run 의 직전 검증이 실패였으면 검증한다. "마지막 검증 뒤" 의 기준은 검증 시점의 Transcript 길이다 |
 | ST-FR-48 | 검증 = `Check(ctx.Context())`. error 면 `fail(fmt.Errorf("verify: check: %w", err))`. `OK` 면 `Next` 의 신호를 그대로 돌려준다. 아니면 이 run 의 실패 수를 1 늘리고, 실패 수 < MaxAttempts 면 `Next` 의 신호에서 `settle` 을 뺀 것 + `inject_input(보고 메시지)` + `continue_turn`, 실패 수 = MaxAttempts 면 `fail(fmt.Errorf("%w after %d attempts: %s", ErrVerifyFailed, n, 보고의 첫 비지 않은 줄(앞뒤 공백 제거)))` |
 | ST-FR-49 | 보고 메시지: user 역할, ID = `d.NewID()`, Timestamp = `d.Now()`, text 블록 하나 = `Verification failed (attempt <k> of <N>). Fix the problems below, then finish.\n\n<보고>`. 보고는 `Report` 끝의 줄바꿈들을 뗀 뒤 **끝** 2000줄 / 50KB(온전한 줄, 마지막 한 줄이 50KB 를 넘으면 그 끝 50KB — bash 도구와 같은 방향)이고 잘리면 앞에 `[earlier output truncated]\n` 을 붙인다. 비면 `(no output)`. base 2 turn.start 가 입력함에서 꺼내 세션에 저장한다 |
@@ -286,7 +305,7 @@ type Deps struct {
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base(Deps)`, `Resilient(Deps)`, step 별 생성자 `Base<Step>(Deps)`(22개)·`Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식), `Verify`·`VerifyOptions`·`CheckResult`·`ErrVerifyFailed`(3.2a) |
+| ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`(각 `(Deps) inject.FunctionSet`), `Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식), `Verify`·`VerifyOptions`·`CheckResult`·`ErrVerifyFailed`(3.2a) |
 | ST-FR-42 | `Base`·`Resilient` 는 Deps 의 nil 을 한 번만 기본값으로 채워 모든 step 이 같은 값을 쓴다 (nil Store → 메모리 Store 하나). step 별 생성자를 따로 부르면 각자 채운다 |
 | ST-FR-43 | base 상태 키: `input`(초기 입력, 2 가 한 번 준 뒤 삭제), `inbox.consumed`(int, publish), `edits.saved`(Store 에 기록한 편집 수). 1 이 run 마다 다시 쓴다 (상태는 Store 로 run 을 넘어 복원되므로) |
 | ST-FR-44 | resilient 상태는 run 을 넘어 복원되므로 RunID 를 함께 저장하고, RunID 가 다르면 초기 상태로 본다: `retry`{run, turn, class 별 횟수}(턴이 바뀌면 리셋), `recovered`{run, turn}(12·13 의 압축 복구), `compaction`{run, pending, invalid}, `compaction.blocked`(publish, `true`, 다른 run 에서는 삭제) |
@@ -311,7 +330,8 @@ type Deps struct {
 | ST-FR-23~27 | 절단점이 tool_result 에 걸리지 않음, Previous 전달, 요약 한도, 실패 시 포기 |
 | ST-NFR-02 | 종단 시나리오 4개 |
 | ST-NFR-04 | `go list -deps` 검사 |
-| ST-FR-46~50 | 가짜 ModelCaller·도구로 종단: 변경 도구 없이 끝남 → Check 안 부름, write 성공 뒤 끝남 → Check 1회·OK 면 completed, 실패 → 다음 요청에 보고 메시지(attempt 1 of N)·세션에 저장, 실패 뒤 변경 없이 끝남 → 재검증, MaxAttempts 번째 실패 → failed·`errors.Is(ErrVerifyFailed)`·첫 줄, error 결과의 변경 도구는 세지 않음, Tools 에 없는 도구는 세지 않음, 빈 Tools, 보고 끝 절단·빈 보고, Check error → failed, Next 주입(continue 신호는 그대로), 다른 run 은 상태 초기화, Check nil → 에러 |
+| ST-FR-46~50 | 가짜 ModelCaller·도구로 종단: 변경 도구 없이 끝남 → Check 안 부름, write 성공 뒤 끝남 → Check 1회·OK 면 completed, 실패 → 다음 요청에 보고 메시지(attempt 1 of N)·세션에 저장, 실패 뒤 변경 없이 끝남 → 재검증, MaxAttempts 번째 실패 → failed·`errors.Is(ErrVerifyFailed)`·첫 줄, error 결과의 변경 도구는 세지 않음, Tools 에 없는 도구는 세지 않음, 빈 Tools, 보고 끝 절단·빈 보고, Check error → failed, 아래 층을 바꿔 쌓으면(예: 항상 settle 하는 층) 그 판정을 따름·아래 층 에러 전달, 다른 run 은 상태 초기화, Check nil → 에러 |
+| ST-FR-51~53 | 기존 base·resilient 테스트 전부를 `Base, Require, Cache, Guard, Truncate(, Resilient)` 조합으로 통과, 세트별 채운 step 목록·Description, 정책 세트를 뺀 조합: cache 없음 → 캐시 힌트 없음, guard 없음 → 없는 도구가 tool.execute 에서 `unknown tool` 결과(base 17), truncate 없음 → 절단 없음, require 없이 base 만 → Bind 에러(빈 step), 아래 층 없이 guard 만 16 에 → ErrNoNext |
 | ST-FR-41~45 | 테스트가 공개 API 로만 동작을 검사, 복구 표시의 run·턴 범위(같은 run·턴 / 다른 턴 / 다른 run) |
 
 ---
@@ -345,6 +365,7 @@ type Deps struct {
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.7 | `Base` 하나가 22 step 전부, step 별 생성자 `Base<Step>`, verify 의 `VerifyOptions.Next` | `Base`·`Require`·`Cache`·`Guard`·`Truncate` 로 분해(3.0), `Base<Step>` 삭제(ST-FR-04), verify 는 `ctx.Next()`. 전부 쌓으면 같은 동작(ST-FR-51) | R26 ② |
 | 0.6 | 세트 base·resilient | verify 세트 (3.2a) 추가. 기존 세트 동작 변화 없음 | R24 |
 | 0.2 | 9 model.call = adapters 가 제공한 `ModelCallFn` 을 그대로 바인딩 | sets 가 `adapters.Call` 의 이벤트 시퀀스를 `core.CallStream` 으로 감쌈 | R9: adapters 가 contract 만 의존 |
 | 0.2 | 19 = 결과를 세션에 기록 | 결과 메시지를 만들어 기록하고 출력 | core v0.2 CORE-FR-24a |

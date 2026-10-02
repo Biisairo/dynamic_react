@@ -1,8 +1,8 @@
 # terminal — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.4 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25)
+- 버전: 0.5 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26)
 - 의존 명세: `L2_harness/agent/SPEC.md` v0.4 (3.4~3.12), `L2_harness/SPEC.md` v0.8 (3.6a Event)
 - 사용하는 쪽: `L3_ui/cmd/dr` (`L3_ui/cmd/dr/SPEC.md`)
 
@@ -193,6 +193,8 @@ var ErrNotTerminal error
 | TM-FR-45 | `/compact`: 대기 상태에서만(아니면 `✗ 실행 중에는 압축할 수 없습니다`). 현재 세션이 없으면 `✗ 압축할 세션이 없습니다`. 상태 압축으로 바꾸고 `Agent.Compact(cctx, 현재 세션)` 을 부른다(cctx 는 Esc·Ctrl+C 로 취소). `(false, nil)` → `압축할 구간이 없습니다`, 에러 → ctx 취소면 `■ 압축 취소`, 그 밖은 `✗ <에러>` (진행 표시는 compaction 이벤트가 TM-FR-31 로 그림). 끝나면 대기 |
 | TM-FR-46 | `/quit`·`/exit`: 대기 중이면 종료, 실행 중이면 `Abort` 후 run 이 끝나면 종료 |
 | TM-FR-47a | `/model`: 대기 상태에서만(아니면 `✗ 실행 중에는 모델을 바꿀 수 없습니다`). 인자가 있으면 `Agent.SetModel(ctx, 인자)` — 성공 `── 모델 <ref> (저장됨)`, 에러 `✗ <에러>`. 인자가 없으면 모델 선택 상태(3.9) |
+| TM-FR-55 | `/sets` (R26): 어느 상태에서나 `Agent.Sets()` 를 덧붙인다 — 한 줄에 `<번호>. <on|off> <name>  <Description>`(번호는 배치 순서 1부터, off 는 Color 면 흐림, 줄은 `Width()` 로 자름). 끝에 `  (다음 run 부터 적용 · /set <name> on|off|to <n>)` |
+| TM-FR-56 | `/set <name> on`·`/set <name> off`·`/set <name> to <n>`: 대기 상태에서만(아니면 `✗ 실행 중에는 세트를 바꿀 수 없습니다`). 지금 배치(`Agent.Sets()`)에서 그 이름의 켜짐을 바꾸거나, 그 세트를 빼서 n 번째(1부터, 1..세트 수) 자리에 넣은 배치로 `Agent.ArrangeSets` 를 부른다. 성공 `── 세트 <name> 켬`·`── 세트 <name> 끔`·`── 세트 <name> → <n>번` + ` (다음 run 부터, 저장됨)`, 에러 `✗ <에러>`. 모르는 이름 `✗ 없는 세트: <name> (/sets)`, 인자 형식이 틀리면(인자 수·on|off|to·n 이 정수가 아니거나 범위 밖) `✗ 사용법: /set <name> on|off|to <n>` |
 | TM-FR-47 | 그 밖의 `/…`: `✗ 알 수 없는 명령: /<이름> (/help)` |
 
 ### 3.9 모델 선택 (R20)
@@ -221,6 +223,7 @@ var ErrNotTerminal error
 | TM-FR-11 | 입력 줄 편집기 단위 테스트: 삽입·삭제·이동·줄 처음/끝·여러 줄·기록 ↑↓·한글(rune) |
 | TM-FR-19~22 | 렌더 단위 테스트: 가짜 Out 의 바이트를 가상 화면(행 배열 + 커서, 처리 시퀀스는 이 모듈이 쓰는 것만)으로 재생해 최종 화면을 비교. 꼬리 이어 붙이기, 넓은 문자 줄 높이, 줄 넘김, Color false 면 SGR 없음 |
 | TM-FR-54 | 가짜 Agent 로: 자기가 보낸 입력의 `input` 은 두 번 그려지지 않음, 모르는 ID 의 `input` 은 `» ` 줄·여러 줄 들여쓰기·21줄 이상이면 `+N줄 생략`·이미지 `[image]`·제어 문자 정리·색 |
+| TM-FR-55~56 | 가짜 LLM·실제 agent 로: `/sets` 목록 형식(기본 구성 6줄), `/set guard off` → 저장됨 줄·`/sets` 에 off·설정 파일 반영, `/set guard to 1` → 순서, 실행 중 → 거부, 모르는 이름·형식 오류·범위 밖, harness 거부(`/set require off`) → `✗` 와 배치 그대로 |
 | TM-FR-23~33 | 이벤트 → 가상 화면: 각 종류, text↔thinking 줄바꿈, bash 20줄 상한과 `+N줄 생략`, tool_end 4종, run_end 토큰 형식(999·1000·12345)·aborted·failed |
 | TM-FR-34~37 | 실제 agent + httptest 모델 서버(dr-print 테스트와 같은 방식, `NoRemoteCatalog`)로 bash 호출 → 가짜 In 에 y / a(다음 같은 호출은 묻지 않음) / n+사유(모델 다음 요청에 `denied: <사유>`) / Esc(run aborted) / 동시 승인 2개 직렬 |
 | TM-FR-12~18 | 같은 종단 환경: 전송 → Start·`── 세션`, 실행 중 Enter → 다음 요청에 steer 메시지, Alt+Enter → 연쇄 run, Esc·Ctrl+C → `── 중단됨`, 대기 Ctrl+C 두 번·Ctrl+D·In EOF → Run nil, ctx 취소 → Run 이 ctx.Err() 와 해제 시퀀스, `//x` → 모델에 `/x` |
@@ -260,6 +263,7 @@ var ErrNotTerminal error
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.5 | 세트 명령 없음 | `/sets`·`/set` (TM-FR-55·56), `/help` 에 포함 | R26 ⑥ |
 | 0.4 | 세트가 넣은 user 메시지는 화면에 나오지 않음 | `input` 이벤트를 `» ` 줄로 (TM-FR-54) | R25 |
 | 0.3 | 모델 선택에 키 없는 모델도 흐리게 표시(`(키 없음: ENV)`)하고 Enter 를 거부, 키는 환경변수로만 | 키 없는 provider 의 모델은 목록에 없음, `/login`·`/logout`(3.10), 시작 시 키 없음 → 키 입력, Start 에러에 ` (/login)` | R21 |
 | 0.2 | 모델 문제면 dr 이 시작하지 못함, `/model` 없음 | 시작 시 모델 선택 화면, `/model` (3.9, TM-FR-47a) | R20 |

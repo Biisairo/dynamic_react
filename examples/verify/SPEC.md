@@ -1,8 +1,8 @@
 # examples/verify — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.2 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D12, R22, R24, R25)
+- 버전: 0.3 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D12, R22, R24, R25, R26)
 - 의존 명세: `L1_inject/sets/SPEC.md` (3.2a verify), `L2_harness/agent/SPEC.md` (3.14 주입), `examples/inject/SPEC.md` (같은 CLI 형태)
 - 사용하는 쪽: 개발자 (자기검증 세트 사용법 예시)
 
@@ -29,7 +29,7 @@ verify-example -i -check "<shell command>" [-attempts N] [-model provider/id] [-
 ```text
  main ── run(ctx, args, stdout, stderr) int
           └─ agent.New(ctx, Options{Cwd, ConfigPath, Model, OnEvent, Sets})
-               Sets(d) = append(harness.DefaultSets(d), sets.Verify(d, {Check: ShellCheck(dir, cmd, stderr), MaxAttempts}))
+               Sets(d) = append(harness.DefaultSets(d), {sets.Verify(d, {Check: ShellCheck(dir, cmd, stderr), MaxAttempts}), On})
 ```
 
 모듈 의존: examples/verify → agent, harness, sets, inject, core, contract, terminal(`-i`), 표준 라이브러리. go.work 에 포함하고 독립 go.mod(`v0.0.0` + replace, R8)를 갖는다.
@@ -51,7 +51,7 @@ func ShellCheck(dir, command string, log io.Writer) func(ctx context.Context) (s
 |---|---|
 | VX-FR-01 | `ShellCheck`: `exec.CommandContext(ctx, "/bin/sh", "-c", command)`, Dir = dir, stdout·stderr 합침, stdin 없음. 실행 전 log 에 `[verify] <command>`. 종료 코드 0 → `{OK: true, Report: 출력}` 과 log `[verify] ok`. 0 이 아닌 종료 → `{OK: false, Report: 출력}` 과 log `[verify] failed (exit <n>)`. 실행 자체 실패(셸 없음, ctx 취소 등)는 error |
 | VX-FR-02 | 플래그: `-check`(필수, 비면 `verify-example: -check is required`, 종료 코드 1), `-attempts`(→ `MaxAttempts`, 기본 0 = sets 기본 3), `-model`·`-cwd`·`-config` 는 examples/inject EX-FR-04 와 같다. Check 의 dir = agent 의 cwd (`-cwd` 가 비면 프로세스 cwd) |
-| VX-FR-03 | `Sets(d)` = `append(harness.DefaultSets(d), verify)`. `sets.Verify` 는 Check 가 nil 일 때만 에러이고 `ShellCheck` 는 nil 을 돌려주지 않으므로 에러가 나지 않는다. 에러면 panic (프로그래밍 오류) |
+| VX-FR-03 | `Sets(d)` = `append(harness.DefaultSets(d), harness.SetEntry{Set: verify, On: true})` — `-i` 에서는 `/sets`·`/set verify off` 로 끄고 켤 수 있다 (R26). `sets.Verify` 는 Check 가 nil 일 때만 에러이고 `ShellCheck` 는 nil 을 돌려주지 않으므로 에러가 나지 않는다. 에러면 panic (프로그래밍 오류) |
 | VX-FR-05 | `-i` (R25): 대화형. 위치 인자가 있으면 `verify-example: -i takes no prompt arguments`, 2. 승인은 터미널이 묻는다(Approver, 설정 `permissions` 그대로). stdin·stdout 이 TTY 가 아니면 `verify-example: -i needs an interactive terminal`, 2. 그 밖은 dr(`L3_ui/cmd/dr` 의 TTY 열기·`terminal.New{In, Out, Width, Color: !-no-color}`·`Approver`·`OnEvent`·SIGWINCH → `Resize`·`Run` 의 반환 → 0 / ctx 취소 130 / 그 밖 1)과 같고 agent.Options 에 `Sets`(VX-FR-03)를 더한다. Check 의 log 는 버린다(raw mode 화면을 깨지 않게) — 실패 보고는 terminal TM-FR-54 로 보인다. 새 세션으로 시작한다. 테스트용 내부 변형은 dr 과 같이 `isTerminal`·`open` 을 바꿔 넣는다 |
 | VX-FR-04 | 출력·종료 코드는 examples/inject EX-FR-05·06 과 같고 접두어는 `verify-example`. 단 검증 실패로 턴이 이어지면 응답이 여럿이므로, `message_end` 때 stdout 출력이 줄바꿈으로 끝나지 않았으면 줄바꿈 하나를 쓴다. 검증 상한 도달은 Settle `failed` → `verify-example: failed: core: turn.finish: verify: checks still failing after N attempts: <첫 줄>` (core 가 step 문맥을 붙임, CORE-FR-49), 1 |
 
@@ -72,5 +72,6 @@ func ShellCheck(dir, command string, log io.Writer) func(ctx context.Context) (s
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.3 | `Sets` 는 `[]inject.FunctionSet` | `[]harness.SetEntry` | R26 |
 | 0.2 | 한 번 실행하는 CLI 만 | `-i` 대화형 (VX-FR-05) | R25 ③ |
 | 0.1 | 자기검증 예시 없음 | 이 모듈 | R24 ① |

@@ -1,8 +1,8 @@
 # agent — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.7 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18, R20, R21, R22, R23)
+- 버전: 0.8 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18, R20, R21, R22, R23, R26)
 - 의존 명세: `L2_harness/SPEC.md`, `L2_harness/osenv/SPEC.md`, `L1_inject/adapters/SPEC.md`, `L1_inject/sets/SPEC.md` (설정 JSON)
 - 사용하는 쪽: `L3_ui/cmd/dr-print`, 이후 L3 surfaces
 
@@ -70,7 +70,7 @@
 | id | 요구사항 |
 |---|---|
 | AG-FR-01 | 경로: `Options.ConfigPath` 가 있으면 그것(상대 경로면 Cwd 기준), 없으면 `<home>/.dynamic_react/config.json`. **기본 경로에 파일이 없으면 빈 설정** `{}`, 명시한 경로에 없으면 에러 |
-| AG-FR-02 | 최상위 키는 `sessionDir`·`shellPath`·`agent`·`providers`·`models`·`permissions` 뿐이다. 모르는 키, JSON 이 아닌 내용, 뒤따르는 데이터는 에러 |
+| AG-FR-02 | 최상위 키는 `sessionDir`·`shellPath`·`agent`·`providers`·`models`·`permissions`·`sets`(AG-FR-44) 뿐이다. 모르는 키, JSON 이 아닌 내용, 뒤따르는 데이터는 에러 |
 | AG-FR-03 | `providers`·`models` 는 `{"providers":…, "models":…}` 로 묶어 `adapters.ParseConfig` 로 검사한다 (모르는 키 에러는 adapters 가 낸다) |
 | AG-FR-04 | `agent` 는 sets 설정 JSON 이다 (없으면 `{}`). `Options.Model` 이 있으면 `agent.model` 을 `{"provider", "id"}` 로 덮는다. 합친 결과를 `New` 에서 검사한다: **모델이 없으면 에러가 아니라 모델 문제(`ErrNoModel`, AG-FR-32)** 로 기록하고, 그 밖의 `sets.ParseConfig` 에러는 `New` 에러다. **raw JSON 그대로** Start 때 넘긴다 (sets.Config 값을 쓰지 않음, HN-FR-27) |
 | AG-FR-05 | `Options.Model` 형식은 `provider/id` 다. **첫** `/` 에서 나눈다 (id 에 `/` 허용, 예: `openrouter/anthropic/claude-x`). 어느 쪽이 비면 에러 |
@@ -270,7 +270,7 @@ func (a *Agent) RemoveKey(ctx context.Context, provider string) error
 
 ```go
 // Options 추가. 모두 nil = 지금 동작. 기본값을 받아 바꾼 값을 돌려준다.
-Sets        func(d sets.Deps) []inject.FunctionSet        // → harness.Options.Sets
+Sets        func(d sets.Deps) []harness.SetEntry          // → harness.Options.Sets (R26)
 ToolSet     func(def []sets.Tool) []sets.Tool             // → harness.Options.ToolSet
 System      func(def []contract.Block) []contract.Block   // → harness.Options.System
 Summarizer  func(def sets.Summarizer) sets.Summarizer     // → harness.Options.Summarizer
@@ -284,6 +284,23 @@ ModelCaller func(def sets.ModelCaller) sets.ModelCaller   // AG-FR-41
 | AG-FR-41 | `ModelCaller`: def = adapters Client. 결과를 `harness.Options.Model` 로 넘긴다 — run 의 모델 호출과 자동·수동 압축의 요약 호출이 이것을 거친다. nil 결과는 `New` 에러 `agent: ModelCaller returned nil`. 모델 목록·provider 프로필·키 확인(AG-FR-08, 32~34, 39)은 adapters Client 그대로 쓴다 |
 | AG-FR-42 | 승인과의 관계 (HN-FR-41): 승인 규칙·Approver·Steer 의 skip(AG-FR-17~20, 24)은 Gate 이므로 사용자 세트와 무관하게 유지된다. base 기본 검사를 빼는 것은 사용자 책임이다. Steer 의 skip 판단은 base 공개 상태 `inbox.consumed` 를 읽으므로, 이름이 `base` 인 세트가 그 상태를 갱신하지 않으면 Steer 뒤의 도구 호출이 계속 skipped 된다 |
 | AG-FR-43 | 도구: 도구 상한(AG-FR-21)·설정 `agent.tools`·이름 규칙(AG-FR-13·15)은 `ToolSet` 적용 뒤의 registry 를 기준으로 한다 — 추가한 도구도 상한·규칙의 대상이다. 패턴 규칙은 계속 AG-FR-13 의 이름(`bash`·`read`·`write`·`edit`·`grep`·`find`·`ls`)에만 쓴다 (AG-FR-13, 추가 도구에 패턴 → `New` 에러). 패턴 비교 값은 AG-FR-14 |
+
+### 3.14a 세트 배치 (R26)
+
+```json
+"sets": [{"name": "base", "on": true}, {"name": "require", "on": true}, {"name": "guard", "on": false}]
+```
+
+```go
+func (a *Agent) Sets() []harness.SetState
+func (a *Agent) ArrangeSets(ctx context.Context, layout []harness.SetState) error
+```
+
+| id | 요구사항 |
+|---|---|
+| AG-FR-44 | `sets` 는 `{"name": 비지 않은 문자열, "on": bool}` 객체의 배열이다 (다른 키·형식 → `New` 에러 `agent: config: sets: …`). `New` 는 이것을 `harness.Options.Layout` 으로 넘긴다 (HN-FR-52: 등록되지 않은 이름은 무시, 빠진 등록 세트는 뒤에). 그 배치로 harness 가 실패하면 `New` 에러다 |
+| AG-FR-45 | `Sets()` = `Harness().Sets()`. `ArrangeSets(ctx, layout)` = `harness.Arrange(layout)` 가 성공한 뒤 **사용자 설정 파일**의 `sets` 를 새 배치 전체(`[{name, on}]`, 배치 순서)로 바꿔 쓴다 — 파일 다루기(경로·생성·다른 키 보존·키 순서·0644·검사 실패 시 쓰지 않음)는 AG-FR-34 와 같다. harness 가 거부하면 파일을 건드리지 않는다. 파일 쓰기에 실패하면 에러를 돌려주고 harness 배치를 이전으로 되돌린다 |
+| AG-FR-46 | `Sets`·`ArrangeSets` 는 AG-FR-35 의 함수들과 동시에 불러도 안전하다 |
 
 ### 3.15 비기능
 
@@ -319,6 +336,7 @@ ModelCaller func(def sets.ModelCaller) sets.ModelCaller   // AG-FR-41
 | AG-FR-32~35 | 모델 없음 → New 성공·Model() ErrNoModel·Start ErrNoModel(잠금 없음), 모르는 provider·키 없음 → New 성공·같은 문제, Models 는 키 없는 provider 의 모델을 뺌·키 불필요/키 있는 것·설정 모델 포함, SetModel: 형식 틀림·모르는 provider·키 없음 → 에러·파일 그대로, 성공 → 파일의 agent.model 갱신·다른 키 보존·파일 없으면 생성·다음 Start 요청의 모델·Options.Model 보다 이김, 쓰기 실패 → 에러·모델 그대로, -race 동시 호출 |
 | AG-FR-36~39 | 키 파일 없음 → 빈 키, 깨진 JSON·뒤따르는 데이터·모르는 키·type oauth·key 숫자 → New 에러(문구에 키 값 없음), 모르는 provider 항목 보존. SetKey: 모르는 provider·빈 키(공백만) → 에러·파일 그대로, 성공 → 파일 0600·디렉터리 0700(새로 만들 때)·다른 항목 원문 보존·앞뒤 공백 잘림·다음 Start 요청의 인증 헤더·Model() 문제 해소. RemoveKey: 없는 항목 → 에러, 성공 → 항목만 삭제·Model() ErrNoAPIKey. 쓰기 실패(디렉터리 쓰기 불가) → 에러·키 그대로. Providers 순서·HasKey. -race 동시 호출 |
 | AG-FR-40~43 | httptest 서버 종단: `Sets` 로 덧붙인 `context.inject` 메시지가 서버가 받은 요청에 있음, `tool.before` 를 덮어도 deny 규칙·Approver 결과가 모델에 전달됨, `ToolSet` 추가 도구가 요청 tools 에 있고 상한·`agent.tools`·이름 deny 규칙이 적용됨·추가 도구 패턴 규칙 → New 에러, `bash` 를 `command` 없는 도구로 바꾸면 `bash(rm *)` deny 가 맞지 않고 `bash` 이름 deny 는 맞음, `System` 결과가 요청 system, `Summarizer` 감싸기가 `Compact` 에 쓰임, `Store` 로 바꾼 저장소가 `Sessions`·`History` 에 쓰임(파일이 없어도 목록에 나옴), `ModelCaller` 감싸기가 run 요청을 거침·nil → New 에러, 모든 nil = 기존 테스트 그대로 |
+| AG-FR-44~46 | 설정 `sets` 형식 에러 → New 에러, 저장된 배치가 harness 에 반영(모르는 이름 무시), `ArrangeSets` 성공 → 파일의 `sets` 가 새 배치·다른 키 보존·다음 `New` 가 그 배치, harness 거부 → 파일 그대로, 파일 쓰기 실패(읽기 전용 디렉터리) → 에러·배치 되돌림, 동시 호출(-race) |
 | AG-FR-31 | 긴 세션(작은 keepRecentTokens) → true·세션 파일에 edit 줄 하나·다음 run 요청에 요약 메시지·edit 줄 중복 없음, 짧은 세션 → false, 실행 중인 세션 → ErrSessionBusy, 빈 ID → 에러, compaction 이벤트 start/end |
 
 ---
@@ -346,6 +364,7 @@ ModelCaller func(def sets.ModelCaller) sets.ModelCaller   // AG-FR-41
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.8 | `Sets` 는 `[]inject.FunctionSet`, 세트 구성 고정, 설정 최상위 키 6개 | `Sets` 는 `[]harness.SetEntry`, 설정 `sets`(배치), `Sets()`·`ArrangeSets`(저장) | R26 |
 | 0.7 | 패턴 규칙은 bash·read·write·edit 만 (grep·find·ls 에 패턴 → `New` 에러) | grep·find·ls 도 경로 패턴 규칙, `path` 없으면 대상 cwd | R23 ④ |
 | 0.6 | 외부 함수를 끼울 통로 없음 (`harness.Options` 의 Extra·Tools 를 받지도 넘기지도 않음) | `Sets`·`ToolSet`·`System`·`Summarizer`·`Store`·`ModelCaller` (3.14) | R22: core 외 전부 튜닝 |
 | 0.6 | `History`·`Sessions` 가 `session.New` 로 sessionDir 의 파일을 직접 읽음 | harness 의 저장소(`Harness().Store()`)의 `Load`·`List` 를 거침 (기본 저장소면 결과 같음) | R22 ③: 저장소를 바꿨을 때 목록·이력이 어긋나지 않게 |

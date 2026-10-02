@@ -1,8 +1,8 @@
 # inject — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.3 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D2~D6, D11, D12 정정)
+- 버전: 0.4 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D2~D6, D11, D12 정정, R26)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`
 
 ---
@@ -181,23 +181,27 @@ set := inject.FunctionSet{
     TurnFinish: turnFinish,
     ContextMaintain: maintain,
 }
-d, err := inject.Bind(defaults.Core(), defaults.Resilient(), set)   // 뒤의 세트가 앞을 덮음
+d, err := inject.Bind(lower, upper, set)   // 뒤의 세트가 위 층. 위 층은 ctx.Next(...) 로 아래 층을 부를 수 있다
 k := core.New(d, core.Options{})
 ```
 
 | id | 요구사항 |
 |---|---|
-| IN-FR-18 | `FunctionSet` 은 `Name`(필수, 세트 간 유일)과 22개 step 의 함수 필드(각각 nil 가능)를 가진다 |
-| IN-FR-19 | `Bind(sets ...)` 는 step 마다 **nil 이 아닌 마지막 함수**를 고른다. 22개 중 하나라도 비면 비어 있는 step 목록을 담은 에러를 돌려준다 |
+| IN-FR-18 | `FunctionSet` 은 `Name`(필수, 세트 간 유일), `Description`(선택, 사람이 읽는 한 줄 — 바인딩은 쓰지 않음, R26)과 22개 step 의 함수 필드(각각 nil 가능)를 가진다 |
+| IN-FR-19 | `Bind(sets ...)` 는 step 마다 그 step 을 채운(nil 이 아닌) 세트들을 **인자 순서대로 쌓는다 — 뒤의 세트가 위 층**이다 (R26). dispatch 는 가장 위 층 함수를 부른다. 위 층이 `ctx.Next` 를 부르지 않으면 아래 층은 불리지 않으므로 "마지막 함수가 이긴다"는 이전 동작과 같다. 22개 중 하나라도 비면 비어 있는 step 목록을 담은 에러를 돌려준다 |
 | IN-FR-20 | `Bind` 는 결과로 `core.Dispatcher` 를 구현하는 값을 돌려준다. 이 값은 불변이며 여러 Kernel 이 공유해도 안전하다 |
-| IN-FR-21 | 바인딩 결과(step → 세트 이름)는 `ctx.Env().Binding()` 과 트레이스로 확인할 수 있다 |
+| IN-FR-21 | 바인딩 결과(step → 가장 위 층 세트 이름)는 `ctx.Env().Binding()` 과 트레이스로 확인할 수 있다. 트레이스의 `Set` 은 가장 위 층이다 |
+| IN-FR-60 | **`ctx.Next(...)`** (R26): step 마다 ctx 에 `Next` 메서드가 있고, 인자는 그 step 함수의 ctx 뒤 인자들, 반환은 그 step 함수의 반환과 같다 (예: `TurnFinishCtx.Next() ([]TurnFinishSignal, error)`, `ToolBeforeCtx.Next(call) (core.BeforeOut, []ToolBeforeSignal, error)`). 바로 아래 층 함수를 같은 dispatch 안에서 부른다: 같은 invocation 이라 아래 층이 만든 신호를 위 층이 그대로 돌려줄 수 있고(IN-FR-12 통과), 위 층이 그 신호를 고치거나 버릴 수 있다 |
+| IN-FR-61 | 아래 층 함수의 ctx 는 **그 아래 층 세트의 상태 네임스페이스**를 쓴다 (IN-FR-23). 한 dispatch 안에서 여러 층이 쓴 상태는 각자의 네임스페이스로 버퍼링되고, dispatch 가 성공하면 모두 반영·저장된다(IN-FR-24·26, 네임스페이스마다 `Save`). 실패하면 어느 것도 반영되지 않는다 |
+| IN-FR-62 | 가장 아래 층에서 `Next` 를 부르면 `ErrNoNext`(`inject: no lower function`)를 감싼 에러를 돌려준다 (함수가 그 에러를 돌려주면 그 dispatch 는 실패). `Next` 는 여러 번 불러도 되고 부를 때마다 아래 층을 다시 부른다. 아래 층의 panic 은 그 dispatch 의 error 다 (IN-FR-11) |
+| IN-FR-63 | 조합 함수(3.7)는 하위 함수들에 같은 ctx 를 넘기므로, 조합 안의 함수가 `Next` 를 부르면 그 세트의 아래 층이 불린다 |
 | IN-FR-22 | 같은 이름의 세트를 두 번 넣으면 `Bind` 는 에러를 돌려준다 (상태 네임스페이스 충돌 방지) |
 
 ### 3.6 함수 세트 상태 (D11)
 
 | id | 요구사항 |
 |---|---|
-| IN-FR-23 | `ctx.State()` 는 **그 함수가 바인딩된 세트(`Bind` 에서 그 step 을 채운 FunctionSet)의 `Name`** 네임스페이스만 읽고 쓴다. 다른 세트의 함수를 조합해 자기 세트에 넣으면 그 함수도 자기 세트의 네임스페이스를 쓴다. 키는 문자열, 값은 JSON 직렬화 가능한 값이다 |
+| IN-FR-23 | `ctx.State()` 는 **그 함수가 바인딩된 세트(`Bind` 에서 그 함수를 넣은 FunctionSet — 층마다 다름, IN-FR-61)의 `Name`** 네임스페이스만 읽고 쓴다. 다른 세트의 함수를 조합해 자기 세트에 넣으면 그 함수도 자기 세트의 네임스페이스를 쓴다. 키는 문자열, 값은 JSON 직렬화 가능한 값이다 |
 | IN-FR-24 | 쓰기는 dispatch 안에서 버퍼링되고, 함수가 에러 없이 반환되고 신호 검증을 통과했을 때만 run 상태에 반영된다 (dispatch 단위 원자성) |
 | IN-FR-25 | 세트는 키를 공개(publish)로 표시할 수 있다. 다른 세트는 `ctx.State().Read(ns, key)` 로 공개 키만 읽을 수 있고 쓸 수 없다 |
 | IN-FR-26 | 상태의 저장·복원은 `Bind` 옵션으로 주입하는 `StateStore` interface(`Load(sessionID)`, `Save(sessionID, ns, delta)`)가 한다. 없으면 run 메모리에만 둔다. 반영된 변경은 그 dispatch 직후 `Save` 로 넘긴다 |
@@ -298,6 +302,7 @@ IN-FR-31~39 는 삭제됐다. 서드파티 세트도 Go FunctionSet 으로 `Bind
 | IN-FR-13 | core 취소 → ctx.Context() 취소 |
 | IN-FR-14~17 | step 별 조회 가능 그룹 표 대조, 스냅샷 불변, 반환값 수정 격리 |
 | IN-FR-18~22 | 겹침 규칙, 누락 에러, 이름 중복 에러, Binding 조회 |
+| IN-FR-60~63 | 세 층이 같은 step 을 채움: Next 없는 위 층은 덮어씀(이전 동작), Next 를 부르면 아래 층 결과·신호를 받아 고치거나 그대로 돌려줌, 아래 층 신호를 위 층이 돌려줘도 토큰 검사 통과, 층마다 자기 네임스페이스에 쓰고 성공 시 모두 저장·실패 시 모두 버림, 가장 아래에서 Next → `ErrNoNext`, Next 두 번 호출, 아래 층 panic → dispatch 에러, 22 step 모두 Next 메서드가 있고 생성 코드가 최신(gen 테스트), 트레이스·Binding 은 위 층 이름, combine 안에서 Next |
 | IN-FR-23~27 | 네임스페이스 격리, 실패 dispatch 의 쓰기 미반영, publish 읽기, StateStore 호출 |
 | IN-FR-28~30 | 조합별 동작·dropped 기록, 적용 불가 step 에서 컴파일 실패 |
 | IN-FR-40, 41 | 순서 검사(가짜 Tracer·StateStore 호출 순서), 병렬 dispatch |
@@ -335,6 +340,7 @@ IN-FR-31~39 는 삭제됐다. 서드파티 세트도 Go FunctionSet 으로 `Bind
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.4 | `Bind` 는 step 마다 마지막 함수 하나만 남김. 아래 세트 함수를 쓰려면 그 함수 값을 직접 받아 부름(sets 의 step 별 생성자) | 층으로 쌓고 `ctx.Next` 로 아래 층 호출 (IN-FR-19, 60~63), `FunctionSet.Description`. Next 를 부르지 않는 세트는 이전과 같음 | R26 ① |
 | 0.2 | 상태 NS = "함수가 속한 세트" | 바인딩된 세트의 Name (IN-FR-23) | Go 함수 값에는 소속이 없음. 사용자 확정 (함수에 NS 부착안 기각) |
 | 0.2 | ctx 가 core View 를 직접 사용 | `ViewSource` interface (IN-FR-47) | core.View 는 외부에서 만들 수 없음: 가짜 View(sets 테스트)에 필요 |
 | 0.2 | O1·O2 미결 | Go 코드 / 직접 구현 | 사용자 확정 |
