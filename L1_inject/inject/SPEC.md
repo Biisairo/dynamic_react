@@ -1,8 +1,8 @@
 # inject — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.4 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D2~D6, D11, D12 정정, R26)
+- 버전: 0.5 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D2~D6, D11, D12 정정, R26, R27)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`
 
 ---
@@ -255,6 +255,22 @@ IN-FR-31~39 는 삭제됐다. 서드파티 세트도 Go FunctionSet 으로 `Bind
 | IN-FR-40 | Dispatcher 는 위 순서로 동작해야 한다 |
 | IN-FR-41 | Dispatcher 는 동시 호출에 안전해야 한다 (core A2) |
 
+### 3.9a 공유 run 표 (R27)
+
+run 상태(IN-FR-24·51)는 Dispatcher 마다 따로 두고 `run.start` 에서만 StateStore 로 복원한다. 그래서 run 도중 다른 Bind 결과로 dispatch 하면 그 Dispatcher 에는 상태가 없어 빈 상태가 새로 생긴다. 상위 레이어가 run 도중 바인딩을 바꿀 수 있게(harness 모드, R27) 표를 공유할 수 있게 한다.
+
+```go
+type RunTable struct{ /* unexported */ }
+func NewRunTable() *RunTable
+type BindOptions struct { StateStore StateStore; Tracer Tracer; Runs *RunTable } // Runs nil → 전용 표
+```
+
+| id | 요구사항 |
+|---|---|
+| IN-FR-64 | 같은 `Runs` 로 Bind 한 Dispatcher 들은 run 상태를 공유한다: `run.start` 를 받은 Dispatcher 가 StateStore 로 복원해 표에 넣고, 같은 RunID 의 이후 dispatch 는 어느 Dispatcher 로 오든 그 상태를 쓴다 |
+| IN-FR-65 | `run.settled` dispatch 뒤 그 RunID 를 표에서 지운다 (어느 Dispatcher 가 받았든) |
+| IN-FR-66 | `Runs` 가 nil 이면 Dispatcher 전용 표를 만든다 (v0.4 동작). `RunTable` 은 동시 사용에 안전하다 |
+
 ### 3.10 트레이스와 관찰자
 
 | id | 요구사항 |
@@ -274,7 +290,7 @@ IN-FR-31~39 는 삭제됐다. 서드파티 세트도 Go FunctionSet 으로 `Bind
 | IN-FR-47 | 조회는 core View 를 직접 받지 않고 `ViewSource` interface(core.View 의 조회 메서드 집합)로 받는다. `core.View` 는 이를 그대로 만족한다. 테스트용 가짜 View 는 `inject/injecttest` 가 제공한다 (sets ST-NFR-01) |
 | IN-FR-48 | 조회 결과의 contract 값은 깊은 복사로 돌려준다 (IN-FR-17) |
 | IN-FR-49 | `ctx.Dropped(sigs...)` 는 채택하지 않은 신호를 트레이스의 `Dropped` 에 남긴다 (IN-FR-29 의 공개 수단) |
-| IN-FR-50 | `Bind(sets...) (*Dispatcher, error)`, `BindWith(BindOptions{StateStore, Tracer}, sets...)`. `*Dispatcher` 는 core.Dispatcher 이고 `DispatchSource(ctx, step, input, ViewSource)` 도 공개한다 |
+| IN-FR-50 | `Bind(sets...) (*Dispatcher, error)`, `BindWith(BindOptions{StateStore, Tracer, Runs}, sets...)`. `*Dispatcher` 는 core.Dispatcher 이고 `DispatchSource(ctx, step, input, ViewSource)` 도 공개한다 |
 | IN-FR-51 | `StateStore`: `Load(ctx, sessionID) (map[ns]NamespaceState, error)`, `Save(ctx, sessionID, ns, StateDelta) error`. `NamespaceState{Values, Published}`, `StateDelta{Set, Delete, Publish}`. Load 는 run 의 1(run.start) dispatch 에서 함수 호출 전에 한 번, run 상태는 22 dispatch 뒤 버린다. Load·Save 에러는 그 dispatch 의 error |
 | IN-FR-52 | inject 에러 sentinel: `ErrExpiredCtx`(panic 값), `ErrForeignSignal`(토큰 불일치, nil 신호), `ErrSignalOrder`(배열 규칙), `ErrInputType`, `ErrPanic`, `ErrBind` |
 | IN-FR-53 | (삭제, v0.3) |
@@ -303,6 +319,7 @@ IN-FR-31~39 는 삭제됐다. 서드파티 세트도 Go FunctionSet 으로 `Bind
 | IN-FR-14~17 | step 별 조회 가능 그룹 표 대조, 스냅샷 불변, 반환값 수정 격리 |
 | IN-FR-18~22 | 겹침 규칙, 누락 에러, 이름 중복 에러, Binding 조회 |
 | IN-FR-60~63 | 세 층이 같은 step 을 채움: Next 없는 위 층은 덮어씀(이전 동작), Next 를 부르면 아래 층 결과·신호를 받아 고치거나 그대로 돌려줌, 아래 층 신호를 위 층이 돌려줘도 토큰 검사 통과, 층마다 자기 네임스페이스에 쓰고 성공 시 모두 저장·실패 시 모두 버림, 가장 아래에서 Next → `ErrNoNext`, Next 두 번 호출, 아래 층 panic → dispatch 에러, 22 step 모두 Next 메서드가 있고 생성 코드가 최신(gen 테스트), 트레이스·Binding 은 위 층 이름, combine 안에서 Next |
+| IN-FR-64~66 | 같은 RunTable 의 두 Dispatcher: A 로 run.start·상태 Set → B 로 다음 dispatch 에서 그 값을 읽음, B 의 run.settled 뒤 표에서 사라짐(A 로 다시 dispatch 하면 빈 상태), Runs nil 이면 기존 테스트 그대로, 동시 run(-race) |
 | IN-FR-23~27 | 네임스페이스 격리, 실패 dispatch 의 쓰기 미반영, publish 읽기, StateStore 호출 |
 | IN-FR-28~30 | 조합별 동작·dropped 기록, 적용 불가 step 에서 컴파일 실패 |
 | IN-FR-40, 41 | 순서 검사(가짜 Tracer·StateStore 호출 순서), 병렬 dispatch |
@@ -321,6 +338,7 @@ IN-FR-31~39 는 삭제됐다. 서드파티 세트도 Go FunctionSet 으로 `Bind
 | D5 | IN-FR-19, 28~30 |
 | D6 | IN-C3, IN-FR-19 (inject 는 기본값을 채우지 않음) |
 | D11 | IN-FR-23~27 |
+| R27 | IN-FR-64~66 |
 | D12 (정정) | A1 |
 | 대화: "함수 안에서만" | 2.2, IN-FR-09~12, IN-NFR-03 |
 
@@ -340,6 +358,7 @@ IN-FR-31~39 는 삭제됐다. 서드파티 세트도 Go FunctionSet 으로 `Bind
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.5 | run 상태는 Dispatcher 전용 | `BindOptions.Runs` 로 여러 Dispatcher 가 공유 가능 (3.9a, IN-FR-64~66). nil 이면 이전과 같음 | R27: run 도중 바인딩 교체 |
 | 0.4 | `Bind` 는 step 마다 마지막 함수 하나만 남김. 아래 세트 함수를 쓰려면 그 함수 값을 직접 받아 부름(sets 의 step 별 생성자) | 층으로 쌓고 `ctx.Next` 로 아래 층 호출 (IN-FR-19, 60~63), `FunctionSet.Description`. Next 를 부르지 않는 세트는 이전과 같음 | R26 ① |
 | 0.4 | 신호 `next` 생성자 = `ctx.Next()` | `ctx.NextSignal()` (IN-FR-45) | 19개 step ctx 에서 IN-FR-60 의 `Next(...)` 와 이름 충돌 (Go 는 오버로드 없음). 사용자 결정 (impl-08) |
 | 0.2 | 상태 NS = "함수가 속한 세트" | 바인딩된 세트의 Name (IN-FR-23) | Go 함수 값에는 소속이 없음. 사용자 확정 (함수에 NS 부착안 기각) |

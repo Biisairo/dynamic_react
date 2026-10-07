@@ -1,8 +1,8 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.7 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26)
+- 버전: 0.8 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 - 사용하는 쪽: `L2_harness` (도구·저장소·프롬프트·요약기 구현을 주입)
 
@@ -64,7 +64,8 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
   "thinking":        "",
   "tools":           [],
   "compaction":      { "enabled": true, "reserveTokens": 0, "keepRecentTokens": 20000 },
-  "retry":           { "maxAttempts": 3, "baseDelayMs": 2000, "maxDelayMs": 60000 }
+  "retry":           { "maxAttempts": 3, "baseDelayMs": 2000, "maxDelayMs": 60000 },
+  "aux":             { "goal_judge": { "provider": "anthropic", "id": "claude-haiku-4-5-20251001" } }
 }
 ```
 
@@ -72,6 +73,7 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 |---|---|
 | ST-FR-01 | 설정은 위 스키마의 JSON 이다. 빈 값·0 은 "기본값 사용" 이다 (`tools` 가 비면 레지스트리의 전부). 모르는 키는 에러. `model` 은 필수 |
 | ST-FR-02 | 설정에 API 키 값을 넣는 필드는 없다 (adapters AD-C2) |
+| ST-FR-54 | `aux` (선택, R27): 역할 이름(비지 않은 문자열) → `{provider, id}`. provider·id 가 비거나 역할 이름이 비면 `ParseConfig` 에러. 쓰는 곳은 `AuxModel`(ST-FR-55) 뿐이다 — 기본 세트는 이 값을 보지 않는다 |
 
 ### 2.3 의존 (Deps)
 
@@ -83,6 +85,9 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 | ST-FR-35 | `System []contract.Block`: 시스템 프롬프트. 하네스가 run 전에 조립해 넘긴다. run 동안 바꾸지 않는다 (ST-FR-19) |
 | ST-FR-36 | `Summarizer`: `Summarize(ctx, SummaryRequest{Model, Messages, Previous, MaxTokens}) (string, error)`. nil 이면 압축을 하지 않는다 (resilient 의 압축 분기는 3·13 에서 next, 12 에서 fail) |
 | ST-FR-37 | `Sleep(ctx, d) error`, `Now() time.Time`, `NewID() string`: nil 이면 타이머·`time.Now`·무작위 id. 테스트에서 주입한다 |
+| ST-FR-57 | `Modes ModeSwitcher` (R27): 세트가 세션 모드를 읽고 이탈을 요청하는 통로. `ModeState{Active, Arg string}`(Active "" = 기본 모드), `ModeSwitcher{Current(ctx, sessionID) (ModeState, error); Exit(ctx, sessionID, reason string) error}`. nil 이면 `filled()` 가 "모드 없음" 구현으로 채운다: `Current` = `ModeState{}`·nil, `Exit` = `ErrNoModes`(`sets: modes not available`) |
+| ST-FR-58 | sets 는 모드 인터페이스만 정의한다. 세트에 진입 수단은 주지 않는다 (R27: 진입은 모델·사용자, 이탈은 판단기·사용자). 권한·적용 시점은 구현(L2 harness 3.6e)이 정한다 |
+| ST-FR-59 | `Current` 는 dispatch 스냅샷(IN-FR-15) 밖의 값이다 — 같은 dispatch 안에서 두 번 불러도 다를 수 있다. `Exit` 는 그 dispatch 의 성공 여부와 무관하게 바로 기록된다 (상태 쓰기 원자성 IN-FR-24 의 대상이 아님) |
 
 ### 2.4 제약
 - ST-C1. API 키는 sets 를 거치지 않는다 (ModelCaller 구현의 몫). 상태·Store 에 기록하지 않는다.
@@ -217,6 +222,18 @@ func Verify(d Deps, o VerifyOptions) (inject.FunctionSet, error) // Check nil �
 | ST-FR-49 | 보고 메시지: user 역할, ID = `d.NewID()`, Timestamp = `d.Now()`, text 블록 하나 = `Verification failed (attempt <k> of <N>). Fix the problems below, then finish.\n\n<보고>`. 보고는 `Report` 끝의 줄바꿈들을 뗀 뒤 **끝** 2000줄 / 50KB(온전한 줄, 마지막 한 줄이 50KB 를 넘으면 그 끝 50KB — bash 도구와 같은 방향)이고 잘리면 앞에 `[earlier output truncated]\n` 을 붙인다. 비면 `(no output)`. base 2 turn.start 가 입력함에서 꺼내 세션에 저장한다 |
 | ST-FR-50 | 상태 (네임스페이스 `verify`, 키 `progress`): `{run, checked, failures, lastFailed}`. run 을 넘어 복원되므로 RunID 가 다르면 초기값(`checked` = History 길이, 나머지 0·false)으로 본다 (ST-FR-44 와 같은 방식). 검증할 때 `checked` = 그때의 Transcript 길이 |
 
+### 3.2b 보조 모델 호출 (R27)
+
+```go
+func AuxModel(cfg Config, role string) ConfigModel
+func Complete(ctx context.Context, m ModelCaller, req contract.Request) (contract.Message, error)
+```
+
+| id | 요구사항 |
+|---|---|
+| ST-FR-55 | `AuxModel(cfg, role)` = `cfg.Aux[role]` 이 있으면 그것, 없으면 `cfg.Model` |
+| ST-FR-56 | `Complete`: `m.Call(ctx, req)` 를 끝까지 소비해 `done` 이벤트의 메시지를 돌려준다. `error` 이벤트면 그 `*contract.CallError`(error 를 구현, `errors.As` 로 꺼냄), iterator 에러면 그 에러, done 없이 끝나면 에러 `sets: complete: stream ended without done`. 도구를 실행하지 않고(응답의 tool_call 블록은 그대로) 재시도하지 않는다. 세트 함수 안(판단기)과 run 밖(harness `Complete`) 양쪽에서 쓴다 |
+
 ### 3.3 도구 레지스트리
 
 | id | 요구사항 |
@@ -331,6 +348,8 @@ type Deps struct {
 | ST-NFR-02 | 종단 시나리오 4개 |
 | ST-NFR-04 | `go list -deps` 검사 |
 | ST-FR-46~50 | 가짜 ModelCaller·도구로 종단: 변경 도구 없이 끝남 → Check 안 부름, write 성공 뒤 끝남 → Check 1회·OK 면 completed, 실패 → 다음 요청에 보고 메시지(attempt 1 of N)·세션에 저장, 실패 뒤 변경 없이 끝남 → 재검증, MaxAttempts 번째 실패 → failed·`errors.Is(ErrVerifyFailed)`·첫 줄, error 결과의 변경 도구는 세지 않음, Tools 에 없는 도구는 세지 않음, 빈 Tools, 보고 끝 절단·빈 보고, Check error → failed, 아래 층을 바꿔 쌓으면(예: 항상 settle 하는 층) 그 판정을 따름·아래 층 에러 전달, 다른 run 은 상태 초기화, Check nil → 에러 |
+| ST-FR-54~56 | `aux` 형식 에러(빈 역할·빈 provider·빈 id), 모르는 키 에러 유지, `AuxModel` 폴백, `Complete`: done 메시지, error 이벤트 → `*contract.CallError`, iterator 에러, done 없이 끝남, ctx 취소 |
+| ST-FR-57~59 | nil `Modes` → `Exit` 가 `ErrNoModes`, `Current` 가 기본 모드 |
 | ST-FR-51~53 | 기존 base·resilient 테스트 전부를 `Base, Require, Cache, Guard, Truncate(, Resilient)` 조합으로 통과, 세트별 채운 step 목록·Description, 정책 세트를 뺀 조합: cache 없음 → 캐시 힌트 없음, guard 없음 → 없는 도구가 tool.execute 에서 `unknown tool` 결과(base 17), truncate 없음 → 절단 없음, require 없이 base 만 → Bind 에러(빈 step), 아래 층 없이 guard 만 16 에 → ErrNoNext |
 | ST-FR-41~45 | 테스트가 공개 API 로만 동작을 검사, 복구 표시의 run·턴 범위(같은 run·턴 / 다른 턴 / 다른 run) |
 
@@ -347,6 +366,7 @@ type Deps struct {
 | R2 | 3.1 의 20 행 |
 | R3 | 3.2 call.error overflow, classify |
 | R7 | 3.1 의 5 행 (Transcript 사용) |
+| R27 | ST-FR-54~59 (2.2, 2.3, 3.2b) |
 | 자격증명 보호 | ST-C1, ST-FR-02 |
 
 ---
@@ -365,6 +385,7 @@ type Deps struct {
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.8 | 설정에 `aux` 없음, Deps 에 모드 없음 | `aux`(ST-FR-54), `AuxModel`·`Complete`(3.2b), `Deps.Modes`(ST-FR-57~59). 기존 세트 동작 변화 없음 | R27 |
 | 0.7 | `Base` 하나가 22 step 전부, step 별 생성자 `Base<Step>`, verify 의 `VerifyOptions.Next` | `Base`·`Require`·`Cache`·`Guard`·`Truncate` 로 분해(3.0), `Base<Step>` 삭제(ST-FR-04), verify 는 `ctx.Next()`. 전부 쌓으면 같은 동작(ST-FR-51) | R26 ② |
 | 0.7 | `Base(Deps{Store: nil})` 의 메모리 Store 하나를 22 step 이 공유 | 세트마다 따로 채움 (ST-FR-42). nil Store 면 require 의 짝 복구 기록이 base 가 읽는 Store 에 남지 않음 | 세트 분해의 결과 (생성자가 서로를 모름). 구현 중 확인 (impl-08) |
 | 0.6 | 세트 base·resilient | verify 세트 (3.2a) 추가. 기존 세트 동작 변화 없음 | R24 |

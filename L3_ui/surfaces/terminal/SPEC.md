@@ -1,8 +1,8 @@
 # terminal — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.5 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26)
+- 버전: 0.6 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26, R27)
 - 의존 명세: `L2_harness/agent/SPEC.md` v0.4 (3.4~3.12), `L2_harness/SPEC.md` v0.8 (3.6a Event)
 - 사용하는 쪽: `L3_ui/cmd/dr` (`L3_ui/cmd/dr/SPEC.md`)
 
@@ -162,6 +162,7 @@ var ErrNotTerminal error
 | TM-FR-32 | `run_end` 줄: `── <Settle.Reason> · 입력 <n> / 출력 <n> 토큰`. 수는 1000 미만이면 그대로, 이상이면 `12.3k`(소수 첫째 자리, 반올림). `failed`·`guard` 면 ` · <Settle.Err>` 를 붙인다. `aborted` 면 `── 중단됨` 만. 합계는 줄을 그린 뒤 0 으로 (연쇄 run 마다 따로) |
 | TM-FR-33 | `message_start`·`turn_end` 는 그리지 않는다 |
 | TM-FR-54 | `input` (R25): Message ID 가 이 Terminal 이 `Start`·`Steer`·`FollowUp` 으로 보낸 메시지(이미 TM-FR-23 으로 그림)면 그리지 않는다. 아니면(세트가 넣은 메시지) `» `(Color 면 노랑) + 텍스트 — text 블록을 줄바꿈으로 잇고 image 는 `[image]`, TM-FR-24 정리. 앞 20줄만 그리고 이어지는 줄은 `  ` 들여쓰기, 더 있으면 `  … +N줄 생략`(흐림). 보낸 메시지 ID 는 그 `input` 을 받으면 잊는다 |
+| TM-FR-59 | `mode` (R27): `── 모드 <From 또는 기본> → <To 또는 기본> (<Origin>)` + Reason 이 있으면 `: <Reason>` 한 줄(흐림) |
 
 ### 3.6 승인 프롬프트
 
@@ -195,6 +196,8 @@ var ErrNotTerminal error
 | TM-FR-47a | `/model`: 대기 상태에서만(아니면 `✗ 실행 중에는 모델을 바꿀 수 없습니다`). 인자가 있으면 `Agent.SetModel(ctx, 인자)` — 성공 `── 모델 <ref> (저장됨)`, 에러 `✗ <에러>`. 인자가 없으면 모델 선택 상태(3.9) |
 | TM-FR-55 | `/sets` (R26): 어느 상태에서나 `Agent.Sets()` 를 덧붙인다 — 한 줄에 `<번호>. <on|off> <name>  <Description>`(번호는 배치 순서 1부터, off 는 Color 면 흐림, 줄은 `Width()` 로 자름). 끝에 `  (다음 run 부터 적용 · /set <name> on|off|to <n>)` |
 | TM-FR-56 | `/set <name> on`·`/set <name> off`·`/set <name> to <n>`: 대기 상태에서만(아니면 `✗ 실행 중에는 세트를 바꿀 수 없습니다`). 지금 배치(`Agent.Sets()`)에서 그 이름의 켜짐을 바꾸거나, 그 세트를 빼서 n 번째(1부터, 1..세트 수) 자리에 넣은 배치로 `Agent.ArrangeSets` 를 부른다. 성공 `── 세트 <name> 켬`·`── 세트 <name> 끔`·`── 세트 <name> → <n>번` + ` (다음 run 부터, 저장됨)`, 에러 `✗ <에러>`. 모르는 이름 `✗ 없는 세트: <name> (/sets)`, 인자 형식이 틀리면(인자 수·on|off|to·n 이 정수가 아니거나 범위 밖) `✗ 사용법: /set <name> on|off|to <n>` |
+| TM-FR-57 | `/modes` (R27): 어느 상태에서나. `Agent.Modes()` 가 비면 `── 등록된 모드 없음`. 아니면 모드마다 한 줄 `<* 또는 공백> <name>  <Description>`(활성 모드에 `*`, 줄은 `Width()` 로 자름), 끝에 `  (지금: <name 또는 기본>[ "<arg 앞 40자>"] · 예약: <to 또는 기본 또는 없음>)` — 세션이 아직 없으면 `(지금: 기본 · 예약: 없음)` |
+| TM-FR-58 | `/mode <name> [arg…]` = `Agent.EnterMode(sid, name, arg)`(arg = name 뒤의 나머지 원문, 앞뒤 공백 제거), `/mode off` = `Agent.ExitMode(sid)`. 대기 상태에서만(아니면 `✗ 실행 중에는 모드를 바꿀 수 없습니다`). 세션이 아직 없으면 `✗ 첫 메시지를 보낸 뒤에 쓸 수 있습니다`. 성공 `── 모드 예약: <name 또는 기본> (다음 메시지부터)`, 에러 `✗ <에러>`, 인자 없음 `✗ 사용법: /mode <name> [arg] | /mode off` |
 | TM-FR-47 | 그 밖의 `/…`: `✗ 알 수 없는 명령: /<이름> (/help)` |
 
 ### 3.9 모델 선택 (R20)
@@ -222,6 +225,7 @@ var ErrNotTerminal error
 | TM-FR-07~10 | 키 해석기 단위 테스트(표 기반): 표 10 의 모든 인코딩, 1바이트씩 쪼갠 입력, 쪼개진 UTF-8, 붙여넣기 안의 `\r`·제어 바이트, 모르는 CSI 무시, 단독 ESC 는 시간 초과 뒤 Esc·ESC+`\r` 은 Alt+Enter. 협상: 가짜 In 이 kitty 응답+DA / DA 만 / 무응답일 때 Out 에 쓰인 켜기·해제 시퀀스, 협상 응답이 키로 새지 않음 |
 | TM-FR-11 | 입력 줄 편집기 단위 테스트: 삽입·삭제·이동·줄 처음/끝·여러 줄·기록 ↑↓·한글(rune) |
 | TM-FR-19~22 | 렌더 단위 테스트: 가짜 Out 의 바이트를 가상 화면(행 배열 + 커서, 처리 시퀀스는 이 모듈이 쓰는 것만)으로 재생해 최종 화면을 비교. 꼬리 이어 붙이기, 넓은 문자 줄 높이, 줄 넘김, Color false 면 SGR 없음 |
+| TM-FR-57~59 | 가짜 LLM·실제 agent(모드 등록): `/modes` 형식(활성 `*`·지금·예약), 모드 없음 줄, `/mode goal 목표 문구` → 예약 줄 → 다음 메시지에서 `── 모드 기본 → goal (user)`, `/mode off`, 실행 중 거부, 세션 전 거부, 모르는 이름 `✗`, `/help` 에 두 명령 |
 | TM-FR-54 | 가짜 Agent 로: 자기가 보낸 입력의 `input` 은 두 번 그려지지 않음, 모르는 ID 의 `input` 은 `» ` 줄·여러 줄 들여쓰기·21줄 이상이면 `+N줄 생략`·이미지 `[image]`·제어 문자 정리·색 |
 | TM-FR-55~56 | 가짜 LLM·실제 agent 로: `/sets` 목록 형식(기본 구성 6줄), `/set guard off` → 저장됨 줄·`/sets` 에 off·설정 파일 반영, `/set guard to 1` → 순서, 실행 중 → 거부, 모르는 이름·형식 오류·범위 밖, harness 거부(`/set require off`) → `✗` 와 배치 그대로 |
 | TM-FR-23~33 | 이벤트 → 가상 화면: 각 종류, text↔thinking 줄바꿈, bash 20줄 상한과 `+N줄 생략`, tool_end 4종, run_end 토큰 형식(999·1000·12345)·aborted·failed |
@@ -249,6 +253,7 @@ var ErrNotTerminal error
 | R19 | TM-C4, TM-FR-01, 07~10 |
 | R20 | TM-FR-16, 47a~51 |
 | R21 | TM-C2, TM-FR-16, 48~53 |
+| R27 | TM-FR-57~59 |
 | 인터뷰 ①~⑧ | 3.2~3.8 |
 
 ---
@@ -263,6 +268,7 @@ var ErrNotTerminal error
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.6 | 모드 명령 없음 | `/modes`·`/mode`(TM-FR-57·58), `mode` 이벤트 줄(TM-FR-59), `/help` 에 포함 | R27 |
 | 0.5 | 세트 명령 없음 | `/sets`·`/set` (TM-FR-55·56), `/help` 에 포함 | R26 ⑥ |
 | 0.4 | 세트가 넣은 user 메시지는 화면에 나오지 않음 | `input` 이벤트를 `» ` 줄로 (TM-FR-54) | R25 |
 | 0.3 | 모델 선택에 키 없는 모델도 흐리게 표시(`(키 없음: ENV)`)하고 Enter 를 거부, 키는 환경변수로만 | 키 없는 provider 의 모델은 목록에 없음, `/login`·`/logout`(3.10), 시작 시 키 없음 → 키 입력, Start 에러에 ` (/login)` | R21 |

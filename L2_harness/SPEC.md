@@ -1,8 +1,8 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 1.3 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26)
+- 버전: 1.4 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26, R27)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
@@ -249,6 +249,7 @@ type Event struct {
     Phase      string                // compaction: "start" | "end"
     Err        error                 // compaction end 실패
     Settle     *core.Settle          // run_end
+    Mode       *ModeChange           // mode (R27)
 }
 
 type Approval struct {
@@ -278,6 +279,7 @@ type Approval struct {
 | `input` | `turn.start` 가 메시지를 돌려줬을 때 (에러 없이), 메시지마다 순서대로 (R25) | Message = 그 메시지 (surface 가 보낸 입력도 포함 — surface 는 자기 메시지 ID 로 거른다) |
 | `turn_end` | `turn.finish` 진입 | Message = 이 턴의 응답, Results |
 | `run_end` | `run.settled` | Settle |
+| `mode` | 모드 적용·고침 (R27, HN-FR-67) | Mode |
 
 | id | 요구사항 |
 |---|---|
@@ -337,6 +339,98 @@ var ErrSetLayout error                              // "harness: invalid set lay
 | HN-FR-53 | `Arrange(layout)`: layout 은 등록된 이름 전부를 정확히 한 번씩 담아야 한다 (빠짐·중복·모르는 이름 → `ErrSetLayout` 을 감싼 에러). 켜진 세트로 다시 래핑·Bind 하고, 실패하면 그 에러를 돌려주고 배치를 바꾸지 않는다. 성공하면 이후 `Start` 가 새 dispatcher 를 쓴다. 이미 시작한 run 은 자기 dispatcher 로 끝까지 간다. `Description` 은 무시 |
 | HN-FR-54 | `Sets`·`Arrange`·`Start`·`Compact` 는 동시에 불러도 안전하다. 같은 세트 값(FunctionSet)을 다시 쓰므로 세트 함수는 여러 dispatcher 에서 불려도 안전해야 한다 (sets 의 세트는 상태를 ctx.State 에만 둠) |
 
+### 3.6e 모드 (R27)
+
+세션마다 **모드**를 두고 모드에 따라 세트 배치를 **턴 경계에서** 바꾼다. 진입은 사용자 또는 모델(`mode` 도구), 이탈은 모드의 세트(판단기, `sets.Deps.Modes.Exit`) 또는 사용자 강제. 모드는 세션 상태로 저장되어 이탈할 때까지 run 과 재개를 넘어 유지된다.
+
+```go
+type Mode struct {
+    Name, Description string
+    Push []string // 기본 배치 위에 이 순서로 쌓을 세트 (뒤가 위)
+    Off  []string // 이 모드에서 끌 세트
+}
+type ModeOrigin string // ModeUser "user" | ModeModel "model" | ModeSet "set"
+type ModeRequest struct { To, Arg string; Origin ModeOrigin; Reason string } // To "" = 기본 모드로
+type ModeStatus  struct { Active, Arg string; Pending *ModeRequest }      // Active "" = 기본 모드
+type ModeChange  struct { From, To, Arg string; Origin ModeOrigin; Reason string }
+
+// Options 추가
+Modes []Mode
+
+const ModeNamespace = "harness.mode"
+var ErrUnknownMode, ErrModeDenied error // "harness: unknown mode", "harness: mode request denied"
+
+func (a *Agent) Modes() []Mode
+func (a *Agent) ModeStatus(ctx context.Context, sessionID string) (ModeStatus, error)
+func (a *Agent) RequestMode(ctx context.Context, sessionID string, r ModeRequest) error
+func (a *Agent) Complete(ctx context.Context, config json.RawMessage, role string,
+    system []contract.Block, msgs []contract.Message) (contract.Message, error)
+```
+
+가정 (사용자에게 알림): ① 한 세션의 활성 모드는 하나다. 모드 → 다른 모드 직접 전환은 사용자만 한다 ② "다음 턴" = run 안에서는 다음 `turn.start` 직전, run 밖에서 예약됐으면 다음 run 시작 직전 ③ 세트의 이탈 요청은 dispatch 원자성 밖에서 바로 기록된다 (ST-FR-59)
+
+**정의와 배치**
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-55 | `New` 검사: 모드 이름은 비지 않고 서로 다르다. `Push`·`Off` 의 이름은 등록된 세트이고, `Push` 안 중복·`Push` 와 `Off` 양쪽에 있는 이름은 없다. 세트 이름 `harness.mode`(ModeNamespace)는 예약어다. 어기면 `New` 에러 `harness: mode <name>: …` (예약어는 `harness: sets: …`) |
+| HN-FR-56 | 모드 배치 = 기본 배치(3.6d)에서 `Push` 의 세트를 자리에서 빼고, `Off` 의 세트를 끄고, 끝(맨 위)에 `Push` 를 순서대로 켜서 붙인 것. 모드 전용 세트는 `SetEntry{On: false}` 로 등록해 기본 배치에서 꺼 둔다. `Modes()` 는 등록한 모드의 복사본(등록 순서) |
+| HN-FR-57 | `New` 와 `Arrange` 는 기본 배치와 모든 모드 배치를 **하나의 `inject.RunTable`** 로 Bind 한다(IN-FR-64, 3.6a 래핑 포함). 하나라도 실패하면 `New` 에러 / `Arrange` 거부 (배치 그대로, HN-FR-53) |
+| HN-FR-58 | 이미 시작한 run 은 자기 `Start` 시점의 Bind 묶음(기본 + 모드들)으로 끝까지 간다 |
+
+**상태와 영속**
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-59 | 세션의 모드 상태는 Store(HN-FR-38 ②)의 상태 네임스페이스 `harness.mode` 에 키 `active`(string)·`arg`(string)·`pending`(ModeRequest 객체, 없으면 키 없음)으로 저장한다 (`Store.SaveState`). 상태가 없으면 기본 모드·예약 없음. harness 는 세션별 메모리 사본을 두고(처음 쓸 때 `Store.Load`) 바뀔 때마다 저장한다. 저장 실패면 메모리 사본을 되돌리고 에러를 돌려준다 |
+| HN-FR-60 | 읽은 `active`·`pending.To` 가 등록되지 않은 모드면 기본 모드·예약 없음으로 고쳐 저장하고 `mode` 이벤트(From = 그 이름, To "", Origin `user`, Reason `unknown mode <name>`)를 낸다 |
+| HN-FR-61 | `ModeStatus(ctx, sid)`: 세션 ID 검사(`session.CheckID`, 빈 ID 에러) 후 메모리 사본(없으면 로드)의 복사본 |
+
+**요청과 권한**
+
+`RequestMode` 는 L2 이상 신뢰 호출자용이다. `mode` 도구(HN-FR-68)는 Origin `model`, `Deps.Modes.Exit`(HN-FR-71)는 Origin `set` 으로 고정해 이것을 부른다.
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-62 | 아래 표로 판정한다 (기준은 그 세션의 지금 `Active`·`Pending`). `To` 가 비지 않고 등록되지 않은 이름이면 `ErrUnknownMode` 를 감싼 에러, 거부는 `ErrModeDenied` 를 감싼 에러(사유 포함), Origin 이 셋 중 하나가 아니면 에러. 세션 ID 검사는 HN-FR-61 과 같다. 세션이 실행 중이어도 받는다 |
+
+| Origin | To | 허용 | 결과 |
+|---|---|---|---|
+| user | 모드 이름 | 항상 | `Pending` = 요청 (이전 예약을 덮음) |
+| user | `""` | 항상 | `Active == ""` 면 예약 지움(없으면 아무것도 안 함), 아니면 `Pending` = 요청 |
+| model | 모드 이름 | `Active == ""` 이고 `Pending == nil` | `Pending` = 요청 |
+| model | `""` | 거부 | — |
+| set | `""` | `Active != ""` | `Pending` 이 user 요청이면 아무것도 안 함(사용자 우선), 아니면 `Pending` = 요청 |
+| set | 모드 이름 | 거부 | — |
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-63 | 예약 없이 지금 `Active`·`Arg` 와 같은 상태로 가는 요청은 아무것도 하지 않고 nil 이다 (허용 판정 뒤) |
+
+**적용 (턴 경계 교체)**
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-64 | 적용 = `Active, Arg` ← 예약의 `To, Arg`, 예약 지움, 저장(HN-FR-59), `mode` 이벤트. 저장 실패는 적용하지 않은 것으로 본다 (run 시작이면 `Start` 에러, run 안이면 그 dispatch 의 에러) |
+| HN-FR-65 | **run 시작**: `Start` 는 sessionID 를 정한 뒤 core run 을 시작하기 전에 그 세션의 예약을 적용하고, `Active` 의 Bind 결과로 run 을 시작한다 |
+| HN-FR-66 | **run 스위처**: `Start` 가 Kernel 에 넘기는 Dispatcher 는 harness 스위처다. run(RunID) 마다 지금 쓰는 Bind 결과를 기억하고 모든 dispatch 를 그것으로 보낸다. **`turn.start` dispatch 직전에만** 그 세션의 예약을 확인해 있으면 적용(HN-FR-64)하고 새 `Active` 의 Bind 결과로 바꾼다. `run.settled` 뒤 그 run 의 기억을 지운다. 묶음들은 같은 RunTable 을 쓰므로 세트 상태가 이어진다 |
+| HN-FR-67 | 이벤트 `mode` (13번째 종류, HN-FR-31 표에 추가): 적용(HN-FR-64)·고침(HN-FR-60)마다 하나, `Event.Mode = &ModeChange{…}`. run 시작 전 적용은 RunID "" |
+
+**`mode` 도구**
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-68 | `Modes` 가 비지 않으면 기본 도구 목록(HN-FR-38 ① 의 def) 끝에 `mode` 를 더한다 (`ToolSet` 으로 뺄 수 있다). 인자 `{"name": string (enum = 모드 이름, 필수), "arg": string (선택)}`. 설명 = `Switch this session into a mode from the next turn. You cannot leave a mode yourself; the mode ends when its own check decides or the user exits it.` + 모드마다 `\n- <name>: <Description>` |
+| HN-FR-69 | 실행: `RequestMode(sid, {To: name, Arg: arg, Origin: model})`. 성공 결과 텍스트 `Mode "<name>" will apply from the next turn.`, 거부·에러는 `Status: error` 와 에러 문구. sid 는 `Start` 가 run ctx 에 넣은 값이다 (OnEvent·Gate 유무와 무관). run ctx 밖에서 불리면 error 결과 |
+| HN-FR-70 | `mode` 를 부른 턴은 도구 호출이 있으므로 기본 `require` 의 turn.finish 가 `continue_turn` 을 낸다(R2) → 다음 `turn.start` 에서 적용된다. 이 흐름을 바꾸는 사용자 세트에서의 적용 시점은 사용자 책임이다 |
+
+**세트용 스위처와 run 밖 보조 호출**
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-71 | `Sets(deps)` 에 넘기는 `Deps.Modes` 는 harness 구현이다: `Current(sid)` = `ModeStatus` 의 `Active`·`Arg`, `Exit(sid, reason)` = `RequestMode(sid, {To: "", Origin: set, Reason: reason})` |
+| HN-FR-72 | `Complete`: `sets.ParseConfig(config)`(실패 = 에러) → ref = `sets.AuxModel(cfg, role)` → `Model.Lookup` 으로 MaxOutputTokens (cfg 값이 0 이 아니면 그것) → 요청 `{Model: ref, System: system, Messages: msgs, Options.MaxOutputTokens}` (도구·thinking 없음) → `sets.Complete(ctx, Options.Model, req)`. 세션·run·이벤트·저장 없음 |
+
 ### 3.7 비기능
 
 | id | 요구사항 |
@@ -364,6 +458,12 @@ var ErrSetLayout error                              // "harness: invalid set lay
 | HN-FR-37 | 여러 세션 파일 + 디렉터리·다른 확장자·잘못된 ID 이름 → 맞는 id 만 이름순, 없는 dir → 빈 목록, ListDir 에러 → 에러 |
 | HN-FR-38~42 | 가짜 ModelCaller·가짜 Env 로: nil 함수 = 지금 동작(기존 테스트 그대로), `ToolSet` 추가 도구가 모델 요청의 tools 와 시스템 프롬프트에 들어감·기본 도구 제거·같은 이름 교체·빈 결과, `Store` 가 감싼 저장소에 run 의 메시지·state 가 기록됨·`Agent.Store()` 가 그것·nil 결과 → New 에러, `System` 결과가 요청의 System·nil 결과 → System 없음, `Summarizer` 감싸기가 압축에 쓰임·nil 결과 → 압축 없음·`Compact` 에러, `Sets` 로 덧붙인 세트의 `context.inject` 가 요청에 들어감·base 를 빼면 Bind 에러(빈 step)·같은 이름 → Bind 에러, `Sets` 결과의 `tool.before` 를 덮어도 Gate 결과가 모델에 전달되고 tool_start/end 이벤트가 옴, base 를 부르지 않는 `tool.before` 면 없는 도구 호출에도 Gate 가 불림(검사 빠짐), base 를 부르면 없는 도구 호출에 Gate 가 불리지 않음 |
 | HN-FR-51~54 | 가짜 ModelCaller 로: 기본 배치 = 등록 순서·켜짐, `Layout` 반영(앞으로·모르는 이름 무시·중복 무시·빠진 등록 세트는 뒤에), `Layout` 으로 빈 step → New 에러, `Arrange` 로 guard 끔 → 다음 run 에서 없는 도구가 base 17 의 `unknown tool` 결과·Gate 는 불림, 순서 바꿈(두 정책 세트가 같은 step) → 다음 run 요청에 반영, 실행 중 Arrange → 그 run 은 옛 구성·다음 run 새 구성, 빠짐·중복·모르는 이름 → ErrSetLayout·배치 그대로, require 끔 → Bind 에러·배치 그대로, 이벤트·Gate 는 배치를 바꿔도 유지, 동시 Arrange·Start(-race) |
+| HN-FR-55~58 | 이름 중복·빈 이름·미등록 세트·Push 중복·Push/Off 겹침·예약어 세트 → New 에러, 배치 계산(Push 이동·Off·맨 위 순서, 모드 전용 세트 On:false), 모드 배치 Bind 실패 → New 에러·Arrange 거부, Arrange 가 모드 배치에 반영, 실행 중 Arrange 가 진행 중 run 에 영향 없음 |
+| HN-FR-59~61 | 상태 키·값, New 다시 만든 뒤 복원, 저장 실패 → 되돌림·에러, 미등록 이름 → 기본·이벤트·저장, 잘못된 sid |
+| HN-FR-62~63 | 권한 표의 모든 칸, 사용자 예약이 세트 Exit 보다 우선, 같은 상태 요청 no-op, 모르는 모드·모르는 Origin |
+| HN-FR-64~67 | 가짜 ModelCaller 시나리오: 턴1 `mode` 도구 호출 → 턴1 요청엔 없고 턴2 요청에 Push 세트의 `context.inject` 가 있음 / run 밖 예약 → 다음 Start 첫 요청부터 / 세트가 turn.finish 에서 Exit 후 settle → 다음 run 은 기본 배치 / 교체 뒤에도 base `inbox.consumed`·resilient 상태 유지(Steer 동작) / turn.start 외 step 에서 예약해도 그 턴은 그대로 / `mode` 이벤트 필드·RunID / 저장 실패 → 에러 / 동시 run·요청(-race) |
+| HN-FR-68~70 | 도구 spec(enum·설명), 모델 진입 거부(활성 모드 있음·예약 있음) → error 결과, ToolSet 으로 제거, Modes 비면 도구 없음 |
+| HN-FR-71~72 | Deps.Modes 의 Origin 이 set, Complete 가 aux 모델·폴백·MaxOutputTokens 로 요청·도구 없음, 잘못된 config 에러 |
 | HN-NFR-02~04 | 종단 시나리오, `go list -deps` |
 
 ---
@@ -377,6 +477,7 @@ var ErrSetLayout error                              // "harness: invalid set lay
 | R17 | 1.2, 2.1, HN-FR-15, HN-NFR-01 |
 | R22 | 1.2, 2.1, HN-FR-17, 26, 29, 30, 36, 3.6c (HN-FR-37~42) |
 | R23 | 1.2, 3.1 FileInfo·HN-FR-04, 3.2, 3.2a (HN-FR-43~50), HN-FR-07, 09 |
+| R27 | 3.6e (HN-FR-55~72), HN-FR-31 (mode 이벤트) |
 | sets ST-FR-19, 35 | HN-C4, HN-FR-21 |
 | sets ST-FR-24, 27, 36 | 3.5 |
 | 자격증명 보호 | HN-C2 |
@@ -398,6 +499,7 @@ var ErrSetLayout error                              // "harness: invalid set lay
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 1.4 | 세트 배치는 Agent 하나, run 도중 바뀌지 않음. 이벤트 12종 | 모드(3.6e): 세션별 모드·예약·권한, 턴 경계에서 배치 교체, `mode` 도구, `mode` 이벤트, `Complete`. 모드를 등록하지 않으면 이전과 같음 | R27 |
 | 1.3 | `Sets func(Deps) []inject.FunctionSet`, `DefaultSets` = [Base, Resilient], 세트는 `New` 에서 고정 | `Sets` 는 `[]SetEntry`(기본 켜짐 포함), `Layout`, `DefaultSets` = base·require·cache·guard·truncate·resilient, `Agent.Sets`·`Arrange`(run 사이 배치 변경, 3.6d) | R26 |
 | 1.2 | 이벤트 11종. 세트가 `inject_input` 으로 넣은 메시지를 surface 가 알 방법 없음 | `input` 이벤트 (HN-FR-31) | R25 |
 | 1.1 | 도구 4종, `tools.All` = read, bash, edit, write. 모델에 보내는 tools 4개, 시스템 프롬프트 rules 에 `Use bash for file operations like ls, rg, find` | 도구 7종 (3.2a), `tools.All` 끝에 grep, find, ls. 기본 프롬프트에서 그 rule 이 빠짐 (`prompt` 의 기존 pi 조건: bash 가 있고 grep·find·ls 가 모두 없을 때만 넣음) | R23 |

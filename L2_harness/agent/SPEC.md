@@ -1,8 +1,8 @@
 # agent — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.8 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18, R20, R21, R22, R23, R26)
+- 버전: 0.9 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18, R20, R21, R22, R23, R26, R27)
 - 의존 명세: `L2_harness/SPEC.md`, `L2_harness/osenv/SPEC.md`, `L1_inject/adapters/SPEC.md`, `L1_inject/sets/SPEC.md` (설정 JSON)
 - 사용하는 쪽: `L3_ui/cmd/dr-print`, 이후 L3 surfaces
 
@@ -302,6 +302,27 @@ func (a *Agent) ArrangeSets(ctx context.Context, layout []harness.SetState) erro
 | AG-FR-45 | `Sets()` = `Harness().Sets()`. `ArrangeSets(ctx, layout)` = `harness.Arrange(layout)` 가 성공한 뒤 **사용자 설정 파일**의 `sets` 를 새 배치 전체(`[{name, on}]`, 배치 순서)로 바꿔 쓴다 — 파일 다루기(경로·생성·다른 키 보존·키 순서·0644·검사 실패 시 쓰지 않음)는 AG-FR-34 와 같다. harness 가 거부하면 파일을 건드리지 않는다. 파일 쓰기에 실패하면 에러를 돌려주고 harness 배치를 이전으로 되돌린다 |
 | AG-FR-46 | `Sets`·`ArrangeSets` 는 AG-FR-35 의 함수들과 동시에 불러도 안전하다 |
 
+### 3.14b 모드 (R27)
+
+```go
+// Options 추가
+Modes []harness.Mode // harness.Options.Modes 로 그대로
+
+func (a *Agent) Modes() []harness.Mode
+func (a *Agent) ModeStatus(ctx context.Context, sessionID string) (harness.ModeStatus, error)
+func (a *Agent) EnterMode(ctx context.Context, sessionID, name, arg string) error
+func (a *Agent) ExitMode(ctx context.Context, sessionID string) error
+func (a *Agent) Complete(ctx context.Context, role string, system []contract.Block, msgs []contract.Message) (contract.Message, error)
+```
+
+| id | 요구사항 |
+|---|---|
+| AG-FR-47 | 설정 `agent.aux`(sets ST-FR-54)는 `agent` 의 다른 키와 같이 sets 설정으로 그대로 넘어간다 (AG-FR-04). 형식 에러는 `New` 에러다 |
+| AG-FR-48 | `Options.Modes` 를 `harness.Options.Modes` 로 넘긴다. harness 의 모드 검사 에러(HN-FR-55)는 `agent: ` 접두어로 `New` 에러 |
+| AG-FR-49 | `Modes()` = harness `Modes()`. `ModeStatus` = harness `ModeStatus`. `EnterMode(sid, name, arg)` = `RequestMode(sid, {To: name, Arg: arg, Origin: user})`, `ExitMode(sid)` = `RequestMode(sid, {To: "", Origin: user})`. 세션 잠금(AG-FR-22)을 잡지 않으므로 실행 중인 세션에도 부를 수 있다 (적용은 다음 turn.start, HN-FR-66) |
+| AG-FR-50 | `Complete(role, system, msgs)`: 모델 문제(AG-FR-32)가 있으면 그 에러. 아니면 `harness.Complete(ctx, AG-FR-04 의 raw 설정, role, system, msgs)` |
+| AG-FR-51 | `mode` 도구(HN-FR-68)의 승인은 이름 규칙만 쓴다 (패턴 규칙 대상이 아님, AG-FR-13). 맞는 규칙이 없으면 묻는다 (R18 ②). 도구 상한(AG-FR-21)·설정 `agent.tools` 의 대상이다 |
+
 ### 3.15 비기능
 
 | id | 요구사항 |
@@ -336,6 +357,7 @@ func (a *Agent) ArrangeSets(ctx context.Context, layout []harness.SetState) erro
 | AG-FR-32~35 | 모델 없음 → New 성공·Model() ErrNoModel·Start ErrNoModel(잠금 없음), 모르는 provider·키 없음 → New 성공·같은 문제, Models 는 키 없는 provider 의 모델을 뺌·키 불필요/키 있는 것·설정 모델 포함, SetModel: 형식 틀림·모르는 provider·키 없음 → 에러·파일 그대로, 성공 → 파일의 agent.model 갱신·다른 키 보존·파일 없으면 생성·다음 Start 요청의 모델·Options.Model 보다 이김, 쓰기 실패 → 에러·모델 그대로, -race 동시 호출 |
 | AG-FR-36~39 | 키 파일 없음 → 빈 키, 깨진 JSON·뒤따르는 데이터·모르는 키·type oauth·key 숫자 → New 에러(문구에 키 값 없음), 모르는 provider 항목 보존. SetKey: 모르는 provider·빈 키(공백만) → 에러·파일 그대로, 성공 → 파일 0600·디렉터리 0700(새로 만들 때)·다른 항목 원문 보존·앞뒤 공백 잘림·다음 Start 요청의 인증 헤더·Model() 문제 해소. RemoveKey: 없는 항목 → 에러, 성공 → 항목만 삭제·Model() ErrNoAPIKey. 쓰기 실패(디렉터리 쓰기 불가) → 에러·키 그대로. Providers 순서·HasKey. -race 동시 호출 |
 | AG-FR-40~43 | httptest 서버 종단: `Sets` 로 덧붙인 `context.inject` 메시지가 서버가 받은 요청에 있음, `tool.before` 를 덮어도 deny 규칙·Approver 결과가 모델에 전달됨, `ToolSet` 추가 도구가 요청 tools 에 있고 상한·`agent.tools`·이름 deny 규칙이 적용됨·추가 도구 패턴 규칙 → New 에러, `bash` 를 `command` 없는 도구로 바꾸면 `bash(rm *)` deny 가 맞지 않고 `bash` 이름 deny 는 맞음, `System` 결과가 요청 system, `Summarizer` 감싸기가 `Compact` 에 쓰임, `Store` 로 바꾼 저장소가 `Sessions`·`History` 에 쓰임(파일이 없어도 목록에 나옴), `ModelCaller` 감싸기가 run 요청을 거침·nil → New 에러, 모든 nil = 기존 테스트 그대로 |
+| AG-FR-47~51 | httptest 종단: `agent.aux` 형식 에러 → New 에러, `Complete` 가 aux 모델로 요청(없으면 본 모델), 모델 문제 → 에러, `Options.Modes` 검사 에러 → New 에러, `EnterMode` → 다음 Start 첫 요청에 모드 세트의 주입이 있음, 실행 중 `ExitMode` → 다음 turn.start 에서 기본 배치, `mode` 도구 호출에 Approver 가 불림·`mode` deny 규칙 → error 결과, `ModeStatus` 가 재시작(New 다시) 뒤에도 같음 |
 | AG-FR-44~46 | 설정 `sets` 형식 에러 → New 에러, 저장된 배치가 harness 에 반영(모르는 이름 무시), `ArrangeSets` 성공 → 파일의 `sets` 가 새 배치·다른 키 보존·다음 `New` 가 그 배치, harness 거부 → 파일 그대로, 파일 쓰기 실패(읽기 전용 디렉터리) → 에러·배치 되돌림, 동시 호출(-race) |
 | AG-FR-31 | 긴 세션(작은 keepRecentTokens) → true·세션 파일에 edit 줄 하나·다음 run 요청에 요약 메시지·edit 줄 중복 없음, 짧은 세션 → false, 실행 중인 세션 → ErrSessionBusy, 빈 ID → 에러, compaction 이벤트 start/end |
 
@@ -351,6 +373,7 @@ func (a *Agent) ArrangeSets(ctx context.Context, layout []harness.SetState) erro
 | HN-FR-15 | AG-FR-07 |
 | HN-FR-27 | AG-FR-04, 10 |
 | R22, HN-FR-38~42 | 1.2, 2.1, AG-FR-09, 11, 14, 21, 29, 30, 3.14 (AG-FR-40~43) |
+| R27, HN-FR-55~72 | 3.14b (AG-FR-47~51) |
 
 ---
 
@@ -364,6 +387,7 @@ func (a *Agent) ArrangeSets(ctx context.Context, layout []harness.SetState) erro
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.9 | 모드 없음, run 밖 모델 호출 없음 | `Options.Modes`, `Modes`·`ModeStatus`·`EnterMode`·`ExitMode`, `Complete`(역할별 보조 모델, 설정 `agent.aux`) (3.14b). 모드를 등록하지 않으면 이전과 같음 | R27 |
 | 0.8 | `Sets` 는 `[]inject.FunctionSet`, 세트 구성 고정, 설정 최상위 키 6개 | `Sets` 는 `[]harness.SetEntry`, 설정 `sets`(배치), `Sets()`·`ArrangeSets`(저장) | R26 |
 | 0.7 | 패턴 규칙은 bash·read·write·edit 만 (grep·find·ls 에 패턴 → `New` 에러) | grep·find·ls 도 경로 패턴 규칙, `path` 없으면 대상 cwd | R23 ④ |
 | 0.6 | 외부 함수를 끼울 통로 없음 (`harness.Options` 의 Extra·Tools 를 받지도 넘기지도 않음) | `Sets`·`ToolSet`·`System`·`Summarizer`·`Store`·`ModelCaller` (3.14) | R22: core 외 전부 튜닝 |
