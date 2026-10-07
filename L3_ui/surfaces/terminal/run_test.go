@@ -149,6 +149,7 @@ type harnessT struct {
 
 type env struct {
 	home, cwd string
+	mod       func(*agent.Options) // 테스트별 agent 옵션 (nil = 없음)
 }
 
 func newEnv(t *testing.T) *env {
@@ -174,6 +175,9 @@ func (e *env) agent(t *testing.T, cfg string, term *Terminal) *agent.Agent {
 	o := agent.Options{Cwd: e.cwd, NoRemoteCatalog: true}
 	if term != nil {
 		o.Approver, o.OnEvent = term.Approver(), term.OnEvent
+	}
+	if e.mod != nil {
+		e.mod(&o)
 	}
 	a, err := agent.New(context.Background(), o)
 	if err != nil {

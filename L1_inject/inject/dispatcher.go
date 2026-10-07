@@ -29,6 +29,33 @@ type TraceRecord struct {
 type BindOptions struct {
 	StateStore StateStore
 	Tracer     Tracer
+	Runs       *RunTable // nil → Dispatcher 전용 표 (IN-FR-66)
+}
+
+// RunTable 은 RunID → run 상태 표다. 같은 표로 Bind 한 Dispatcher 들은 run 상태를 공유한다 (IN-FR-64).
+type RunTable struct {
+	mu   sync.Mutex
+	runs map[string]*runState
+}
+
+func NewRunTable() *RunTable { return &RunTable{runs: map[string]*runState{}} }
+
+func (t *RunTable) get(id string) *runState {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.runs[id]
+}
+
+func (t *RunTable) put(id string, r *runState) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.runs[id] = r
+}
+
+func (t *RunTable) drop(id string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.runs, id)
 }
 
 // Dispatcher 는 바인딩된 함수로 core.Dispatcher 를 구현한다. 불변이며 여러 Kernel 이 공유해도 된다 (IN-FR-20, 41).
@@ -36,9 +63,7 @@ type Dispatcher struct {
 	sets   []FunctionSet
 	stacks map[core.Step][]int // step → 그 step 을 채운 sets 의 위치, 아래 층부터
 	opts   BindOptions
-
-	mu   sync.Mutex
-	runs map[string]*runState
+	runs   *RunTable
 }
 
 // Bind 는 step 마다 그 step 을 채운 세트들을 순서대로 쌓는다. 뒤의 세트가 위 층이다 (IN-FR-19).
@@ -48,7 +73,10 @@ func Bind(sets ...FunctionSet) (*Dispatcher, error) {
 
 func BindWith(opts BindOptions, sets ...FunctionSet) (*Dispatcher, error) {
 	seen := map[string]bool{}
-	d := &Dispatcher{sets: append([]FunctionSet(nil), sets...), stacks: map[core.Step][]int{}, opts: opts, runs: map[string]*runState{}}
+	d := &Dispatcher{sets: append([]FunctionSet(nil), sets...), stacks: map[core.Step][]int{}, opts: opts, runs: opts.Runs}
+	if d.runs == nil {
+		d.runs = NewRunTable()
+	}
 	for i, s := range d.sets {
 		if s.Name == "" {
 			return nil, fmt.Errorf("%w: set without name", ErrBind)
@@ -105,9 +133,7 @@ func (d *Dispatcher) DispatchSource(ctx context.Context, step core.Step, input a
 	}
 	res, err := d.dispatch(ctx, step, input, view, fs, &rec)
 	if step == core.StepRunSettled {
-		d.mu.Lock()
-		delete(d.runs, view.RunID())
-		d.mu.Unlock()
+		d.runs.drop(view.RunID())
 	}
 	rec.Duration, rec.Err = time.Since(began), err
 	if d.opts.Tracer != nil { // [7]
@@ -155,9 +181,7 @@ func (d *Dispatcher) dispatch(ctx context.Context, step core.Step, input any, vi
 // runFor 는 run 의 상태를 찾고, run.start 에서는 StateStore 로 복원한다.
 func (d *Dispatcher) runFor(ctx context.Context, step core.Step, view ViewSource) (*runState, error) {
 	id := view.RunID()
-	d.mu.Lock()
-	r := d.runs[id]
-	d.mu.Unlock()
+	r := d.runs.get(id)
 	if r != nil && step != core.StepRunStart {
 		return r, nil
 	}
@@ -169,9 +193,7 @@ func (d *Dispatcher) runFor(ctx context.Context, step core.Step, view ViewSource
 		}
 	}
 	r = newRunState(loaded)
-	d.mu.Lock()
-	d.runs[id] = r
-	d.mu.Unlock()
+	d.runs.put(id, r)
 	return r, nil
 }
 

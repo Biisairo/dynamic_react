@@ -15,6 +15,7 @@ import (
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L0_core/core"
+	"github.com/Biisairo/dynamic_react/L1_inject/inject"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness/env"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness/prompt"
@@ -42,6 +43,7 @@ type Options struct {
 	NewID      func() string
 	OnEvent    func(Event)                                                  // HN-FR-31
 	Gate       func(ctx context.Context, in GateInput) *contract.ToolResult // HN-FR-30
+	Modes      []Mode                                                       // HN-FR-55 (R27)
 }
 
 // Store 는 세션 저장소다. 기본은 session.Store (HN-FR-40).
@@ -60,10 +62,12 @@ type RunRequest struct {
 // Agent 는 조립된 에이전트다. 여러 run 을 동시에 시작할 수 있다 (HN-FR-28).
 type Agent struct {
 	reg    []SetEntry
-	mu     sync.Mutex // layout·disp·kernel (HN-FR-54)
+	mu     sync.Mutex // layout·bundle (HN-FR-54)
 	layout []SetState
-	kernel *core.Kernel
-	disp   core.Dispatcher
+	bundle *bundle
+	runs   *inject.RunTable // 모든 배치가 공유 (HN-FR-57)
+	modes  []Mode
+	mt     modeTable
 	copts  core.Options
 	system []contract.Block
 	tools  *sets.Registry
@@ -88,7 +92,11 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
+	var self *Agent
 	toolList := tools.All(o.Env)
+	if len(o.Modes) > 0 {
+		toolList = append(toolList, modeTool(o.Modes, &self))
+	}
 	if o.ToolSet != nil {
 		toolList = o.ToolSet(toolList)
 	}
@@ -125,8 +133,9 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 			summarizer = eventSummarizer{sf, summarizer}
 		}
 	}
+	switcher := &modeSwitcher{}
 	deps := sets.Deps{Model: o.Model, Tools: reg, Store: store, System: system,
-		Summarizer: summarizer, Sleep: sleep, Now: o.Now, NewID: o.NewID}
+		Summarizer: summarizer, Sleep: sleep, Now: o.Now, NewID: o.NewID, Modes: switcher}
 	var entries []SetEntry
 	if o.Sets != nil {
 		entries = o.Sets(deps)
@@ -134,6 +143,9 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 		entries = DefaultSets(deps)
 	}
 	if err := checkEntries(entries); err != nil {
+		return nil, err
+	}
+	if err := checkModes(entries, o.Modes); err != nil {
 		return nil, err
 	}
 	copts := o.Core
@@ -145,12 +157,14 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 		newID = randomID
 	}
 	a := &Agent{reg: entries, layout: initialLayout(entries, o.Layout), copts: copts, system: system, tools: reg, now: o.Now, sf: sf,
-		store: store, model: o.Model, sum: summarizer, newID: newID}
-	disp, err := a.bind(a.layout)
+		store: store, model: o.Model, sum: summarizer, newID: newID, runs: inject.NewRunTable(),
+		modes: o.Modes, mt: modeTable{sess: map[string]*ModeStatus{}}}
+	b, err := a.bindAll(a.layout)
 	if err != nil {
 		return nil, err
 	}
-	a.disp, a.kernel = disp, core.New(disp, copts)
+	a.bundle = b
+	self, switcher.a = a, a
 	return a, nil
 }
 
@@ -195,15 +209,23 @@ func (a *Agent) Start(ctx context.Context, r RunRequest) (*core.Run, string, err
 			ctx = tools.WithProgress(ctx, a.sf.progress(rs))
 		}
 	}
+	ctx = context.WithValue(ctx, sessionKey{}, sid)
 	a.mu.Lock()
-	k, disp := a.kernel, a.disp
+	b := a.bundle
 	a.mu.Unlock()
-	if r.Observer != nil {
-		opts := a.copts
-		opts.Observer = r.Observer
-		k = core.New(disp, opts)
+	sw := &runSwitch{a: a, b: b, sid: sid, cur: b.def}
+	if len(a.modes) > 0 {
+		active, err := a.applyPending(ctx, "", sid)
+		if err != nil {
+			return nil, "", err
+		}
+		sw.cur = b.pick(active)
 	}
-	return k.Start(ctx, core.RunInput{SessionID: sid, Input: r.Input, Config: r.Config}), sid, nil
+	opts := a.copts
+	if r.Observer != nil {
+		opts.Observer = r.Observer
+	}
+	return core.New(sw, opts).Start(ctx, core.RunInput{SessionID: sid, Input: r.Input, Config: r.Config}), sid, nil
 }
 
 // System 은 조립된 시스템 프롬프트다 (HN-FR-29).

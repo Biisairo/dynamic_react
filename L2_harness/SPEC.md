@@ -429,7 +429,7 @@ func (a *Agent) Complete(ctx context.Context, config json.RawMessage, role strin
 | id | 요구사항 |
 |---|---|
 | HN-FR-71 | `Sets(deps)` 에 넘기는 `Deps.Modes` 는 harness 구현이다: `Current(sid)` = `ModeStatus` 의 `Active`·`Arg`, `Exit(sid, reason)` = `RequestMode(sid, {To: "", Origin: set, Reason: reason})` |
-| HN-FR-72 | `Complete`: `sets.ParseConfig(config)`(실패 = 에러) → ref = `sets.AuxModel(cfg, role)` → `Model.Lookup` 으로 MaxOutputTokens (cfg 값이 0 이 아니면 그것) → 요청 `{Model: ref, System: system, Messages: msgs, Options.MaxOutputTokens}` (도구·thinking 없음) → `sets.Complete(ctx, Options.Model, req)`. 세션·run·이벤트·저장 없음 |
+| HN-FR-72 | `Complete`: `sets.ParseConfig(config)`(실패 = 에러) → ref = `sets.AuxModel(cfg, role)` → `Model.Lookup` 이 알면 ref 의 API 와 MaxOutputTokens(cfg 값이 0 이 아니면 그것)를 채움 → 요청 `{Model: ref, System: system, Messages: msgs, Options.MaxOutputTokens}` (도구·thinking 없음) → `sets.Complete(ctx, Options.Model, req)`. 세션·run·이벤트·저장 없음 |
 
 ### 3.7 비기능
 

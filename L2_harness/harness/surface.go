@@ -36,6 +36,7 @@ const (
 	EventInput         EventKind = "input"
 	EventTurnEnd       EventKind = "turn_end"
 	EventRunEnd        EventKind = "run_end"
+	EventMode          EventKind = "mode" // R27, HN-FR-67
 )
 
 type Event struct {
@@ -55,6 +56,7 @@ type Event struct {
 	Phase     string
 	Err       error
 	Settle    *core.Settle
+	Mode      *ModeChange
 }
 
 type Approval struct {

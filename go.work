@@ -13,5 +13,6 @@ use (
 	./L3_ui/cmd/dr-print
 	./L3_ui/surfaces/terminal
 	./examples/inject
+	./examples/modes
 	./examples/verify
 )

@@ -222,6 +222,7 @@ type Deps struct {
 	Sleep      func(ctx context.Context, d time.Duration) error
 	Now        func() time.Time
 	NewID      func() string
+	Modes      ModeSwitcher // nil → 모드 없음 (ST-FR-57, ModesOf)
 }
 
 // filled 는 nil 을 기본값으로 채운 복사본이다 (ST-FR-42).
@@ -241,6 +242,7 @@ func (d Deps) filled() Deps {
 	if d.NewID == nil {
 		d.NewID = randomID
 	}
+	d.Modes = ModesOf(d)
 	return d
 }
 

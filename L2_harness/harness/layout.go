@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Biisairo/dynamic_react/L0_core/core"
 	"github.com/Biisairo/dynamic_react/L1_inject/inject"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 )
@@ -42,6 +41,9 @@ func checkEntries(reg []SetEntry) error {
 	for _, e := range reg {
 		if e.Set.Name == "" {
 			return errors.New("harness: sets: set without name")
+		}
+		if e.Set.Name == ModeNamespace {
+			return fmt.Errorf("harness: sets: set name %q is reserved", ModeNamespace)
 		}
 		if seen[e.Set.Name] {
 			return fmt.Errorf("harness: sets: duplicate set name %q", e.Set.Name)
@@ -90,7 +92,7 @@ func (a *Agent) bind(layout []SetState) (*inject.Dispatcher, error) {
 	if a.sf.active() {
 		fs = a.sf.wrap(fs)
 	}
-	d, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(a.store)}, fs...)
+	d, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(a.store), Runs: a.runs}, fs...)
 	if err != nil {
 		return nil, fmt.Errorf("harness: sets: %w", err)
 	}
@@ -126,12 +128,12 @@ func (a *Agent) Arrange(layout []SetState) error {
 		seen[s.Name] = true
 		next[i] = SetState{Name: s.Name, Description: d, On: s.On}
 	}
-	disp, err := a.bind(next)
+	b, err := a.bindAll(next)
 	if err != nil {
 		return err
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.layout, a.disp, a.kernel = next, disp, core.New(disp, a.copts)
+	a.layout, a.bundle = next, b
 	return nil
 }

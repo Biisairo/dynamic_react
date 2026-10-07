@@ -784,7 +784,8 @@ const helpText = `키: Enter 전송(실행 중 steer) · Alt+Enter follow-up · 
      Esc/Ctrl+C 실행 중 중단 · Ctrl+C 입력 지우기(빈 줄에서 두 번 = 종료) · Ctrl+D 빈 줄에서 종료 · ↑↓ 기록
 명령: /help · /sessions · /resume [번호|id] · /new · /compact · /quit · /exit · //글 = '/글' 전송
      /model [provider/id] · /login [provider] · /logout [provider]
-     /sets · /set <name> on|off|to <n>`
+     /sets · /set <name> on|off|to <n>
+     /modes · /mode <name> [arg] · /mode off`
 
 // command 는 3.8 이다.
 func (t *Terminal) command(text string) {
@@ -870,6 +871,10 @@ func (t *Terminal) command(text string) {
 			return
 		}
 		t.setCommand(args)
+	case "/modes":
+		t.showModes()
+	case "/mode":
+		t.modeCommand(text, args)
 	case "/quit", "/exit":
 		t.quit()
 	default:

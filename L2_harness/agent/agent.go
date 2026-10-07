@@ -41,6 +41,7 @@ type Options struct {
 	Summarizer  func(def sets.Summarizer) sets.Summarizer   // AG-FR-40
 	Store       func(def harness.Store) harness.Store       // AG-FR-40
 	ModelCaller func(def sets.ModelCaller) sets.ModelCaller // AG-FR-41
+	Modes       []harness.Mode                              // AG-FR-48 (R27)
 }
 
 type Agent struct {
@@ -148,7 +149,7 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 		}
 	}
 	h, err := harness.New(ctx, harness.Options{Env: e, Model: caller, SessionDir: dir, OnEvent: o.OnEvent, Gate: a.gate,
-		Sets: o.Sets, Layout: layout, ToolSet: o.ToolSet, System: o.System, Summarizer: o.Summarizer, Store: o.Store})
+		Sets: o.Sets, Layout: layout, ToolSet: o.ToolSet, System: o.System, Summarizer: o.Summarizer, Store: o.Store, Modes: o.Modes})
 	if err != nil {
 		return nil, fmt.Errorf("agent: %w", err)
 	}

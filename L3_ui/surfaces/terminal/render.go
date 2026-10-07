@@ -141,6 +141,10 @@ func (t *Terminal) event(ev harness.Event) {
 		t.line(fmt.Sprintf("%s 재시도 %d회째 — %.1fs 후 (%s)", t.paint(sgrYellow, "↻"), ev.Attempt, ev.Delay.Seconds(), sanitize(msg)))
 	case harness.EventCompaction:
 		t.line(t.compactionLine(ev))
+	case harness.EventMode:
+		if ev.Mode != nil {
+			t.line(t.paint(sgrDim, t.modeLine(*ev.Mode)))
+		}
 	case harness.EventRunEnd:
 		t.newline()
 		t.line(t.runEndLine(ev.Settle))

@@ -85,7 +85,7 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 | ST-FR-35 | `System []contract.Block`: 시스템 프롬프트. 하네스가 run 전에 조립해 넘긴다. run 동안 바꾸지 않는다 (ST-FR-19) |
 | ST-FR-36 | `Summarizer`: `Summarize(ctx, SummaryRequest{Model, Messages, Previous, MaxTokens}) (string, error)`. nil 이면 압축을 하지 않는다 (resilient 의 압축 분기는 3·13 에서 next, 12 에서 fail) |
 | ST-FR-37 | `Sleep(ctx, d) error`, `Now() time.Time`, `NewID() string`: nil 이면 타이머·`time.Now`·무작위 id. 테스트에서 주입한다 |
-| ST-FR-57 | `Modes ModeSwitcher` (R27): 세트가 세션 모드를 읽고 이탈을 요청하는 통로. `ModeState{Active, Arg string}`(Active "" = 기본 모드), `ModeSwitcher{Current(ctx, sessionID) (ModeState, error); Exit(ctx, sessionID, reason string) error}`. nil 이면 `filled()` 가 "모드 없음" 구현으로 채운다: `Current` = `ModeState{}`·nil, `Exit` = `ErrNoModes`(`sets: modes not available`) |
+| ST-FR-57 | `Modes ModeSwitcher` (R27): 세트가 세션 모드를 읽고 이탈을 요청하는 통로. `ModeState{Active, Arg string}`(Active "" = 기본 모드), `ModeSwitcher{Current(ctx, sessionID) (ModeState, error); Exit(ctx, sessionID, reason string) error}`. 세트는 `ModesOf(d)` 로 꺼낸다 — `d.Modes` 가 nil 이면 "모드 없음" 구현(`Current` = `ModeState{}`·nil, `Exit` = `ErrNoModes`(`sets: modes not available`))을 돌려준다 (`filled()` 도 같은 값으로 채운다) |
 | ST-FR-58 | sets 는 모드 인터페이스만 정의한다. 세트에 진입 수단은 주지 않는다 (R27: 진입은 모델·사용자, 이탈은 판단기·사용자). 권한·적용 시점은 구현(L2 harness 3.6e)이 정한다 |
 | ST-FR-59 | `Current` 는 dispatch 스냅샷(IN-FR-15) 밖의 값이다 — 같은 dispatch 안에서 두 번 불러도 다를 수 있다. `Exit` 는 그 dispatch 의 성공 여부와 무관하게 바로 기록된다 (상태 쓰기 원자성 IN-FR-24 의 대상이 아님) |
 
@@ -349,7 +349,7 @@ type Deps struct {
 | ST-NFR-04 | `go list -deps` 검사 |
 | ST-FR-46~50 | 가짜 ModelCaller·도구로 종단: 변경 도구 없이 끝남 → Check 안 부름, write 성공 뒤 끝남 → Check 1회·OK 면 completed, 실패 → 다음 요청에 보고 메시지(attempt 1 of N)·세션에 저장, 실패 뒤 변경 없이 끝남 → 재검증, MaxAttempts 번째 실패 → failed·`errors.Is(ErrVerifyFailed)`·첫 줄, error 결과의 변경 도구는 세지 않음, Tools 에 없는 도구는 세지 않음, 빈 Tools, 보고 끝 절단·빈 보고, Check error → failed, 아래 층을 바꿔 쌓으면(예: 항상 settle 하는 층) 그 판정을 따름·아래 층 에러 전달, 다른 run 은 상태 초기화, Check nil → 에러 |
 | ST-FR-54~56 | `aux` 형식 에러(빈 역할·빈 provider·빈 id), 모르는 키 에러 유지, `AuxModel` 폴백, `Complete`: done 메시지, error 이벤트 → `*contract.CallError`, iterator 에러, done 없이 끝남, ctx 취소 |
-| ST-FR-57~59 | nil `Modes` → `Exit` 가 `ErrNoModes`, `Current` 가 기본 모드 |
+| ST-FR-57~59 | `ModesOf(Deps{})` → `Exit` 가 `ErrNoModes`·`Current` 가 기본 모드, `ModesOf` 가 nil 이 아닌 `Modes` 를 그대로 돌려줌 |
 | ST-FR-51~53 | 기존 base·resilient 테스트 전부를 `Base, Require, Cache, Guard, Truncate(, Resilient)` 조합으로 통과, 세트별 채운 step 목록·Description, 정책 세트를 뺀 조합: cache 없음 → 캐시 힌트 없음, guard 없음 → 없는 도구가 tool.execute 에서 `unknown tool` 결과(base 17), truncate 없음 → 절단 없음, require 없이 base 만 → Bind 에러(빈 step), 아래 층 없이 guard 만 16 에 → ErrNoNext |
 | ST-FR-41~45 | 테스트가 공개 API 로만 동작을 검사, 복구 표시의 run·턴 범위(같은 run·턴 / 다른 턴 / 다른 run) |
 
