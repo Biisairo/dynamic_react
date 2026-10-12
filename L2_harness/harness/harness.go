@@ -126,6 +126,7 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if o.Summarizer != nil {
 		summarizer = o.Summarizer(summarizer)
 	}
+	sf.stats = newStatsTable(summarizer != nil)
 	var sleep func(context.Context, time.Duration) error
 	if o.OnEvent != nil {
 		sleep = sf.sleep

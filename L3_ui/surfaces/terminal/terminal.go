@@ -92,6 +92,7 @@ type Terminal struct {
 	sent      map[string]bool // 이 Terminal 이 보낸 입력 메시지 ID (TM-FR-54)
 	tokIn     int
 	tokOut    int
+	tokCache  int
 	followUps int
 	// 루프 상태 (Run 고루틴이 바꾸고, view 는 mu 아래에서 읽음)
 	st       state
@@ -785,7 +786,7 @@ const helpText = `키: Enter 전송(실행 중 steer) · Alt+Enter follow-up · 
 명령: /help · /sessions · /resume [번호|id] · /new · /compact · /quit · /exit · //글 = '/글' 전송
      /model [provider/id] · /login [provider] · /logout [provider]
      /sets · /set <name> on|off|to <n>
-     /modes · /mode <name> [arg] · /mode off`
+     /modes · /mode <name> [arg] · /mode off · /status`
 
 // command 는 3.8 이다.
 func (t *Terminal) command(text string) {
@@ -865,6 +866,8 @@ func (t *Terminal) command(text string) {
 		t.keyCommand(name, args)
 	case "/sets":
 		t.showSets()
+	case "/status":
+		t.showStatus()
 	case "/set":
 		if !idle {
 			t.say(t.paint(sgrRed, "✗") + " 실행 중에는 세트를 바꿀 수 없습니다")

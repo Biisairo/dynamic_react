@@ -267,7 +267,7 @@ func TestRunTurnAndQuit(t *testing.T) {
 	l := newLLM(t, textReply("hello there"))
 	h := e.start(t, context.Background(), config(l.URL, "", ""), Start{})
 	h.typ("hi\r")
-	h.wait("── completed · 입력 1.5k / 출력 20 토큰")
+	h.wait("── completed · 입력 1.5k (캐시 0%) / 출력 20 토큰")
 	s := h.scr.text()
 	if !strings.Contains(s, "> hi\n── 세션 ") || !strings.Contains(s, "hello there") || strings.Contains(s, "»") {
 		t.Fatalf("%s", s)

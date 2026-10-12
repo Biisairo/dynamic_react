@@ -9,16 +9,16 @@
 ```text
  L3_ui       input/output over the finished agent: terminal,
              stream display, signals, exit codes
-             surfaces/terminal  interactive terminal library    (spec v0.7)
+             surfaces/terminal  interactive terminal library    (spec v0.8)
              cmd/dr        interactive entry point              (spec v0.3)
              cmd/dr-print  non-interactive test CLI             (spec v0.2)
  ─────────────────────────────────────────────────────────────────
  L2_harness  the real agent on the user's environment (R17)
-             harness   agent assembly over Env + ModelCaller:   (spec v1.5)
+             harness   agent assembly over Env + ModelCaller:   (spec v1.6)
                        tool logic, JSONL sessions, prompt,
                        summarizer, session modes (no real I/O)
              osenv     Env on the OS: files, shell, groups      (spec v0.3)
-             agent     config + auth.json + osenv + adapters    (spec v0.9)
+             agent     config + auth.json + osenv + adapters    (spec v0.10)
                        -> harness.New (the finished agent),
                        surface layer: approval, steer, models
  ─────────────────────────────────────────────────────────────────

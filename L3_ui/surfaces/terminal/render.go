@@ -112,6 +112,7 @@ func (t *Terminal) event(ev harness.Event) {
 			u := ev.Message.Usage
 			t.tokIn += u.Input + u.CacheRead + u.CacheWrite
 			t.tokOut += u.Output
+			t.tokCache += u.CacheRead
 		}
 	case harness.EventInput:
 		if ev.Message != nil {
@@ -152,7 +153,7 @@ func (t *Terminal) event(ev harness.Event) {
 	case harness.EventRunEnd:
 		t.newline()
 		t.line(t.runEndLine(ev.Settle))
-		t.tokIn, t.tokOut, t.followUps = 0, 0, 0
+		t.tokIn, t.tokOut, t.tokCache, t.followUps = 0, 0, 0, 0
 	}
 }
 
@@ -321,7 +322,11 @@ func (t *Terminal) runEndLine(s *core.Settle) string {
 	if s.Reason == core.SettleAborted {
 		return "── 중단됨"
 	}
-	line := fmt.Sprintf("── %s · 입력 %s / 출력 %s 토큰", s.Reason, formatTokens(t.tokIn), formatTokens(t.tokOut))
+	in := formatTokens(t.tokIn)
+	if t.tokIn > 0 {
+		in += " (캐시 " + percent(t.tokCache, t.tokIn) + ")"
+	}
+	line := fmt.Sprintf("── %s · 입력 %s / 출력 %s 토큰", s.Reason, in, formatTokens(t.tokOut))
 	if (s.Reason == core.SettleFailed || s.Reason == core.SettleGuard) && s.Err != nil {
 		line += " · " + sanitize(s.Err.Error())
 	}

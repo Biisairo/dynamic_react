@@ -172,7 +172,7 @@ func TestRenderRunEnd(t *testing.T) {
 		msgEnd(&contract.Usage{Input: 999, Output: 1000}), runEnd(core.SettleStopped, nil),
 		textDelta("partial"), runEnd(core.SettleAborted, nil),
 		runEnd(core.SettleFailed, errors.New("boom")), runEnd(core.SettleGuard, errors.New("limit")))
-	want := "hi\n── completed · 입력 12.4k / 출력 1.0k 토큰\n── stopped · 입력 999 / 출력 1.0k 토큰\npartial\n── 중단됨\n" +
+	want := "hi\n── completed · 입력 12.4k (캐시 2%) / 출력 1.0k 토큰\n── stopped · 입력 999 (캐시 0%) / 출력 1.0k 토큰\npartial\n── 중단됨\n" +
 		"── failed · 입력 0 / 출력 0 토큰 · boom\n── guard · 입력 0 / 출력 0 토큰 · limit"
 	if body(v) != want {
 		t.Fatalf("%q\nwant %q", body(v), want)

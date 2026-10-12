@@ -78,6 +78,7 @@ type surface struct {
 	onEvent func(Event)
 	gate    func(ctx context.Context, in GateInput) *contract.ToolResult
 	prefix  *prefixTable
+	stats   *statsTable
 }
 
 func (s *surface) active() bool { return s.onEvent != nil || s.gate != nil }
@@ -265,6 +266,10 @@ func (s *surface) wrap(fs []inject.FunctionSet) []inject.FunctionSet {
 	if f := last(func(f inject.FunctionSet) bool { return f.StreamEnd != nil }); f != nil {
 		inner := f.StreamEnd
 		f.StreamEnd = func(ctx *inject.StreamEndCtx, msg contract.Message) (core.StreamEndOut, []inject.StreamEndSignal, error) {
+			if msg.Usage != nil {
+				cfg, _ := sets.ParseConfig(ctx.Env().Config())
+				s.stats.record(ctx.Flow().SessionID(), ctx.Flow().RunID(), ctx.Request().Model(), cfg, *msg.Usage)
+			}
 			if rs := stateOf(ctx.Context()); rs != nil {
 				m := msg
 				s.emitRun(rs, Event{Kind: EventMessageEnd, Message: &m})
