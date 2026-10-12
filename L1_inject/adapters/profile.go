@@ -1,5 +1,7 @@
 package adapters
 
+import "strings"
+
 // API 는 provider 방언이다.
 type API string
 
@@ -53,20 +55,38 @@ func (f ThinkingFormat) valid() bool {
 	return false
 }
 
+// CacheControlKind 는 Chat 방언의 Anthropic 식 캐시 지점 조건이다 (AD-FR-54).
+type CacheControlKind string
+
+const (
+	CacheControlAnthropic       CacheControlKind = "anthropic"
+	CacheControlAnthropicModels CacheControlKind = "anthropic-models"
+)
+
+func (k CacheControlKind) valid() bool {
+	return k == "" || k == CacheControlAnthropic || k == CacheControlAnthropicModels
+}
+
+// on 은 model 요청에 캐시 지점을 붙일지다.
+func (k CacheControlKind) on(model string) bool {
+	return k == CacheControlAnthropic || k == CacheControlAnthropicModels && strings.HasPrefix(model, "anthropic/")
+}
+
 // Profile 은 provider 하나의 방언·주소·키·호환 옵션이다 (AD-FR-29).
 type Profile struct {
-	API                API            `json:"api"`
-	BaseURL            string         `json:"baseUrl"`
-	RequiresKey        bool           `json:"requiresKey"`
-	Lookup             LookupKind     `json:"lookup"`
-	CatalogID          string         `json:"catalogId"`
-	DeveloperRole      bool           `json:"developerRole"`
-	UsageInStreaming   bool           `json:"usageInStreaming"`
-	MaxTokensField     string         `json:"maxTokensField"`
-	Thinking           ThinkingFormat `json:"thinking"`
-	ReasoningField     string         `json:"reasoningField"`
-	ToolResultName     bool           `json:"toolResultName"`
-	EncryptedReasoning bool           `json:"encryptedReasoning"`
+	API                API              `json:"api"`
+	BaseURL            string           `json:"baseUrl"`
+	RequiresKey        bool             `json:"requiresKey"`
+	Lookup             LookupKind       `json:"lookup"`
+	CatalogID          string           `json:"catalogId"`
+	DeveloperRole      bool             `json:"developerRole"`
+	UsageInStreaming   bool             `json:"usageInStreaming"`
+	MaxTokensField     string           `json:"maxTokensField"`
+	Thinking           ThinkingFormat   `json:"thinking"`
+	ReasoningField     string           `json:"reasoningField"`
+	ToolResultName     bool             `json:"toolResultName"`
+	EncryptedReasoning bool             `json:"encryptedReasoning"`
+	CacheControl       CacheControlKind `json:"cacheControl"`
 }
 
 const (
@@ -106,7 +126,7 @@ func BuiltinProfiles() map[string]Profile {
 		return p
 	}
 	openrouter := chat("https://openrouter.ai/api/v1", false, "", ThinkOpenRouter)
-	openrouter.Lookup = LookupOpenRouter
+	openrouter.Lookup, openrouter.CacheControl = LookupOpenRouter, CacheControlAnthropicModels
 	deepseek := chat("https://api.deepseek.com", false, maxTokens, ThinkDeepSeek)
 	deepseek.ReasoningField = "reasoning_content"
 	return map[string]Profile{
@@ -166,5 +186,8 @@ func (pp ProfilePatch) apply(p Profile) Profile {
 	set(&p.ReasoningField, pp.ReasoningField)
 	setB(&p.ToolResultName, pp.ToolResultName)
 	setB(&p.EncryptedReasoning, pp.EncryptedReasoning)
+	if pp.CacheControl != nil {
+		p.CacheControl = *pp.CacheControl
+	}
 	return p
 }

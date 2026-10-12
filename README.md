@@ -29,7 +29,7 @@
              sets      function sets: base, require, cache,     (spec v0.9)
                        guard, truncate, resilient, verify,
                        aux model call, mode interface
-             adapters  dialects: Anthropic, Chat, Responses;    (spec v0.6)
+             adapters  dialects: Anthropic, Chat, Responses;    (spec v0.7)
                        provider profiles, model catalog
  ─────────────────────────────────────────────────────────────────
  L0_core     the core

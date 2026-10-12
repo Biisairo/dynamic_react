@@ -29,7 +29,11 @@ func (chatDialect) build(req contract.Request, p Profile, info record) ([]byte, 
 	if max > 0 {
 		body[p.MaxTokensField] = max
 	}
-	body["messages"] = chatMessages(req, p)
+	msgs, pos := chatMessages(req, p)
+	if p.CacheControl.on(req.Model.ID) {
+		chatCacheHints(msgs, pos, req.Options.CacheHints)
+	}
+	body["messages"] = msgs
 	if len(req.Tools) > 0 {
 		tools := make([]obj, len(req.Tools))
 		for i, t := range req.Tools {
@@ -71,8 +75,10 @@ func (chatDialect) build(req contract.Request, p Profile, info record) ([]byte, 
 
 const seeImage = "(see attached image)"
 
-func chatMessages(req contract.Request, p Profile) []obj {
+// chatMessages 는 Chat 메시지와, 요청 메시지마다 거기서 나온 마지막 Chat 메시지의 위치(없으면 -1)다.
+func chatMessages(req contract.Request, p Profile) ([]obj, []int) {
 	var msgs []obj
+	pos := make([]int, len(req.Messages))
 	if sys := joinText(req.System, "\n\n"); sys != "" {
 		role := "system"
 		if p.DeveloperRole {
@@ -81,7 +87,9 @@ func chatMessages(req contract.Request, p Profile) []obj {
 		msgs = append(msgs, obj{"role": role, "content": sys})
 	}
 	names := map[string]string{} // call id → 도구 이름 (RequiresToolResultName)
-	for _, m := range req.Messages {
+	for i, m := range req.Messages {
+		pos[i] = -1
+		n := len(msgs)
 		switch m.Role {
 		case contract.RoleUser, contract.RoleSystem:
 			if c := chatUserContent(m.Content); c != nil {
@@ -142,8 +150,59 @@ func chatMessages(req contract.Request, p Profile) []obj {
 				msgs = append(msgs, obj{"role": "user", "content": parts})
 			}
 		}
+		if len(msgs) > n {
+			pos[i] = len(msgs) - 1
+		}
 	}
-	return msgs
+	return msgs, pos
+}
+
+var cacheControl = obj{"type": "ephemeral"}
+
+// chatCacheHints 는 AD-FR-55 다: 힌트 위치에 Anthropic 식 cache_control 을 붙인다.
+func chatCacheHints(msgs []obj, pos []int, hints []contract.CacheHint) {
+	first := 0 // system 을 뺀 첫 메시지
+	if len(msgs) > 0 && (msgs[0]["role"] == "system" || msgs[0]["role"] == "developer") {
+		first = 1
+	}
+	for _, h := range hints {
+		switch h.Target {
+		case contract.CacheSystem:
+			if first == 1 {
+				markText(msgs[0])
+			}
+		case contract.CacheMessage:
+			at := -1
+			for j := min(h.Index, len(pos)-1); j >= 0 && at < 0; j-- {
+				at = pos[j]
+			}
+			for ; at >= first; at-- {
+				if markText(msgs[at]) {
+					break
+				}
+			}
+		}
+	}
+}
+
+// markText 는 m 의 마지막 text 파트에 cache_control 을 붙인다. 문자열 content 는 파트 하나로 바꾼다. 텍스트가 없으면 false.
+func markText(m obj) bool {
+	switch c := m["content"].(type) {
+	case string:
+		if c == "" {
+			return false
+		}
+		m["content"] = []obj{{"type": "text", "text": c, "cache_control": cacheControl}}
+		return true
+	case []obj:
+		for i := len(c) - 1; i >= 0; i-- {
+			if c[i]["type"] == "text" {
+				c[i]["cache_control"] = cacheControl
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // chatUserContent 는 text 만이면 문자열, 이미지가 있으면 파트 배열이다. 비면 nil.

@@ -17,18 +17,19 @@ type Config struct {
 
 // ProfilePatch 는 프로필 부분 덮어쓰기다. 새 provider 는 api·baseUrl 이 필수다.
 type ProfilePatch struct {
-	API                *API            `json:"api,omitempty"`
-	BaseURL            *string         `json:"baseUrl,omitempty"`
-	RequiresKey        *bool           `json:"requiresKey,omitempty"`
-	Lookup             *LookupKind     `json:"lookup,omitempty"`
-	CatalogID          *string         `json:"catalogId,omitempty"`
-	DeveloperRole      *bool           `json:"developerRole,omitempty"`
-	UsageInStreaming   *bool           `json:"usageInStreaming,omitempty"`
-	MaxTokensField     *string         `json:"maxTokensField,omitempty"`
-	Thinking           *ThinkingFormat `json:"thinking,omitempty"`
-	ReasoningField     *string         `json:"reasoningField,omitempty"`
-	ToolResultName     *bool           `json:"toolResultName,omitempty"`
-	EncryptedReasoning *bool           `json:"encryptedReasoning,omitempty"`
+	API                *API              `json:"api,omitempty"`
+	BaseURL            *string           `json:"baseUrl,omitempty"`
+	RequiresKey        *bool             `json:"requiresKey,omitempty"`
+	Lookup             *LookupKind       `json:"lookup,omitempty"`
+	CatalogID          *string           `json:"catalogId,omitempty"`
+	DeveloperRole      *bool             `json:"developerRole,omitempty"`
+	UsageInStreaming   *bool             `json:"usageInStreaming,omitempty"`
+	MaxTokensField     *string           `json:"maxTokensField,omitempty"`
+	Thinking           *ThinkingFormat   `json:"thinking,omitempty"`
+	ReasoningField     *string           `json:"reasoningField,omitempty"`
+	ToolResultName     *bool             `json:"toolResultName,omitempty"`
+	EncryptedReasoning *bool             `json:"encryptedReasoning,omitempty"`
+	CacheControl       *CacheControlKind `json:"cacheControl,omitempty"`
 }
 
 // ModelPatch 는 모델 하나의 수치다 (카탈로그 1순위, R11).
@@ -56,6 +57,9 @@ func ParseConfig(b []byte) (Config, error) {
 		}
 		if p.Thinking != nil && !p.Thinking.valid() {
 			return Config{}, fmt.Errorf("adapters: config: provider %q: unknown thinking %q", name, *p.Thinking)
+		}
+		if p.CacheControl != nil && !p.CacheControl.valid() {
+			return Config{}, fmt.Errorf("adapters: config: provider %q: unknown cacheControl %q", name, *p.CacheControl)
 		}
 		if _, ok := builtin[name]; !ok && (p.API == nil || p.BaseURL == nil) {
 			return Config{}, fmt.Errorf("adapters: config: new provider %q needs api and baseUrl", name)
