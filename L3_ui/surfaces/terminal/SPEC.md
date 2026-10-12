@@ -1,8 +1,8 @@
 # terminal — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.7 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26, R27, R29)
+- 버전: 0.8 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26, R27, R29, R30)
 - 의존 명세: `L2_harness/agent/SPEC.md` v0.4 (3.4~3.12), `L2_harness/SPEC.md` v0.8 (3.6a Event)
 - 사용하는 쪽: `L3_ui/cmd/dr` (`L3_ui/cmd/dr/SPEC.md`)
 
@@ -159,7 +159,7 @@ var ErrNotTerminal error
 | TM-FR-29 | `approval` 줄 (Approve 를 거친 결정과 규칙 거부 모두): Decision `allow` → `✓ 이번만 허용`, `allow_session` → `✓ 이 세션 동안 허용`, `deny` → `✗ 거부: <Reason>`, `rule_deny` → `✗ 규칙 거부: <Rule>` |
 | TM-FR-30 | `retry` 줄: `↻ 재시도 <Attempt>회째 — <Delay 를 초 단위, 소수 첫째 자리까지>s 후 (<Error.Message>)` |
 | TM-FR-31 | `compaction` 줄: Phase start → `⋯ 컨텍스트 압축 중`, end → Err 가 nil 이면 `✓ 압축 완료`, 아니면 `✗ 압축 실패: <Err>` |
-| TM-FR-32 | `run_end` 줄: `── <Settle.Reason> · 입력 <n> / 출력 <n> 토큰`. 수는 1000 미만이면 그대로, 이상이면 `12.3k`(소수 첫째 자리, 반올림). `failed`·`guard` 면 ` · <Settle.Err>` 를 붙인다. `aborted` 면 `── 중단됨` 만. 합계는 줄을 그린 뒤 0 으로 (연쇄 run 마다 따로) |
+| TM-FR-32 | `run_end` 줄: `── <Settle.Reason> · 입력 <n> / 출력 <n> 토큰`. 입력 합이 0 보다 크면 입력 수 뒤에 ` (캐시 <p>%)` 를 붙인다 — p = 그 run 의 `message_end` Usage.CacheRead 합 ÷ 입력 합, 정수 반올림 (R30). 수는 1000 미만이면 그대로, 이상이면 `12.3k`(소수 첫째 자리, 반올림). `failed`·`guard` 면 ` · <Settle.Err>` 를 붙인다. `aborted` 면 `── 중단됨` 만. 합계는 줄을 그린 뒤 0 으로 (연쇄 run 마다 따로) |
 | TM-FR-33 | `message_start`·`turn_end` 는 그리지 않는다 |
 | TM-FR-54 | `input` (R25): Message ID 가 이 Terminal 이 `Start`·`Steer`·`FollowUp` 으로 보낸 메시지(이미 TM-FR-23 으로 그림)면 그리지 않는다. 아니면(세트가 넣은 메시지) `» `(Color 면 노랑) + 텍스트 — text 블록을 줄바꿈으로 잇고 image 는 `[image]`, TM-FR-24 정리. 앞 20줄만 그리고 이어지는 줄은 `  ` 들여쓰기, 더 있으면 `  … +N줄 생략`(흐림). 보낸 메시지 ID 는 그 `input` 을 받으면 잊는다 |
 | TM-FR-59 | `mode` (R27): `── 모드 <From 또는 기본> → <To 또는 기본> (<Origin>)` + Reason 이 있으면 `: <Reason>` 한 줄(흐림) |
@@ -199,7 +199,36 @@ var ErrNotTerminal error
 | TM-FR-56 | `/set <name> on`·`/set <name> off`·`/set <name> to <n>`: 대기 상태에서만(아니면 `✗ 실행 중에는 세트를 바꿀 수 없습니다`). 지금 배치(`Agent.Sets()`)에서 그 이름의 켜짐을 바꾸거나, 그 세트를 빼서 n 번째(1부터, 1..세트 수) 자리에 넣은 배치로 `Agent.ArrangeSets` 를 부른다. 성공 `── 세트 <name> 켬`·`── 세트 <name> 끔`·`── 세트 <name> → <n>번` + ` (다음 run 부터, 저장됨)`, 에러 `✗ <에러>`. 모르는 이름 `✗ 없는 세트: <name> (/sets)`, 인자 형식이 틀리면(인자 수·on|off|to·n 이 정수가 아니거나 범위 밖) `✗ 사용법: /set <name> on|off|to <n>` |
 | TM-FR-57 | `/modes` (R27): 어느 상태에서나. `Agent.Modes()` 가 비면 `── 등록된 모드 없음`. 아니면 모드마다 한 줄 `<* 또는 공백> <name>  <Description>`(활성 모드에 `*`, 줄은 `Width()` 로 자름), 끝에 `  (지금: <name 또는 기본>[ "<arg 앞 40자>"] · 예약: <to 또는 기본 또는 없음>)` — 세션이 아직 없으면 `(지금: 기본 · 예약: 없음)` |
 | TM-FR-58 | `/mode <name> [arg…]` = `Agent.EnterMode(sid, name, arg)`(arg = name 뒤의 나머지 원문, 앞뒤 공백 제거), `/mode off` = `Agent.ExitMode(sid)`. 대기 상태에서만(아니면 `✗ 실행 중에는 모드를 바꿀 수 없습니다`). 세션이 아직 없으면 `✗ 첫 메시지를 보낸 뒤에 쓸 수 있습니다`. 성공 `── 모드 예약: <name 또는 기본> (다음 메시지부터)`, 에러 `✗ <에러>`, 인자 없음 `✗ 사용법: /mode <name> [arg] | /mode off` |
+| TM-FR-61 | `/status` (R30): 어느 상태에서나, 읽기만. 3.8a 의 형식으로 줄을 덧붙인다. `/help` 명령 목록에 `/status` 를 넣는다 |
 | TM-FR-47 | 그 밖의 `/…`: `✗ 알 수 없는 명령: /<이름> (/help)` |
+
+### 3.8a `/status` 형식 (R30, TM-FR-61)
+
+각 줄은 `Width()` 로 자른다. 수는 TM-FR-32 의 형식(1000 미만 그대로, 이상 `12.3k`)이다. 비율은 정수로 반올림한다.
+
+```text
+── 상태
+   세션 <sid | 없음> · 모델 <Agent.Model() | 없음>[ (마지막 요청 <provider>/<id>)] · 모드 <name | 기본>
+   세트 <on sets, layout order>
+   도구 <Agent.ToolNames()>
+   컨텍스트 <Context> / <Window> (<pct>%) · 압축 기준 <Threshold>
+   마지막 run 요청 <n> · 입력 <Prompt> · 캐시 <CacheRead> (<hit>%) · 효율 <eff>%
+   세션 누적 요청 <n> · 입력 <Prompt> · 캐시 <CacheRead> (<hit>%) · 효율 <eff>%
+   (효율 = 캐시 ÷ 직전 요청 크기, 같은 모델 기준 근삿값)
+```
+
+| 경우 | 표시 |
+|---|---|
+| 모델 괄호 | `Stats.Model` 이 설정 모델과 다를 때만 |
+| 모드 | 세션이 없거나 `ModeStatus` 에러면 기본 |
+| 세션이 없거나 `Stats` 가 false | 도구 줄 다음에 `   기록 없음` 한 줄로 끝 |
+| Window 0 | `컨텍스트 <Context> / 창 크기 모름` |
+| Threshold 0 (Window 는 있음) | `압축 기준` 대신 `압축 꺼짐` |
+| Prompt 0 | 캐시 비율 `(-)` |
+| Ceiling 0 | `효율 -` |
+| 마지막 줄 | 흐림 |
+
+hit = CacheRead ÷ Prompt, eff = CeilingRead ÷ Ceiling.
 
 ### 3.9 모델 선택 (R20)
 
@@ -227,6 +256,7 @@ var ErrNotTerminal error
 | TM-FR-11 | 입력 줄 편집기 단위 테스트: 삽입·삭제·이동·줄 처음/끝·여러 줄·기록 ↑↓·한글(rune) |
 | TM-FR-19~22 | 렌더 단위 테스트: 가짜 Out 의 바이트를 가상 화면(행 배열 + 커서, 처리 시퀀스는 이 모듈이 쓰는 것만)으로 재생해 최종 화면을 비교. 꼬리 이어 붙이기, 넓은 문자 줄 높이, 줄 넘김, Color false 면 SGR 없음 |
 | TM-FR-57~59 | 가짜 LLM·실제 agent(모드 등록): `/modes` 형식(활성 `*`·지금·예약), 모드 없음 줄, `/mode goal 목표 문구` → 예약 줄 → 다음 메시지에서 `── 모드 기본 → goal (user)`, `/mode off`, 실행 중 거부, 세션 전 거부, 모르는 이름 `✗`, `/help` 에 두 명령 |
+| TM-FR-32, 61 | run_end 의 캐시 비율(CacheRead 있음·없음·입력 0), `/status`: 세션 없음 → 기록 없음, 가짜 LLM(usage 에 cached) + 실제 agent 로 두 run 뒤 세션·모델·모드·세트·도구·컨텍스트·마지막 run·세션 누적 줄, 창 크기 모름·압축 꺼짐·모델 괄호·좁은 폭·흐림(줄 단위 테스트), `/help` 에 포함. 실행 중 호출은 상태 검사가 없는 것으로 코드 검토 |
 | TM-FR-60 | 이벤트 → 가상 화면: Part 네 종류의 문구, Expected 면 줄 없음, Color false 면 SGR 없음, 좁은 폭에서 자름 |
 | TM-FR-54 | 가짜 Agent 로: 자기가 보낸 입력의 `input` 은 두 번 그려지지 않음, 모르는 ID 의 `input` 은 `» ` 줄·여러 줄 들여쓰기·21줄 이상이면 `+N줄 생략`·이미지 `[image]`·제어 문자 정리·색 |
 | TM-FR-55~56 | 가짜 LLM·실제 agent 로: `/sets` 목록 형식(기본 구성 6줄), `/set guard off` → 저장됨 줄·`/sets` 에 off·설정 파일 반영, `/set guard to 1` → 순서, 실행 중 → 거부, 모르는 이름·형식 오류·범위 밖, harness 거부(`/set require off`) → `✗` 와 배치 그대로 |
@@ -257,6 +287,7 @@ var ErrNotTerminal error
 | R21 | TM-C2, TM-FR-16, 48~53 |
 | R27 | TM-FR-57~59 |
 | R29 | TM-FR-60 |
+| R30 | TM-FR-32, 61 |
 | 인터뷰 ①~⑧ | 3.2~3.8 |
 
 ---
@@ -271,6 +302,7 @@ var ErrNotTerminal error
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.8 | run_end 에 캐시 정보 없음, 상태 명령 없음 | run_end 의 ` (캐시 <p>%)` (TM-FR-32), `/status` (TM-FR-61) | R30 |
 | 0.7 | `prefix_break` 이벤트를 그리지 않음 (모르는 종류) | TM-FR-60 | R29 ④ |
 | 0.6 | 모드 명령 없음 | `/modes`·`/mode`(TM-FR-57·58), `mode` 이벤트 줄(TM-FR-59), `/help` 에 포함 | R27 |
 | 0.5 | 세트 명령 없음 | `/sets`·`/set` (TM-FR-55·56), `/help` 에 포함 | R26 ⑥ |

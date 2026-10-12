@@ -1,8 +1,8 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 1.5 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26, R27, R29)
+- 버전: 1.6 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26, R27, R29, R30)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
@@ -23,6 +23,7 @@ L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로**
   - 조립: `harness.New(Options)` → `Agent.Start` → `*core.Run` — 3.6
   - 주입: 함수 세트 목록과 부품(도구·저장소·시스템 프롬프트·요약기)을 생성 시점에 바꾸는 함수 — 3.6c (R22)
   - 프롬프트 캐시 접두 감지와 `prefix_break` 이벤트 — 3.6f (R29)
+  - 사용량 집계 (캐시·컨텍스트) — 3.6g (R30)
 - 제외 — 같은 L2 의 다른 모듈 (R17):
   - `Env` 의 OS 구현 (`os`·`os/exec`, 프로세스 그룹 kill, 임시 파일) → `L2_harness/osenv`
   - `ModelCaller` 생성 (adapters.Client, API 키 파일), 설정 파일·키 파일 해석 → `L2_harness/agent`
@@ -463,6 +464,39 @@ type PrefixBreak struct {
 | HN-FR-77 | 같은 지문으로 `model.call` 이 다시 불리면(`recall`·`reselect`) 그때의 모델 키로 다시 비교한다. 같은 모델로 같은 요청을 다시 보내면 이벤트가 없다 |
 | HN-FR-78 | 한계: `model.call` 을 감싸서 요청을 고치는 세트, 어댑터의 직렬화 차이, 요청 옵션(`Options` — thinking 설정 등, provider 에 따라 캐시에 영향), provider 측 캐시 만료는 감지하지 않는다. 이벤트는 접두가 바뀌었다는 뜻이고 캐시 적중을 보장하거나 측정하지 않는다 (적중은 `Usage.CacheRead`) |
 
+### 3.6g 사용량 집계 (R30)
+
+surface 의 상태 표시(`/status`)에 쓸 값을 세션별로 모은다. 3.6f 와 같은 래핑 자리에서, 같은 조건(`OnEvent` 가 nil 이 아닐 때)으로 한다.
+
+```go
+type UsageTotals struct {
+    Requests    int // 센 요청 수
+    Prompt      int // 요청마다 Input + CacheRead + CacheWrite 의 합
+    CacheRead   int
+    Ceiling     int // 효율 계산에 쓴 요청들의 상한 합 (HN-FR-81)
+    CeilingRead int // 그 요청들의 CacheRead 를 각자 상한으로 자른 값의 합
+}
+
+type Stats struct {
+    Model     contract.ModelRef // 마지막으로 센 요청의 모델
+    Context   int               // 마지막으로 센 요청의 Prompt + Output
+    Window    int               // 그 요청 모델의 ContextWindow (0 = 모름)
+    Threshold int               // 압축 기준 (HN-FR-82), 0 = 꺼짐 또는 모름
+    LastRun   UsageTotals       // 그 세션에서 가장 최근에 센 run
+    Session   UsageTotals       // 이 Agent 가 만들어진 뒤 그 세션 누적
+}
+
+func (a *Agent) Stats(sessionID string) (Stats, bool) // false = 기록 없음
+```
+
+| id | 요구사항 |
+|---|---|
+| HN-FR-79 | 맨 위 `stream.end` 진입 때 확정 메시지의 `Usage` 가 nil 이 아니면 그 세션의 요청 하나로 센다. 모델 = `ctx.Request().Model()`(이번 호출에서 고른 모델). Prompt = `Usage.Prompt()` |
+| HN-FR-80 | `LastRun` 은 그 세션에서 센 요청의 RunID 가 직전과 다르면 0 에서 다시 시작한다. `Session` 은 이 Agent 의 수명 동안 누적한다 |
+| HN-FR-81 | **효율 상한**: 같은 세션·같은 모델 키(Provider·ID)의 직전에 센 요청의 Prompt p 가 있으면 `Ceiling += p`, `CeilingRead += min(CacheRead, p)` (LastRun·Session 둘 다). 그다음 그 키의 p 를 이번 Prompt 로 바꾼다. 세션·모델의 첫 요청은 상한에 넣지 않는다 |
+| HN-FR-82 | `Threshold` = `Window − sets.ReserveTokens(cfg, Window)` (cfg = 그 run 의 설정, `sets.ParseConfig`). 설정의 `compaction.enabled` 가 false 이거나 요약기가 없거나(HN-FR-38 ④) Window 가 0 이면 0. 배치에서 resilient 세트가 꺼져 있는지는 보지 않는다 |
+| HN-FR-83 | `Stats` 는 복사본을 돌려준다. 기록은 Agent 메모리에만 두고 저장하지 않는다. 동시 run·조회에 안전하다. 센 요청이 없는 세션은 false |
+
 ### 3.7 비기능
 
 | id | 요구사항 |
@@ -497,6 +531,7 @@ type PrefixBreak struct {
 | HN-FR-68~70 | 도구 spec(enum·설명), 모델 진입 거부(활성 모드 있음·예약 있음) → error 결과, ToolSet 으로 제거, Modes 비면 도구 없음 |
 | HN-FR-71~72 | Deps.Modes 의 Origin 이 set, Complete 가 aux 모델·폴백·MaxOutputTokens 로 요청·도구 없음, 잘못된 config 에러 |
 | HN-FR-73~78 | 가짜 ModelCaller·`OnEvent` 로: 덧붙기만 하는 3턴 → 이벤트 없음 / 세션 첫 요청 → 없음 / 위층 세트가 2턴째 tools 를 바꿈 → Part tools·Kept 0·Total / system 을 바꿈 → Part system / tools·system 이 같고 메시지 중간이 바뀜 → Part messages·At·Kept·Expected false / `context.maintain` 이 편집(replace_range)을 낸 턴 → Part messages·Edits [replace_range]·Expected true / Ephemeral 꼬리만 바뀜 → 없음 / 모드 진입·이탈에서 tools 를 바꾸는 Push 세트 → 진입 턴과 이탈 뒤 첫 턴에 Part tools / 모델 A → B → A(설정·`reselect`) → B 첫 요청에 Part model, A 로 돌아오면 덧붙기뿐이면 없음 / 다음 run(같은 세션)의 첫 요청은 직전 run 의 기준과 비교 / `Arrange` 로 tools 를 바꾸는 세트를 켬 → 다음 run 첫 요청에 Part tools / `recall` → 없음 / ID·Timestamp 만 다른 짝 복구 메시지 → 없음 / 이벤트가 `message_start` 앞 / 동시 run(-race). `OnEvent` nil 이면 감싸지 않는 것(HN-FR-73)은 관찰할 수단이 없어 코드 검토로 확인 (3.6a 의 `OnEvent == nil` 분기 뒤에 둠) |
+| HN-FR-79~83 | 가짜 ModelCaller(Usage 에 CacheRead 포함)·`OnEvent` 로: 기록 없음 → false / 한 run 3요청 → Requests·Prompt·CacheRead 합, 첫 요청은 상한 제외, 둘째부터 상한 = 직전 Prompt, CacheRead 가 상한보다 크면 자름 / 다음 run → LastRun 다시 시작·Session 누적 / 다른 세션과 섞이지 않음 / 모델 A → B → A: B 첫 요청은 상한 제외, A 로 돌아오면 A 의 직전 Prompt 가 상한 / Context = Prompt + Output, Window, Threshold(기본 reserve·설정 reserve·`compaction.enabled` false → 0) / Usage 없는 응답은 세지 않음 / 동시 run(-race) |
 | HN-NFR-02~04 | 종단 시나리오, `go list -deps` |
 
 ---
@@ -512,6 +547,7 @@ type PrefixBreak struct {
 | R23 | 1.2, 3.1 FileInfo·HN-FR-04, 3.2, 3.2a (HN-FR-43~50), HN-FR-07, 09 |
 | R27 | 3.6e (HN-FR-55~72), HN-FR-31 (mode 이벤트) |
 | R29 | 3.6f (HN-FR-73~78), HN-FR-31 (prefix_break 이벤트) |
+| R30 | 3.6g (HN-FR-79~83) |
 | sets ST-FR-19, 35 | HN-C4, HN-FR-21 |
 | sets ST-FR-24, 27, 36 | 3.5 |
 | 자격증명 보호 | HN-C2 |
@@ -533,6 +569,7 @@ type PrefixBreak struct {
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 1.6 | 사용량 조회 없음 | `Stats`(3.6g): 세션별 요청·입력·캐시·효율 상한, 마지막 요청의 컨텍스트·창·압축 기준. `OnEvent` 가 nil 이면 기록 없음 | R30 |
 | 1.5 | 이벤트 13종. 요청 접두가 바뀌어도 알 방법 없음 | 접두 감지(3.6f)와 `prefix_break` 이벤트(14번째). `OnEvent` 가 nil 이면 이전과 같음 | R29 |
 | 1.4 | 세트 배치는 Agent 하나, run 도중 바뀌지 않음. 이벤트 12종 | 모드(3.6e): 세션별 모드·예약·권한, 턴 경계에서 배치 교체, `mode` 도구, `mode` 이벤트, `Complete`. 모드를 등록하지 않으면 이전과 같음 | R27 |
 | 1.3 | `Sets func(Deps) []inject.FunctionSet`, `DefaultSets` = [Base, Resilient], 세트는 `New` 에서 고정 | `Sets` 는 `[]SetEntry`(기본 켜짐 포함), `Layout`, `DefaultSets` = base·require·cache·guard·truncate·resilient, `Agent.Sets`·`Arrange`(run 사이 배치 변경, 3.6d) | R26 |
