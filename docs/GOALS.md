@@ -98,7 +98,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | VF-2 | Anthropic·OpenAI 방언의 실제 응답 검증 | 열림 (API 키·크레딧 필요) | impl-06 |
 | VF-3 | provider overflow 에러 복구를 실제 모델로 확인 (지금은 가짜 서버로만 검증) | 열림 | impl-06 |
 | VF-5 | R29 새 코드의 뮤테이션 검사: harness `prefix.go` 의 `check`·`compare`, surface 래핑, sets `StableLen`·`Cache`, terminal `prefix_break` 줄 | 해소 (29/29 KILLED. 처음 살아남은 4개 — 도구 결과 해시, 편집 + tools 의 Expected, Kept 표시, 모델 줄 흐림 — 는 테스트를 보강해 잡음) | R29 |
-| VF-6 | terminal `TestRunCompact` 가 부하 중 한 번 실패했다 (전체 `-race` 실행에서 다른 테스트가 10초 멈춘 때). 5회 반복·전체 2회에서는 재현 안 됨. 대기 조건 보강 여부 | 열림 | R30 작업 중 관찰 |
+| VF-6 | terminal `TestRunCompact` 가 부하 중 한 번 실패했다 (전체 `-race` 실행에서 다른 테스트가 10초 멈춘 때). 5회 반복·전체 2회에서는 재현 안 됨. 대기 조건 보강 여부 | 해소 (원인: `screen.draw` 는 지우기와 다시 그리기를 여러 번의 Write 로 나눠 보낸다. 그래서 "화면에 실행 중 상태줄이 없음"으로 대기를 판정하면 지운 직후의 화면에서 잘못 통과했다. 다른 모듈 부하 중 40회 반복으로 재현함. 고침: 테스트 헬퍼 `idle()` 이 `t.st == stIdle` 을 직접 보게 하고, 같은 판정 5곳을 바꿈. 제품 코드는 그대로. 수정 뒤 같은 조건 240회 실패 없음) | R30 작업 중 관찰 |
 | VF-7 | R30~R33 새 코드의 뮤테이션 검사: harness `stats.go`, agent `ToolNames`, terminal `status.go`·run_end 비율, adapters `chatCacheHints`·`markText`·`setCacheKey`, sets 캐시 키 | 해소 (77개 중 KILLED 76, 등가 1. 처음 살아남은 11개 중 9개 — 요약기 없음·Window 0 의 Threshold, hit%·효율의 분자 혼동, developer 역할, system 없는 system 힌트, system 까지 거슬러 오름, 빈 문자열 content, `anthropic/` 의 `/` — 는 테스트를 보강해 잡음. 등가 2개(H4·H10, `add` 의 `hasCeiling` 분기)는 분기를 없애 코드를 줄임 — 동작 같음. 남은 등가 1개는 agent `ToolNames` 의 `err != nil` 검사: `sets.ParseConfig` 가 에러면 `Config{}` 를 돌려줘 결과가 같지만, 다른 모듈의 구현 세부에 기대지 않으려고 둠) | R30~R33 |
 | VF-4 | 관측 불가 뮤턴트 2개: agent `NoRemoteCatalog` 전달, terminal 종료 중 경합 | 보류 (외부 네트워크·경합이라 관측 불가) | impl-05, impl-07 |
 

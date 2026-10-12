@@ -232,6 +232,16 @@ func (h *harnessT) waitFn(desc string, ok func(string) bool) {
 	h.t.Fatalf("screen never matched %q:\n%s", desc, h.scr.text())
 }
 
+// idle 은 대기 상태를 기다린다. 다시 그리는 도중의 화면에는 상태줄이 잠깐 없으므로 화면 대신 상태를 본다.
+func (h *harnessT) idle() {
+	h.t.Helper()
+	h.waitFn("idle", func(string) bool {
+		h.term.mu.Lock()
+		defer h.term.mu.Unlock()
+		return h.term.st == stIdle
+	})
+}
+
 func (h *harnessT) waitCount(want string, n int) {
 	h.t.Helper()
 	h.waitFn(want, func(s string) bool { return strings.Count(s, want) >= n })
@@ -512,7 +522,7 @@ func TestRunSteerFollowUp(t *testing.T) {
 	if !strings.Contains(l.body(1), "change") || !strings.Contains(l.body(2), "later") {
 		t.Fatalf("bodies\n%s\n%s", l.body(1), l.body(2))
 	}
-	h.waitFn("idle", func(s string) bool { return !strings.Contains(s, statusRun) })
+	h.idle()
 }
 
 // TM-FR-15, 47: // 이스케이프, 알 수 없는 명령, /help.
@@ -678,14 +688,14 @@ func TestRunCompact(t *testing.T) {
 	h.wait("✗ 압축할 세션이 없습니다")
 	h.typ("hi\r")
 	h.wait("── completed")
-	h.waitFn("idle", func(s string) bool { return !strings.Contains(s, statusRun) })
+	h.idle()
 	h.typ("/compact\r")
 	h.wait("압축할 구간이 없습니다")
 	for i, p := range []string{"a", "b"} {
 		h.typ(p + strings.Repeat(" abcd", 50) + "\r")
 		h.waitCount("── completed", i+2)
 	}
-	h.waitFn("idle", func(s string) bool { return !strings.Contains(s, statusRun) })
+	h.idle()
 	h.typ("/compact\r")
 	h.wait("⋯ 컨텍스트 압축 중\n✓ 압축 완료")
 
@@ -698,7 +708,7 @@ func TestRunCompact(t *testing.T) {
 	h.wait("✗ 실행 중에는 세션을 바꿀 수 없습니다")
 	gate <- struct{}{}
 	h.waitCount("── completed", 4)
-	h.waitFn("idle", func(s string) bool { return !strings.Contains(s, statusRun) })
+	h.idle()
 	h.typ("/compact\r")
 	h.wait(statusComp)
 	h.typ("x")
@@ -826,7 +836,7 @@ func TestRunQuitWhileCompacting(t *testing.T) {
 			h.typ(p + strings.Repeat(" abcd", 50) + "\r")
 			h.waitCount("── completed", i+1)
 		}
-		h.waitFn("idle", func(s string) bool { return !strings.Contains(s, statusRun) })
+		h.idle()
 		l.block()
 		h.typ("/compact\r")
 		h.wait(statusComp)
