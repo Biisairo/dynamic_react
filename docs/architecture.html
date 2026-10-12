@@ -417,6 +417,7 @@ footer{border-top:1px solid var(--hair);margin-top:4rem;padding-top:1rem;color:v
         <tr><td><code>base</code></td><td><code>inbox.consumed</code>(공개, Steer 판단), <code>edits.saved</code></td></tr>
         <tr><td><code>resilient</code></td><td>재시도·압축 진행 (run 단위)</td></tr>
         <tr><td><code>verify</code></td><td><code>progress</code> 검증 횟수·마지막 결과</td></tr>
+        <tr><td><code>repeat</code></td><td><code>progress</code> 연속 수·직전 지문 (run 단위)</td></tr>
         <tr><td><code>goal</code></td><td><code>progress</code> 목표·판정 턴 수 (예시)</td></tr>
         <tr><td><code>harness.mode</code></td><td><code>active</code>·<code>arg</code>·<code>pending</code> (harness 가 씀, 세트 이름으로 쓸 수 없음)</td></tr>
       </table>
@@ -471,7 +472,7 @@ footer{border-top:1px solid var(--hair);margin-top:4rem;padding-top:1rem;color:v
 </section>
 
 <footer>
-  기준: 저장소 <code>dynamic_react</code> 커밋 <code>9177f68</code>(R27) 이후, 스펙 core v0.2 · inject v0.5 · sets v0.8 · harness v1.4 · agent v0.9 · terminal v0.6. 결정 기록 <code>docs/DECISIONS.md</code> (D1~D16, R1~R28), 사용법 <code>docs/INJECT.md</code>. 작성 2026-10-12.
+  기준: 프로젝트 종료 시점(R42), 스펙 contract v0.5 · core v0.2 · inject v0.5 · sets v0.13 · adapters v0.8 · harness v1.11 · agent v0.11 · terminal v0.10. 그림의 카드 배치는 R27 시점 그대로다. 그 뒤에 더한 것(캐시 접두 R29, 사용량·<code>/status</code> R30, 보조 모델 통로 <code>Deps.Aux</code> R39, 주입용 <code>repeat</code> 카드 R41)은 글로만 적었다. 결정 기록 <code>docs/DECISIONS.md</code> (D1~D16, R1~R42), 사용법 <code>docs/INJECT.md</code>. 작성 2026-10-12.
 </footer>
 </main>
 
@@ -1214,18 +1215,18 @@ const LBAND = [
 ];
 const LCOL = {3:"#6E5A8F", 2:"#3B5BA9", 1:"#1F8A8A", 0:"#5E6B78"};
 const TILES = {
-  terminal:{L:3, x:200, y:30,  w:300, h:118, t:"surfaces/terminal", q:"입력·승인·이벤트 그리기", v:"v0.6"},
+  terminal:{L:3, x:200, y:30,  w:300, h:118, t:"surfaces/terminal", q:"입력·승인·이벤트 그리기", v:"v0.10"},
   dr:      {L:3, x:515, y:30,  w:165, h:118, t:"cmd/dr", q:"대화형 진입점", v:"v0.3"},
   drprint: {L:3, x:695, y:30,  w:165, h:118, t:"cmd/dr-print", q:"한 번 실행 CLI", v:"v0.2"},
   examples:{L:3, x:875, y:30,  w:175, h:118, t:"examples/*", q:"주입 예시 셋", v:"inject·verify·modes"},
-  agent:   {L:2, x:200, y:190, w:270, h:198, t:"agent", q:"설정·키로 조립, run 제어", v:"v0.9"},
-  harness: {L:2, x:485, y:190, w:400, h:198, t:"harness", q:"카드 고르기·순서·래핑·모드·부품", v:"v1.4"},
+  agent:   {L:2, x:200, y:190, w:270, h:198, t:"agent", q:"설정·키로 조립, run 제어", v:"v0.11"},
+  harness: {L:2, x:485, y:190, w:400, h:198, t:"harness", q:"카드 고르기·순서·래핑·모드·부품", v:"v1.11"},
   osenv:   {L:2, x:900, y:190, w:150, h:198, t:"osenv", q:"실제 파일·셸", v:"v0.3"},
   inject:  {L:1, x:200, y:430, w:300, h:182, t:"inject", q:"카드 규격과 끼우는 장치", v:"v0.5"},
-  sets:    {L:1, x:515, y:430, w:330, h:182, t:"sets", q:"미리 만든 카드들", v:"v0.8"},
-  adapters:{L:1, x:860, y:430, w:190, h:182, t:"adapters", q:"모델과 말하기", v:"v0.6"},
+  sets:    {L:1, x:515, y:430, w:330, h:182, t:"sets", q:"미리 만든 카드들", v:"v0.13"},
+  adapters:{L:1, x:860, y:430, w:190, h:182, t:"adapters", q:"모델과 말하기", v:"v0.8"},
   core:    {L:0, x:200, y:654, w:610, h:152, t:"core", q:"22칸 틀과 신호 규칙", v:"v0.2"},
-  contract:{L:0, x:825, y:654, w:225, h:152, t:"contract", q:"오가는 값의 모양", v:"v0.4"},
+  contract:{L:0, x:825, y:654, w:225, h:152, t:"contract", q:"오가는 값의 모양", v:"v0.5"},
 };
 const MODINFO = {
   core:{does:["22칸의 순서와 신호 13종의 규칙을 가진다.","칸마다 <code>Dispatcher.Dispatch(step)</code> 를 부른다. 칸 안에서 무엇을 하는지는 모른다.","run 기록, 스트림 소비, 도구 동시 실행, 전이 수 상한 같은 기계적인 일만 한다.","정책은 하나도 없다 (D1). contract 와 표준 라이브러리만 쓴다."],
@@ -1234,17 +1235,17 @@ const MODINFO = {
     card:"카드 함수가 주고받는 값의 모양.", api:"contract.Message{Role, Content []Block, …}\ncontract.Request{Model, System, Messages, Tools}", deps:[]},
   inject:{does:["<b>카드 규격</b>: <code>FunctionSet</code> 은 22칸 필드를 가진 구조체이고, 맡을 칸만 채운다.","<b>끼우기</b>: <code>Bind</code> 가 카드를 순서대로 겹쳐 Dispatcher 하나로 만든다. 빈 칸이 있으면 거부한다.","<b>손잡이</b>: 칸마다 봉인된 ctx 를 준다. 그 칸에 허용된 조회·신호만 보이고, <code>ctx.Next()</code> 로 아래 카드를 부른다.","카드별 상태 이름공간, run 상태 공유 표(RunTable)."],
     card:"맨 위 그림의 'inject.Bind(…)' 주입선.", api:"d, err := inject.Bind(base, require, …)\n// 뒤의 카드가 위 층\n// d 가 core.Dispatcher 를 구현한다", deps:["core","contract"]},
-  sets:{does:["기본 카드: <code>base</code>(저장·입력함·도구 실행), <code>require</code>(요청·모델 호출·턴 루프), <code>cache</code>, <code>guard</code>, <code>truncate</code>, <code>resilient</code>.","끼워 쓰는 카드: <code>verify</code>(셸 명령 검증).","판단기 도구: <code>AuxModel</code>·<code>Complete</code>(보조 모델 호출), <code>ModesOf</code>(모드 통로).","카드의 <b>순서는 모른다</b>. 순서는 L2 가 정한다."],
+  sets:{does:["기본 카드: <code>base</code>(저장·입력함·도구 실행), <code>require</code>(요청·모델 호출·턴 루프), <code>cache</code>, <code>guard</code>, <code>truncate</code>, <code>resilient</code>.","끼워 쓰는 카드: <code>verify</code>(셸 명령 검증), <code>repeat</code>(같은 tool call 반복 감지, R41).","하네스로 가는 통로: <code>AuxOf</code>(보조 모델), <code>ModesOf</code>(모드). 카드는 자기 루프의 제어만 갖는다 (R39).","카드의 <b>순서는 모른다</b>. 순서는 L2 가 정한다."],
     card:"맨 위 그림의 카드들.", api:"base := sets.Base(deps)   // inject.FunctionSet\nguard := sets.Guard(deps)", deps:["inject","core","contract"]},
   adapters:{does:["세 방언: <code>anthropic-messages</code>, <code>openai-chat</code>, <code>openai-responses</code>.","provider 프로필 24개와 모델 카탈로그.","contract 에만 의존하는 단독 LLM 클라이언트라서 루프 없이도 쓸 수 있다."],
     card:"require 카드의 9번 이빨(model.call)이 부르는 장치.", api:"c := adapters.New(adapters.Options{…})\nfor ev := range c.Call(ctx, req) { … }", deps:["contract"]},
-  harness:{does:["<b>부품을 만든다</b>: 도구 7종, 세션 저장소(JSONL), 시스템 프롬프트, 요약기. 카드는 이것을 <code>Deps</code> 로 받는다.","<b>카드를 고르고 순서를 정한다</b>: <code>DefaultSets</code>, 배치(<code>/set</code>).","<b>바깥을 감싼다</b>: 어떤 카드를 끼워도 승인과 이벤트가 유지된다.","<b>모드</b>: 모드마다 묶음을 미리 Bind 하고, run 스위처가 turn.start 에서 고른다.","실제 파일·네트워크는 만지지 않는다. Env 와 ModelCaller 로 받는다."],
+  harness:{does:["<b>부품을 만든다</b>: 도구 7종, 세션 저장소(JSONL), 시스템 프롬프트, 요약기. 카드는 이것을 <code>Deps</code> 로 받는다.","<b>카드를 고르고 순서를 정한다</b>: <code>DefaultSets</code>, 배치(<code>/set</code>).","<b>바깥을 감싼다</b>: 어떤 카드를 끼워도 승인과 이벤트가 유지된다.","<b>모드</b>: 모드마다 묶음을 미리 Bind 하고, run 스위처가 turn.start 에서 고른다.","<b>루프 밖 기능</b>: 보조 모델 호출(<code>Complete</code>, 설정 <code>aux</code>), 도구 레지스트리, 캐시 접두 감지(<code>prefix_break</code>), 사용량 집계 (R29·R30·R39).","실제 파일·네트워크는 만지지 않는다. Env 와 ModelCaller 로 받는다."],
     card:"맨 위 그림의 선반, 카드 순서, 보라색 래핑, '끼운 묶음' 표시.", api:"h, _ := harness.New(ctx, harness.Options{\n  Env, Model, SessionDir,\n  Sets, Modes, OnEvent, Gate })", deps:["sets","inject","core"]},
   osenv:{does:["harness 의 Env(파일 읽기·쓰기·목록, 셸 실행)를 실제 OS 로 구현한다."],
     card:"base 카드의 17번 이빨(tool.execute)이 실행한 도구가 실제로 만지는 곳.", api:"env, _ := osenv.New(cwd, shellPath)", deps:["harness"]},
   agent:{does:["설정(<code>config.json</code>)과 키(<code>auth.json</code>)를 읽는다.","osenv·adapters·harness 를 조립해 완성된 에이전트를 만든다.","승인 규칙, run 제어(Start·Steer·FollowUp·Abort), 세션 잠금.","모델·키 선택, 세트 배치 저장, 모드 API(EnterMode·ExitMode), 보조 호출(Complete)."],
     card:"맨 위 그림 전체를 조립하고 run 을 거는 쪽.", api:"a, _ := agent.New(ctx, agent.Options{Sets, Modes, …})\nrun, _ := a.Start(ctx, sid, input)", deps:["harness","osenv","adapters"]},
-  terminal:{does:["줄 단위 대화 화면: 입력, 승인 묻기, 이벤트 그리기.","명령: /model /login /sets /set /modes /mode /sessions /resume /compact.","설정 파일을 직접 읽지 않는다. 모든 것은 agent 를 통한다 (R17)."],
+  terminal:{does:["줄 단위 대화 화면: 입력, 승인 묻기, 이벤트 그리기.","명령: /model /login /sets /set /modes /mode /status /sessions /resume /compact.","설정 파일을 직접 읽지 않는다. 모든 것은 agent 를 통한다 (R17)."],
     card:"맨 위 그림 밖의 버튼과 화면이 하는 일.", api:"t := terminal.New(terminal.Options{In, Out, Width})\nt.Run(ctx, a, terminal.Start{})", deps:["agent"]},
   dr:{does:["터미널을 열고 agent 를 만들어 terminal 에 넘긴다.","주입 통로가 없어 기본 카드만 쓴다 (D12). 모드도 등록하지 않는다."], card:"기본 카드 묶음 그대로 쓰는 진입점.", api:"cd L3_ui/cmd/dr && go run .", deps:["terminal","agent"]},
   drprint:{does:["질문 하나를 실행하고 결과를 출력한다. 검증용.","종료 코드 0 / 1 / 2 / 130."], card:"버튼 없이 한 번 실행.", api:'cd L3_ui/cmd/dr-print && go run . "질문"', deps:["agent"]},

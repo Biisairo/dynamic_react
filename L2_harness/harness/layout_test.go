@@ -64,7 +64,7 @@ func withTags(o *harness.Options) {
 	}
 }
 
-const defaultLayout = "+base +require +cache +guard +truncate +resilient +repeat"
+const defaultLayout = "+base +require +cache +guard +truncate +resilient"
 
 // HN-FR-51: 기본 배치 = 등록 순서·켜짐, Description 은 세트의 것
 func TestSetsDefaultLayout(t *testing.T) {
@@ -73,7 +73,7 @@ func TestSetsDefaultLayout(t *testing.T) {
 	if layoutString(got) != defaultLayout+" +x -y" {
 		t.Fatalf("layout %s", layoutString(got))
 	}
-	if got[0].Description == "" || got[7].Description != "tag x" {
+	if got[0].Description == "" || got[6].Description != "tag x" {
 		t.Fatalf("descriptions %+v", got)
 	}
 	got[0].On = false
@@ -89,7 +89,7 @@ func TestSetsInitialLayout(t *testing.T) {
 		withTags(o)
 		o.Layout = layoutOf("+y -truncate +ghost -x +y +truncate")
 	})
-	if got := layoutString(a.Sets()); got != "+y -truncate -x +base +require +cache +guard +resilient +repeat" {
+	if got := layoutString(a.Sets()); got != "+y -truncate -x +base +require +cache +guard +resilient" {
 		t.Fatalf("layout %s", got)
 	}
 	start(t, a, "s1", user("u1", "hi"))
@@ -133,7 +133,7 @@ func TestArrangeGuardOff(t *testing.T) {
 		return ""
 	}
 	start(t, a, "s1", user("u1", "go"))
-	if err := a.Arrange(layoutOf("+base +require +cache -guard +truncate +resilient +repeat")); err != nil {
+	if err := a.Arrange(layoutOf("+base +require +cache -guard +truncate +resilient")); err != nil {
 		t.Fatal(err)
 	}
 	start(t, a, "s2", user("u2", "go"))
@@ -150,7 +150,7 @@ func TestArrangeGuardOff(t *testing.T) {
 	if strings.Count(kinds, "tool_start") != 2 || strings.Count(kinds, "tool_end") != 2 || strings.Count(kinds, "run_end") != 2 {
 		t.Fatalf("events %s", kinds)
 	}
-	if got := layoutString(a.Sets()); got != "+base +require +cache -guard +truncate +resilient +repeat" {
+	if got := layoutString(a.Sets()); got != "+base +require +cache -guard +truncate +resilient" {
 		t.Fatalf("layout %s", got)
 	}
 }
@@ -221,7 +221,7 @@ func TestArrangeRejects(t *testing.T) {
 	if harness.ErrSetLayout.Error() != "harness: invalid set layout" {
 		t.Fatalf("message %q", harness.ErrSetLayout)
 	}
-	err := a.Arrange(layoutOf("+base -require +cache +guard +truncate +resilient +repeat +x +y"))
+	err := a.Arrange(layoutOf("+base -require +cache +guard +truncate +resilient +x +y"))
 	if err == nil || errors.Is(err, harness.ErrSetLayout) || !strings.Contains(err.Error(), "harness: sets:") {
 		t.Fatalf("bind failure: %v", err)
 	}

@@ -25,7 +25,6 @@ var ErrSetLayout = errors.New("harness: invalid set layout")
 
 // DefaultSets 는 기본 구성(프리셋)이다. harness 가 갖는 유일한 순서 지식이다 (HN-FR-39).
 func DefaultSets(d sets.Deps) []SetEntry {
-	repeat, _ := sets.Repeat(d, sets.RepeatOptions{}) // 기본 옵션은 에러가 없다 (HN-FR-39)
 	return []SetEntry{
 		{Set: sets.Base(d), On: true},
 		{Set: sets.Require(d), On: true},
@@ -33,7 +32,6 @@ func DefaultSets(d sets.Deps) []SetEntry {
 		{Set: sets.Guard(d), On: true},
 		{Set: sets.Truncate(d), On: true},
 		{Set: sets.Resilient(d), On: true},
-		{Set: repeat, On: true},
 	}
 }
 

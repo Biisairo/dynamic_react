@@ -1,8 +1,8 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.12 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27, R29, R33, R39, R41)
+- 버전: 0.13 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27, R29, R33, R39, R41, R42)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 - 사용하는 쪽: `L2_harness` (도구·저장소·프롬프트·요약기 구현을 주입)
 
@@ -17,7 +17,7 @@
 - 포함:
   - 부품 세트 (R26 ②): `base`·`require`(둘이 22 step 을 모두 채움), 정책 `cache`·`guard`·`truncate` — 3.0. 순서·기본 켜짐은 갖지 않는다 (R26 ③, 기본 구성은 L2 harness)
   - `resilient` 세트: 에러 재시도, overflow 복구, 임계치 압축 판정, follow-up
-  - `repeat` 세트: 같은 tool call 반복 감지와 개입 (3.2d)
+  - `repeat` 세트 (주입용): 같은 tool call 반복 감지와 개입 (3.2d)
   - 의존 interface: `ModelCaller`, `ToolRegistry`, `Store`, `Summarizer`, `ModeSwitcher`, `AuxCaller` (2.3)
   - 토큰 추정, 압축 절단점, 루프 설정 스키마
 - 제외:
@@ -112,7 +112,7 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 | `truncate` | 18 `Tool.Truncate`, 없으면 2000줄 / 50KB 기본 절단 (아래 층 결과에) | 18 | 정책 |
 | `resilient` | 3.2 그대로 (3·12·13·21) | 없음 | 정책 |
 | `verify` | 3.2a (20) | 20 | 정책 |
-| `repeat` | 3.2d (20) | 20 | 정책 |
+| `repeat` | 3.2d (20) | 20 | 정책 (주입용, 기본 구성에 없음 — R42) |
 
 | id | 요구사항 |
 |---|---|
@@ -428,6 +428,7 @@ type AuxCaller interface {
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.13 | 3.2d 설명에 기본 구성 언급 없음 | `repeat` 는 주입용임을 명시 (3.0). 동작 변화 없음 | R42 |
 | 0.12 | 반복 감지 세트 없음 | `repeat` 세트 (3.2d, ST-FR-64~69). 기존 세트 동작 변화 없음 | R41 |
 | 0.11 | sets 에 보조 모델 호출(`AuxModel`·`Complete`)·설정 `aux` 검사·`NewRegistry`·`NewMemoryStore`·`StateStoreOf`, nil Store → 메모리 Store | 모두 L2 harness 로 이동, `ParseConfig` 는 `aux` 를 건너뜀, 통로 `Deps.Aux`·`AuxOf`·`ErrNoAux`, nil Store → "없음" Store | R39 (sets 는 자기 루프의 제어만) |
 | 0.10 | 캐시 키 없음 | `cache` 가 `Options.CacheKey` = 세션 ID (ST-FR-62) | R33 |

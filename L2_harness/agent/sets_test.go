@@ -34,7 +34,7 @@ func layoutOf(spec string) []harness.SetState {
 	return out
 }
 
-const allOn = "+base +require +cache +guard +truncate +resilient +repeat"
+const allOn = "+base +require +cache +guard +truncate +resilient"
 
 // AG-FR-02, 44: sets 형식 에러는 New 에러
 func TestConfigSetsFormat(t *testing.T) {
@@ -59,7 +59,7 @@ func TestConfigSetsLayout(t *testing.T) {
 	f := setup(t)
 	f.writeConfig(t, testConfig("http://127.0.0.1:1", `,"sets":[{"name":"guard","on":false},{"name":"ghost","on":true},{"name":"base","on":true}]`))
 	a := mkAgent(t, f.opts())
-	if got := layoutStr(a.Sets()); got != "-guard +base +require +cache +truncate +resilient +repeat" {
+	if got := layoutStr(a.Sets()); got != "-guard +base +require +cache +truncate +resilient" {
 		t.Fatalf("layout %s", got)
 	}
 	if got := layoutStr(a.Harness().Sets()); got != layoutStr(a.Sets()) {
@@ -76,7 +76,7 @@ func TestArrangeSetsSaves(t *testing.T) {
 	f := setup(t)
 	p := f.writeConfig(t, testConfig("http://127.0.0.1:1", `,"permissions":{"allow":["read"]}`))
 	a := mkAgent(t, f.opts())
-	want := "+base +require +cache -guard +resilient +truncate +repeat"
+	want := "+base +require +cache -guard +resilient +truncate"
 	if err := a.ArrangeSets(context.Background(), layoutOf(want)); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestArrangeSetsSaves(t *testing.T) {
 			t.Errorf("key %s changed: %s → %s", k, v, top[k])
 		}
 	}
-	if string(compact(t, top["sets"])) != `[{"name":"base","on":true},{"name":"require","on":true},{"name":"cache","on":true},{"name":"guard","on":false},{"name":"resilient","on":true},{"name":"truncate","on":true},{"name":"repeat","on":true}]` {
+	if string(compact(t, top["sets"])) != `[{"name":"base","on":true},{"name":"require","on":true},{"name":"cache","on":true},{"name":"guard","on":false},{"name":"resilient","on":true},{"name":"truncate","on":true}]` {
 		t.Fatalf("saved sets %s", top["sets"])
 	}
 	if got := layoutStr(mkAgent(t, f.opts()).Sets()); got != want {
@@ -127,7 +127,7 @@ func TestArrangeSetsRejected(t *testing.T) {
 	p := f.writeConfig(t, testConfig("http://127.0.0.1:1", ""))
 	before := readFile(t, p)
 	a := mkAgent(t, f.opts())
-	for _, l := range []string{"+base -require +cache +guard +truncate +resilient +repeat", "+base +require"} {
+	for _, l := range []string{"+base -require +cache +guard +truncate +resilient", "+base +require"} {
 		if err := a.ArrangeSets(context.Background(), layoutOf(l)); err == nil {
 			t.Errorf("%s accepted", l)
 		}
@@ -148,7 +148,7 @@ func TestArrangeSetsWriteFailure(t *testing.T) {
 	os.MkdirAll(dir, 0o500)
 	os.Chmod(dir, 0o500)
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
-	if err := a.ArrangeSets(context.Background(), layoutOf("+base +require +cache -guard +truncate +resilient +repeat")); err == nil {
+	if err := a.ArrangeSets(context.Background(), layoutOf("+base +require +cache -guard +truncate +resilient")); err == nil {
 		t.Fatal("write into read-only dir succeeded")
 	}
 	if got := layoutStr(a.Sets()); got != allOn {
@@ -171,7 +171,7 @@ func TestArrangeSetsConcurrent(t *testing.T) {
 			defer wg.Done()
 			l := allOn
 			if i%2 == 0 {
-				l = "+base +require +cache -guard +truncate +resilient +repeat"
+				l = "+base +require +cache -guard +truncate +resilient"
 			}
 			if err := a.ArrangeSets(context.Background(), layoutOf(l)); err != nil {
 				t.Error(err)

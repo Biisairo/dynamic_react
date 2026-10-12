@@ -84,3 +84,13 @@ Hermes 는 하나의 ReAct 턴 엔진(`agent/conversation_loop.py`) 위에, 턴 
 - Hermes 의 루프 차이는 **턴 경계의 제어**에서 나온다. dynamic_react 에서는 20 turn.finish(계속할지)와 모드 교체(다음 턴의 세트 묶음)로 표현되고, core 는 바뀌지 않는다.
 - ✕ 는 모두 **run 밖에서 다음 run 을 시작하는 주체**가 필요한 기능이다 (#36, #40, #41). R28 에서 대기 제어를 하지 않기로 했으므로 범위 밖으로 둔다.
 - 판정의 근거: Hermes 의 judge 는 작업 모델의 마지막 답 텍스트(최대 4000자)만 본다. dynamic_react 의 판단기는 20 에서 `Conv().Transcript()`·`Tools()` 로 하네스가 관찰한 도구 결과도 볼 수 있다. 다만 examples/modes 의 goal 세트는 Hermes 와 같이 마지막 답만 쓴다.
+
+## 반복 감지와 턴 예산 (R41·R42)
+
+| # | 기능 (출처) | 표현 | 상태 |
+|---|---|---|---|
+| 44 | 같은 tool call 반복 감지 (oh-my-pi `ToolCallLoopGuard`) | 20 turn.finish 에서 `Tools().Calls()` 로 턴 지문을 만들고, 상태에 연속 수를 둔다. 5턴이면 `inject_input`(지시), 8턴이면 `fail` | ● 구현 (`sets.Repeat`, 주입용). 가짜 모델 종단 테스트와 뮤테이션 검사(36개 중 KILLED 35, 등가 1)로 확인 |
+| 27 | 턴 수 예산 (Hermes `IterationBudget`) | 20 에서 사용 턴 수를 세고, 다 쓰면 요약 지시 + 한 턴 더 → `fail`. 요약 턴의 호출은 16 tool.before 에서 막는다 | ● 표현만. 설계는 R42 ② 에 있고 구현하지 않았다 (프로젝트 종료) |
+
+- 두 기능 모두 core·inject 를 바꾸지 않고 세트 하나로 표현된다. 루프 밖 기능이 필요 없으므로 R39 에 맞다.
+- 기능을 하나 구현해 보면서 core 규칙을 하나 확인했다. 20 에서 낸 신호 목록의 **마지막**은 전이 신호여야 한다. 그래서 지시(`inject_input`)를 아래 층 신호 앞에 둔다.

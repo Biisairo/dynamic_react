@@ -6,7 +6,7 @@
 - 항목을 끝내면 상태를 `해소`로 바꾸고 커밋이나 결정 id 를 적는다. 행은 지우지 않는다.
 - 새 개선 항목은 인계 문서가 아니라 이 문서에 먼저 넣는다. 인계 문서에는 이 문서의 id 만 적는다.
 
-기준 시점: 2026-10-12, R29 구현 (프롬프트 캐시 접두).
+기준 시점: 2026-10-12, **프로젝트 종료** (R42). 열림·결정 대기였던 항목은 모두 `보류 (R42)` 로 바꿨다. 다시 열 때는 이 문서에서 고른다.
 
 ## 1. 전체 목표
 
@@ -15,11 +15,11 @@
 | id | 목표 | 현재 상태 |
 |---|---|---|
 | G1 | core(L0)는 고정된 22 step 과 전이 표만 갖는다. 정책과 기본값은 core 밖에 둔다 | 달성. core spec v0.2 |
-| G2 | Hermes·pi·oh-my-pi 의 기능을 주입 함수만으로 재현할 수 있다 | 28개 기능을 세트로 표현했다 (`VERIFY-22step.md`). 실제 모델로는 일부만 확인했다 (5.2) |
+| G2 | Hermes·pi·oh-my-pi 의 기능을 주입 함수만으로 재현할 수 있다 | 달성 (표현 기준). 28개 기능을 세트로 표현했다 (`VERIFY-22step.md`). 반복 감지(R41 `repeat`)도 세트 하나로 구현했다. 실제 모델로는 일부만 확인했다 (CA-5, 5장 VF-1~3 은 보류) |
 | G3 | 완성된 에이전트에도 core 를 포크하지 않고 주입할 수 있다 | 달성. R22, R26 (세트 층·배치 변경) |
 | G4 | 런타임에 세트 배치를 바꿀 수 있다 | run 사이 변경(R26)과 턴 경계 모드 전환(R27)은 달성했다. 실행 중 부품 교체는 비목표다 |
-| G5 | 레이어 책임을 지킨다. L0·L1 은 사용자 환경과 무관하고, 목록·검증·저장은 L2, 입출력은 L3 가 맡는다 | 유지 중 (R17) |
-| G6 | 키는 `auth.json`(0600)에만 두고, 구독 OAuth 를 쓰지 않고, 환경변수를 읽지 않는다 | 유지 중 (R12, R21) |
+| G5 | 레이어 책임을 지킨다. L0·L1 은 사용자 환경과 무관하고, 목록·검증·저장은 L2, 입출력은 L3 가 맡는다 | 달성 (종료 시점). R17, R39 (sets 는 자기 루프의 제어만) |
+| G6 | 키는 `auth.json`(0600)에만 두고, 구독 OAuth 를 쓰지 않고, 환경변수를 읽지 않는다 | 달성 (종료 시점). R12, R21 |
 
 ## 2. 상태 값
 
@@ -94,9 +94,9 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 
 | id | 내용 | 상태 | 출처 |
 |---|---|---|---|
-| VF-1 | `examples/modes` 실제 모델 시연: 임시 Go 모듈에서 `-check "go test ./..."` + `/mode goal …`, 그리고 `/mode plan …`. CA-5 와 묶는다 | 열림 (사용자 확인 후) | impl-09 |
-| VF-2 | Anthropic·OpenAI 방언의 실제 응답 검증 | 열림 (API 키·크레딧 필요) | impl-06 |
-| VF-3 | provider overflow 에러 복구를 실제 모델로 확인 (지금은 가짜 서버로만 검증) | 열림 | impl-06 |
+| VF-1 | `examples/modes` 실제 모델 시연: 임시 Go 모듈에서 `-check "go test ./..."` + `/mode goal …`, 그리고 `/mode plan …`. CA-5 와 묶는다 | 보류 (R42) | impl-09 |
+| VF-2 | Anthropic·OpenAI 방언의 실제 응답 검증 | 보류 (R42, API 키·크레딧 필요) | impl-06 |
+| VF-3 | provider overflow 에러 복구를 실제 모델로 확인 (지금은 가짜 서버로만 검증) | 보류 (R42) | impl-06 |
 | VF-5 | R29 새 코드의 뮤테이션 검사: harness `prefix.go` 의 `check`·`compare`, surface 래핑, sets `StableLen`·`Cache`, terminal `prefix_break` 줄 | 해소 (29/29 KILLED. 처음 살아남은 4개 — 도구 결과 해시, 편집 + tools 의 Expected, Kept 표시, 모델 줄 흐림 — 는 테스트를 보강해 잡음) | R29 |
 | VF-6 | terminal `TestRunCompact` 가 부하 중 한 번 실패했다 (전체 `-race` 실행에서 다른 테스트가 10초 멈춘 때). 5회 반복·전체 2회에서는 재현 안 됨. 대기 조건 보강 여부 | 해소 (원인: `screen.draw` 는 지우기와 다시 그리기를 여러 번의 Write 로 나눠 보낸다. 그래서 "화면에 실행 중 상태줄이 없음"으로 대기를 판정하면 지운 직후의 화면에서 잘못 통과했다. 다른 모듈 부하 중 40회 반복으로 재현함. 고침: 테스트 헬퍼 `idle()` 이 `t.st == stIdle` 을 직접 보게 하고, 같은 판정 5곳을 바꿈. 제품 코드는 그대로. 수정 뒤 같은 조건 240회 실패 없음) | R30 작업 중 관찰 |
 | VF-7 | R30~R33 새 코드의 뮤테이션 검사: harness `stats.go`, agent `ToolNames`, terminal `status.go`·run_end 비율, adapters `chatCacheHints`·`markText`·`setCacheKey`, sets 캐시 키 | 해소 (77개 중 KILLED 76, 등가 1. 처음 살아남은 11개 중 9개 — 요약기 없음·Window 0 의 Threshold, hit%·효율의 분자 혼동, developer 역할, system 없는 system 힌트, system 까지 거슬러 오름, 빈 문자열 content, `anthropic/` 의 `/` — 는 테스트를 보강해 잡음. 등가 2개(H4·H10, `add` 의 `hasCeiling` 분기)는 분기를 없애 코드를 줄임 — 동작 같음. 남은 등가 1개는 agent `ToolNames` 의 `err != nil` 검사: `sets.ParseConfig` 가 에러면 `Config{}` 를 돌려줘 결과가 같지만, 다른 모듈의 구현 세부에 기대지 않으려고 둠) | R30~R33 |
@@ -107,28 +107,28 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | id | 내용 | 상태 | 출처 |
 |---|---|---|---|
 | EX-1 | goal 판단기가 마지막 답 텍스트 대신 하네스가 관찰한 도구 결과(`Conv().Transcript()`)로 판정 | 하지 않음 (R37: Hermes 처럼 마지막 답 + verify gate 를 유지. 진행 중 조건 변경은 EX-3) | impl-09, VERIFY #31 |
-| EX-2 | 판정 프롬프트 품질 튜닝 | 열림 (VF-1 뒤) | impl-09 |
+| EX-2 | 판정 프롬프트 품질 튜닝 | 보류 (R42) | impl-09 |
 | EX-3 | 진행 중 사용자 입력이 있으면 판정 미루기 | 해소 (R38, examples/modes v0.3: 판정 턴에 입력함에 사용자 메시지가 있으면 판정을 미루고 그 입력을 처리한 턴 뒤에 판정. goal 진행 중 사용자 메시지(신호 기록의 `inject_input` 이 아닌 입력)를 Arg 별로 모아 판정 요청에 추가 기준 블록으로 넘김 — 메시지당 500자, 총 2000자. 뮤테이션 17개 중 KILLED 14, 등가 1, 관측 불가 2) | VERIFY #34 |
 
 ## 7. 세트 후보
 
 | id | 내용 | 상태 | 출처 |
 |---|---|---|---|
-| ST-1 | 예산 가드. 측정 기준(누적 토큰 또는 현재 컨텍스트 크기)부터 정해야 한다 | 결정 대기 | impl-08 |
-| ST-2 | 반복 감지 | 해소 (R41: sets v0.12 `repeat` 세트 — 턴 단위 지문(이름 + `ArgsDigest`), 5턴 연속이면 지시 한 번, 8턴이면 `ErrRepeat` 로 run 실패, 옵션 `RepeatOptions{Warn, Stop, Exempt}`, run 단위. harness v1.10 `DefaultSets` 끝에 On — 기본 동작 변경. 뮤테이션 36개 중 KILLED 35, 등가 1: 결과 블록 판정 `Kind == Text` 를 `!= Image` 로 바꾼 변이 — contract 상 결과 블록이 text·image 뿐이라(CT-FR-10) 같음, 다른 모듈 규칙에 기대므로 기록만. 처음 살아남은 5개 중 3개는 테스트 보강, 1개(리셋 때 직전 지문 지우기)는 등가 분기라 코드를 줄임) | impl-08 |
-| ST-3 | 모델 라우팅 | 열림 | impl-08 |
-| ST-4 | `dr`에 모드 등록. 지금 `dr`은 `DefaultSets` 프리셋만 등록하고 모드는 없다. 인자가 필요한 세트·모드는 자기 main 에서 등록한다 | 결정 대기 | impl-08, impl-09 |
+| ST-1 | 예산 가드. 측정 기준(누적 토큰 또는 현재 컨텍스트 크기)부터 정해야 한다 | 보류 (R42: 구현하지 않음. 인터뷰로 확정한 설계 — 턴 수 기준·Max 200·요약 1턴 뒤 `ErrBudget` — 는 R42 ② 에 있다) | impl-08 |
+| ST-2 | 반복 감지 | 해소 (R41, R42 로 기본 구성에서 뺌 — 주입용. sets v0.12 `repeat` 세트 — 턴 단위 지문(이름 + `ArgsDigest`), 5턴 연속이면 지시 한 번, 8턴이면 `ErrRepeat` 로 run 실패, 옵션 `RepeatOptions{Warn, Stop, Exempt}`, run 단위. harness v1.10 `DefaultSets` 끝에 On — 기본 동작 변경. 뮤테이션 36개 중 KILLED 35, 등가 1: 결과 블록 판정 `Kind == Text` 를 `!= Image` 로 바꾼 변이 — contract 상 결과 블록이 text·image 뿐이라(CT-FR-10) 같음, 다른 모듈 규칙에 기대므로 기록만. 처음 살아남은 5개 중 3개는 테스트 보강, 1개(리셋 때 직전 지문 지우기)는 등가 분기라 코드를 줄임) | impl-08 |
+| ST-3 | 모델 라우팅 | 보류 (R42) | impl-08 |
+| ST-4 | `dr`에 모드 등록. 지금 `dr`은 `DefaultSets` 프리셋만 등록하고 모드는 없다. 인자가 필요한 세트·모드는 자기 main 에서 등록한다 | 보류 (R42) | impl-08, impl-09 |
 
 ## 8. 결정 대기 (기타)
 
 | id | 내용 | 출처 |
 |---|---|---|
-| DC-1 | verify 세트: 검증 보고가 사용자 지시보다 우선한다는 문구를 바꿀지 | impl-08 |
-| DC-2 | 저장소 LICENSE. 사용자가 묻지 않으면 손대지 않는다 | impl-06 |
-| DC-3 | agent 사용자 도구의 패턴 규칙 비교 값 (`Target func(args) string`). 필요해지면 다룬다 | impl-07 |
+| DC-1 | verify 세트: 검증 보고가 사용자 지시보다 우선한다는 문구를 바꿀지 → **보류** (R42) | impl-08 |
+| DC-2 | 저장소 LICENSE. 사용자가 묻지 않으면 손대지 않는다 → **보류** (R42, 저장소에 LICENSE 없음) | impl-06 |
+| DC-3 | agent 사용자 도구의 패턴 규칙 비교 값 (`Target func(args) string`). 필요해지면 다룬다 → **보류** (R42) | impl-07 |
 | DC-4 | harness 의 접두 기준표(R29)와 사용량 집계(R30)는 세션마다 프로세스 메모리에 쌓이고 지우지 않는다. 대화형 터미널에서는 문제가 없지만, 오래 떠 있는 서버형 surface 에서는 세션 수만큼 늘어난다. 정리 정책(세션 종료 시 삭제, 개수 상한 등)을 정할지 → **해소** (R34: 만들지 않음. 서버형 surface 를 만들 때 다시 검토) | R29, R30 |
 | DC-5 | `PrefixBreak.Kept` 는 Part messages 일 때 항상 `At` 과 같고, 그 밖에는 0 이다. 필드를 남길지 정리할지 → **해소** (R35: 필드 제거. harness v1.8, terminal v0.9 는 유지 수로 `At` 을 씀. 화면 출력 같음) | R29 |
-| DC-6 | 루프 설정의 `compaction`·`retry` 는 resilient 세트만 쓰는 값인데 공용 스키마(sets `ParseConfig`, ST-FR-01)에 있다. resilient 를 빼거나 사용자가 세트를 새로 만들어도 sets 가 그 키를 검사한다. R41 은 세트 전용 값을 생성자 옵션으로 받는다. 설정 파일로 바꿀 수 있는 지금의 장점과 함께 정리할지 정한다 | R41 인터뷰 (사용자 지적) |
+| DC-6 | 루프 설정의 `compaction`·`retry` 는 resilient 세트만 쓰는 값인데 공용 스키마(sets `ParseConfig`, ST-FR-01)에 있다. resilient 를 빼거나 사용자가 세트를 새로 만들어도 sets 가 그 키를 검사한다. R41 은 세트 전용 값을 생성자 옵션으로 받는다. 설정 파일로 바꿀 수 있는 지금의 장점과 함께 정리할지 정한다 → **보류** (R42) | R41 인터뷰 (사용자 지적) |
 
 ## 9. 보류와 하지 않음
 

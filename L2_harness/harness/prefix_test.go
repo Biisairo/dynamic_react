@@ -257,7 +257,7 @@ func TestPrefixArrange(t *testing.T) {
 		}
 	})
 	start(t, a, "s1", user("u1", "go"))
-	if err := a.Arrange(layoutOf("+base +require +cache +guard +truncate +resilient +repeat +drop")); err != nil {
+	if err := a.Arrange(layoutOf("+base +require +cache +guard +truncate +resilient +drop")); err != nil {
 		t.Fatal(err)
 	}
 	start(t, a, "s1", user("u2", "again"))
