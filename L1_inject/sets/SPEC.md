@@ -1,8 +1,8 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.10 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27, R29, R33)
+- 버전: 0.11 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27, R29, R33, R39)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 - 사용하는 쪽: `L2_harness` (도구·저장소·프롬프트·요약기 구현을 주입)
 
@@ -11,16 +11,17 @@
 ## 1. 소개
 
 ### 1.1 목적
-22개 step 의 **기본 동작과 기본 정책을 함수 세트로** 제공한다. core·inject 는 기본값을 갖지 않으므로(D6), 기본값은 여기에 있다. 세션 파일·도구 구현·프롬프트 조립·요약 프롬프트 같은 **하네스 기능은 L2_harness** 가 가지고(R13), sets 는 그것들을 interface(2.3)로만 받는다.
+22개 step 의 **기본 동작과 기본 정책을 함수 세트로** 제공한다. core·inject 는 기본값을 갖지 않으므로(D6), 기본값은 여기에 있다. 세션 파일·도구 구현·프롬프트 조립·요약 프롬프트 같은 **하네스 기능은 L2_harness** 가 가지고(R13), sets 는 그것들을 interface(2.3)로만 받는다. **sets 는 자기가 붙은 루프(run)의 진행을 정하는 로직만 갖는다** (R39): 보조 모델 호출 규칙, 저장소·레지스트리 구현, 하네스 전용 설정의 의미, 하네스 내부 연결은 하네스에 있다.
 
 ### 1.2 범위
 - 포함:
   - 부품 세트 (R26 ②): `base`·`require`(둘이 22 step 을 모두 채움), 정책 `cache`·`guard`·`truncate` — 3.0. 순서·기본 켜짐은 갖지 않는다 (R26 ③, 기본 구성은 L2 harness)
   - `resilient` 세트: 에러 재시도, overflow 복구, 임계치 압축 판정, follow-up
-  - 의존 interface: `ModelCaller`, `ToolRegistry`, `Store`, `Summarizer` (2.3)
-  - 메모리 Store, 도구 레지스트리(맵), 토큰 추정, 압축 절단점, 루프 설정 스키마
+  - 의존 interface: `ModelCaller`, `ToolRegistry`, `Store`, `Summarizer`, `ModeSwitcher`, `AuxCaller` (2.3)
+  - 토큰 추정, 압축 절단점, 루프 설정 스키마
 - 제외:
   - L2_harness 로 이동 (R13): 도구 4종 구현, JSONL 세션 저장소, 시스템 프롬프트 조립(기본 문안·AGENTS.md·스킬), 요약 프롬프트·요약기 구현, 설정 파일 경로 해석(→ `L2_harness/agent`), dr-print CLI(→ `L3_ui/cmd/dr-print`, R17), 실제 provider 종단 테스트(→ `L2_harness/agent`)
+  - L2_harness 로 이동 (R39): 보조 모델 호출 규칙과 설정 `aux`, 도구 레지스트리 구현, 메모리 Store 구현, Store 를 inject StateStore 로 감싸는 연결
   - 다음 단계 세트 (`quality`·`assistant`): 병렬·선행 실행 스케줄러, 서브에이전트, soft tool requirement, 메모리, 백그라운드 리뷰, fallback provider, 권한 승인
 
 ### 1.3 참조 (수치의 출처)
@@ -50,7 +51,7 @@
  sets.Base / Require / Cache / Guard / Truncate (deps)   parts of the former base (3.0) ── store ── estimate
  sets.Resilient(deps)   overrides: 3 context.maintain, 12 call.error, 13 response.classify, 21 run.beforeSettle
                         │
- inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(store)}, base, resilient)
+ inject.BindWith(inject.BindOptions{StateStore: <harness 가 Store 로 만든 StateStore>}, base, resilient)
 ```
 
 sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (adapters 에 의존하지 않는다, R13).
@@ -64,28 +65,28 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
   "thinking":        "",
   "tools":           [],
   "compaction":      { "enabled": true, "reserveTokens": 0, "keepRecentTokens": 20000 },
-  "retry":           { "maxAttempts": 3, "baseDelayMs": 2000, "maxDelayMs": 60000 },
-  "aux":             { "goal_judge": { "provider": "anthropic", "id": "claude-haiku-4-5-20251001" } }
+  "retry":           { "maxAttempts": 3, "baseDelayMs": 2000, "maxDelayMs": 60000 }
 }
 ```
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-01 | 설정은 위 스키마의 JSON 이다. 빈 값·0 은 "기본값 사용" 이다 (`tools` 가 비면 레지스트리의 전부). 모르는 키는 에러. `model` 은 필수 |
+| ST-FR-01 | 설정은 위 스키마의 JSON 이다. 빈 값·0 은 "기본값 사용" 이다 (`tools` 가 비면 레지스트리의 전부). 모르는 키는 에러. `model` 은 필수. 단 하네스 키 `aux`(L2 harness, R39)는 검사하지 않고 건너뛴다 — 값의 형식이 틀려도 sets 의 에러가 아니다 |
 | ST-FR-02 | 설정에 API 키 값을 넣는 필드는 없다 (adapters AD-C2) |
-| ST-FR-54 | `aux` (선택, R27): 역할 이름(비지 않은 문자열) → `{provider, id}`. provider·id 가 비거나 역할 이름이 비면 `ParseConfig` 에러. 쓰는 곳은 `AuxModel`(ST-FR-55) 뿐이다 — 기본 세트는 이 값을 보지 않는다 |
+| ST-FR-54 | (이동: L2 harness — 설정 `aux` 의 형식·의미, R39) |
 
 ### 2.3 의존 (Deps)
 
 | id | 요구사항 |
 |---|---|
 | ST-FR-32 | `ModelCaller`: `Call(ctx, req) iter.Seq2[contract.StreamEvent, error]`, `Lookup(ctx, provider, id) (contract.ModelInfo, bool)`. `adapters.Client` 가 그대로 만족한다 (필수) |
-| ST-FR-33 | `ToolRegistry`: `Get(name) (Tool, bool)`, `Names() []string`. `Tool{Spec, Run(ctx, call) contract.ToolResult, Truncate(result) result}` (Truncate 가 nil 이면 18 의 기본 규칙). `sets.NewRegistry(tools...)` 가 맵 구현을 준다. nil 이면 도구 없음 |
-| ST-FR-34 | `Store`: `Load(ctx, sessionID) (Session, error)`, `AppendMessages`, `AppendEdits`, `SaveState(ctx, sessionID, ns, inject.StateDelta)`. `Session{Messages, Edits, State}`. `sets.NewMemoryStore()` 가 메모리 구현을 준다. nil 이면 Base 가 메모리 Store 를 만든다. `sets.StateStoreOf(store)` 는 inject 의 StateStore 로 감싼다 |
+| ST-FR-33 | `ToolRegistry`: `Get(name) (Tool, bool)`, `Names() []string`. `Tool{Spec, Run(ctx, call) contract.ToolResult, Truncate(result) result}` (Truncate 가 nil 이면 18 의 기본 규칙). 구현은 하네스가 준다 (R39). nil 이면 도구 없음 |
+| ST-FR-34 | `Store`: `Load(ctx, sessionID) (Session, error)`, `AppendMessages`, `AppendEdits`, `SaveState(ctx, sessionID, ns, inject.StateDelta)`. `Session{Messages, Edits, State}`. 구현과 inject StateStore 로 감싸는 연결은 하네스가 한다 (R39). nil 이면 "없음" Store — `Load` 는 빈 Session, 쓰기는 버린다 (다음 run 에 남지 않음) |
 | ST-FR-35 | `System []contract.Block`: 시스템 프롬프트. 하네스가 run 전에 조립해 넘긴다. run 동안 바꾸지 않는다 (ST-FR-19) |
 | ST-FR-36 | `Summarizer`: `Summarize(ctx, SummaryRequest{Model, Messages, Previous, MaxTokens}) (string, error)`. nil 이면 압축을 하지 않는다 (resilient 의 압축 분기는 3·13 에서 next, 12 에서 fail) |
 | ST-FR-37 | `Sleep(ctx, d) error`, `Now() time.Time`, `NewID() string`: nil 이면 타이머·`time.Now`·무작위 id. 테스트에서 주입한다 |
 | ST-FR-57 | `Modes ModeSwitcher` (R27): 세트가 세션 모드를 읽고 이탈을 요청하는 통로. `ModeState{Active, Arg string}`(Active "" = 기본 모드), `ModeSwitcher{Current(ctx, sessionID) (ModeState, error); Exit(ctx, sessionID, reason string) error}`. 세트는 `ModesOf(d)` 로 꺼낸다 — `d.Modes` 가 nil 이면 "모드 없음" 구현(`Current` = `ModeState{}`·nil, `Exit` = `ErrNoModes`(`sets: modes not available`))을 돌려준다 (`filled()` 도 같은 값으로 채운다) |
+| ST-FR-63 | `Aux AuxCaller` (R39): 세트가 보조 모델을 부르는 통로. `AuxCaller{Complete(ctx, config json.RawMessage, role string, system []contract.Block, msgs []contract.Message) (contract.Message, error)}` — config 는 그 run 의 설정(`Env().Config()`), role 은 보조 모델 역할 이름. 모델·옵션 결정과 호출은 구현(L2 harness `Complete`)의 몫이다. 세트는 `AuxOf(d)` 로 꺼낸다 — `d.Aux` 가 nil 이면 `Complete` 가 `ErrNoAux`(`sets: aux model not available`)를 돌려주는 구현 |
 | ST-FR-58 | sets 는 모드 인터페이스만 정의한다. 세트에 진입 수단은 주지 않는다 (R27: 진입은 모델·사용자, 이탈은 판단기·사용자). 권한·적용 시점은 구현(L2 harness 3.6e)이 정한다 |
 | ST-FR-59 | `Current` 는 dispatch 스냅샷(IN-FR-15) 밖의 값이다 — 같은 dispatch 안에서 두 번 불러도 다를 수 있다. `Exit` 는 그 dispatch 의 성공 여부와 무관하게 바로 기록된다 (상태 쓰기 원자성 IN-FR-24 의 대상이 아님) |
 
@@ -222,17 +223,14 @@ func Verify(d Deps, o VerifyOptions) (inject.FunctionSet, error) // Check nil �
 | ST-FR-49 | 보고 메시지: user 역할, ID = `d.NewID()`, Timestamp = `d.Now()`, text 블록 하나 = `Verification failed (attempt <k> of <N>). Fix the problems below, then finish.\n\n<보고>`. 보고는 `Report` 끝의 줄바꿈들을 뗀 뒤 **끝** 2000줄 / 50KB(온전한 줄, 마지막 한 줄이 50KB 를 넘으면 그 끝 50KB — bash 도구와 같은 방향)이고 잘리면 앞에 `[earlier output truncated]\n` 을 붙인다. 비면 `(no output)`. base 2 turn.start 가 입력함에서 꺼내 세션에 저장한다 |
 | ST-FR-50 | 상태 (네임스페이스 `verify`, 키 `progress`): `{run, checked, failures, lastFailed}`. run 을 넘어 복원되므로 RunID 가 다르면 초기값(`checked` = History 길이, 나머지 0·false)으로 본다 (ST-FR-44 와 같은 방식). 검증할 때 `checked` = 그때의 Transcript 길이 |
 
-### 3.2b 보조 모델 호출 (R27)
+### 3.2b 보조 모델 호출 (R27 → R39)
 
-```go
-func AuxModel(cfg Config, role string) ConfigModel
-func Complete(ctx context.Context, m ModelCaller, req contract.Request) (contract.Message, error)
-```
+보조 모델의 선택·요청 조립·호출은 L2 harness `Complete` 가 한다. 세트는 `Deps.Aux`(ST-FR-63)로 부른다.
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-55 | `AuxModel(cfg, role)` = `cfg.Aux[role]` 이 있으면 그것, 없으면 `cfg.Model` |
-| ST-FR-56 | `Complete`: `m.Call(ctx, req)` 를 끝까지 소비해 `done` 이벤트의 메시지를 돌려준다. `error` 이벤트면 그 `*contract.CallError`(error 를 구현, `errors.As` 로 꺼냄), iterator 에러면 그 에러, done 없이 끝나면 에러 `sets: complete: stream ended without done`. 도구를 실행하지 않고(응답의 tool_call 블록은 그대로) 재시도하지 않는다. 세트 함수 안(판단기)과 run 밖(harness `Complete`) 양쪽에서 쓴다 |
+| ST-FR-55 | (이동: L2 harness — 역할의 보조 모델, R39) |
+| ST-FR-56 | (이동: L2 harness, R39) 이전 내용: `Complete`: `m.Call(ctx, req)` 를 끝까지 소비해 `done` 이벤트의 메시지를 돌려준다. `error` 이벤트면 그 `*contract.CallError`(error 를 구현, `errors.As` 로 꺼냄), iterator 에러면 그 에러, done 없이 끝나면 에러 `sets: complete: stream ended without done`. 도구를 실행하지 않고(응답의 tool_call 블록은 그대로) 재시도하지 않는다. 세트 함수 안(판단기)과 run 밖(harness `Complete`) 양쪽에서 쓴다 |
 
 ### 3.2c 캐시 접두 (R29)
 
@@ -249,7 +247,7 @@ func Complete(ctx context.Context, m ModelCaller, req contract.Request) (contrac
 | id | 요구사항 |
 |---|---|
 | ST-FR-09 | (이동: L2_harness — 도구 4종과 경로 규칙) |
-| ST-FR-10 | 도구는 `ToolRegistry` 로 받는다 (ST-FR-33). 사용자가 도구를 추가·교체할 수 있다 (`Registry.Add` 는 같은 이름을 덮는다) |
+| ST-FR-10 | 도구는 `ToolRegistry` 로 받는다 (ST-FR-33). 사용자가 도구를 추가·교체할 수 있다 (레지스트리 구현은 하네스) |
 | ST-FR-11 | 도구 실행 에러는 `Status: error` 결과로 돌려준다. `Tool.Run` 의 panic 은 17 에서 recover 해 error 결과로 바꾼다 (루프를 멈추지 않는다) |
 
 ### 3.4 세션 저장소
@@ -257,8 +255,8 @@ func Complete(ctx context.Context, m ModelCaller, req contract.Request) (contrac
 | id | 요구사항 |
 |---|---|
 | ST-FR-12~14 | (이동: L2_harness — JSONL 파일 형식) |
-| ST-FR-15 | `StateStoreOf(store)` 는 `Store.Load` 의 `Session.State` 로 복원하고 `SaveState` 로 저장한다 (inject IN-FR-26) |
-| ST-FR-39 | 메모리 Store 는 세션별로 메시지·편집·상태를 순서대로 보관하고, 같은 프로세스의 다음 run 에서 `Load` 로 돌려준다. 동시 사용에 안전하다 |
+| ST-FR-15 | (이동: L2 harness — Store 를 inject StateStore 로 감싸는 연결, R39) |
+| ST-FR-39 | (이동: L2 harness 테스트 지원 — 메모리 Store, R39) |
 
 ### 3.5 시스템 프롬프트
 
@@ -327,13 +325,17 @@ type Summarizer interface { Summarize(ctx context.Context, r SummaryRequest) (st
 type Deps struct {
     Model ModelCaller; Tools ToolRegistry; Store Store; System []contract.Block; Summarizer Summarizer
     Sleep func(ctx context.Context, d time.Duration) error; Now func() time.Time; NewID func() string
+    Modes ModeSwitcher; Aux AuxCaller
+}
+type AuxCaller interface {
+    Complete(ctx context.Context, config json.RawMessage, role string, system []contract.Block, msgs []contract.Message) (contract.Message, error)
 }
 ```
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`(각 `(Deps) inject.FunctionSet`), `Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식), `Verify`·`VerifyOptions`·`CheckResult`·`ErrVerifyFailed`(3.2a), `StableLen(msgs, ephemeral []contract.Message) int`(3.2c) |
-| ST-FR-42 | 세트 생성자(`Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`·`Verify`)는 Deps 의 nil 을 한 번만 기본값으로 채워 그 세트의 모든 step 이 같은 값을 쓴다 (nil Store → 메모리 Store 하나). 세트끼리는 각자 채우므로, 여러 세트가 같은 Store 를 써야 하면(base 의 저장과 require 의 짝 복구 기록) Deps 에 Store 를 채워 넘긴다. `Resilient<Step>` 생성자를 따로 부르면 각자 채운다 |
+| ST-FR-41 | 공개 함수: `ModesOf(Deps) ModeSwitcher`·`ErrNoModes`, `AuxOf(Deps) AuxCaller`·`ErrNoAux`, `ParseConfig(json.RawMessage) (Config, error)`, `Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`(각 `(Deps) inject.FunctionSet`), `Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식), `Verify`·`VerifyOptions`·`CheckResult`·`ErrVerifyFailed`(3.2a), `StableLen(msgs, ephemeral []contract.Message) int`(3.2c) |
+| ST-FR-42 | 세트 생성자(`Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`·`Verify`)는 Deps 의 nil 을 한 번만 기본값으로 채워 그 세트의 모든 step 이 같은 값을 쓴다 (nil Tools → 도구 없음, nil Store → "없음" Store(ST-FR-34), nil Modes → ST-FR-57, nil Aux → ST-FR-63). 세트끼리는 각자 채우므로, 여러 세트가 같은 Store 를 써야 하면(base 의 저장과 require 의 짝 복구 기록) Deps 에 Store 를 채워 넘긴다. `Resilient<Step>` 생성자를 따로 부르면 각자 채운다 |
 | ST-FR-43 | base 상태 키: `input`(초기 입력, 2 가 한 번 준 뒤 삭제), `inbox.consumed`(int, publish), `edits.saved`(Store 에 기록한 편집 수). 1 이 run 마다 다시 쓴다 (상태는 Store 로 run 을 넘어 복원되므로) |
 | ST-FR-44 | resilient 상태는 run 을 넘어 복원되므로 RunID 를 함께 저장하고, RunID 가 다르면 초기 상태로 본다: `retry`{run, turn, class 별 횟수}(턴이 바뀌면 리셋), `recovered`{run, turn}(12·13 의 압축 복구), `compaction`{run, pending, invalid}, `compaction.blocked`(publish, `true`, 다른 run 에서는 삭제) |
 | ST-FR-45 | 해석 (스펙 공백): ① `compaction.enabled=false` 는 3·12·13 의 모든 압축 분기를 끈다 (pi `_checkCompaction` 와 같음). ② 무효 압축 판정은 pending 일 때 다음 3 에서 `LastUsage().Prompt() >= W − reserve`. ③ 절단 구간이 이전 요약 메시지 하나뿐이면 압축하지 않는다. ④ 설정 `tools` 의 없는 이름은 무시한다. ⑤ 17 은 결과의 CallID 를 호출 ID 로 맞춘다. ⑥ 18 의 기본 절단은 text 블록마다 적용한다. ⑦ 요약 메시지 = user 역할, 고정 머리말 + 요약 텍스트. ⑧ 1·7 의 aborted 결과는 text 블록 하나("aborted")를 담는다 |
@@ -350,15 +352,15 @@ type Deps struct {
 | ST-FR-05, 06 | 임계치 경계값(W − reserve ± 1), W=0, Summarizer 없음, 무효 압축 2회 연속 → blocked |
 | 3.2 call.error 표 | Class 별 분기, RetryAfter 상한, 재시도 소진, overflow 1회 제한, 취소 중 대기 |
 | 3.2 classify 표 | length 회복 조건, silent overflow |
-| ST-FR-10, 11, 33, 38 | 레지스트리 추가·교체, 도구 panic → error 결과, 스키마 검사 범위 |
-| ST-FR-15, 34, 39 | 메모리 Store 재생, 상태 복원 |
+| ST-FR-10, 11, 33, 38 | 도구 panic → error 결과, 스키마 검사 범위, nil Tools → 도구 없음 |
+| ST-FR-34 | nil Store: 빈 History 로 시작, 저장한 것이 다음 run 에 남지 않음 |
 | ST-FR-19, 35 | run 중 System 불변 |
 | ST-FR-20~22 | 추정: ASCII / 한글 / 이모지 / 이미지 / 압축 전후 usage 신뢰 |
 | ST-FR-23~27 | 절단점이 tool_result 에 걸리지 않음, Previous 전달, 요약 한도, 실패 시 포기 |
 | ST-NFR-02 | 종단 시나리오 4개 |
 | ST-NFR-04 | `go list -deps` 검사 |
 | ST-FR-46~50 | 가짜 ModelCaller·도구로 종단: 변경 도구 없이 끝남 → Check 안 부름, write 성공 뒤 끝남 → Check 1회·OK 면 completed, 실패 → 다음 요청에 보고 메시지(attempt 1 of N)·세션에 저장, 실패 뒤 변경 없이 끝남 → 재검증, MaxAttempts 번째 실패 → failed·`errors.Is(ErrVerifyFailed)`·첫 줄, error 결과의 변경 도구는 세지 않음, Tools 에 없는 도구는 세지 않음, 빈 Tools, 보고 끝 절단·빈 보고, Check error → failed, 아래 층을 바꿔 쌓으면(예: 항상 settle 하는 층) 그 판정을 따름·아래 층 에러 전달, 다른 run 은 상태 초기화, Check nil → 에러 |
-| ST-FR-54~56 | `aux` 형식 에러(빈 역할·빈 provider·빈 id), 모르는 키 에러 유지, `AuxModel` 폴백, `Complete`: done 메시지, error 이벤트 → `*contract.CallError`, iterator 에러, done 없이 끝남, ctx 취소 |
+| ST-FR-01, 63 | `aux` 는 형식이 틀려도(빈 역할·빈 id·배열) `ParseConfig` 가 통과, 다른 모르는 키는 에러 유지 / `AuxOf(Deps{})` → `Complete` 가 `ErrNoAux`, `AuxOf` 가 nil 이 아닌 `Aux` 를 그대로 돌려줌 |
 | ST-FR-57~59 | `ModesOf(Deps{})` → `Exit` 가 `ErrNoModes`·`Current` 가 기본 모드, `ModesOf` 가 nil 이 아닌 `Modes` 를 그대로 돌려줌 |
 | ST-FR-60~61 | `StableLen` 표: 꼬리 없음·꼬리 1개·2개·중간 Ephemeral(안정 구간)·전부 꼬리(0)·빈 목록·ephemeral 빈 목록. `cache`: Ephemeral 1개가 끝에 있으면 메시지 힌트가 그 앞, 전부 꼬리면 메시지 힌트 없음·system 힌트 있음, Ephemeral 없음 → 마지막 메시지(기존 테스트 유지) |
 | ST-FR-62 | `cache` 를 쌓은 request.finalize 결과의 CacheKey = 세션 ID, `cache` 없음 → 빈 값 |
@@ -399,6 +401,7 @@ type Deps struct {
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.11 | sets 에 보조 모델 호출(`AuxModel`·`Complete`)·설정 `aux` 검사·`NewRegistry`·`NewMemoryStore`·`StateStoreOf`, nil Store → 메모리 Store | 모두 L2 harness 로 이동, `ParseConfig` 는 `aux` 를 건너뜀, 통로 `Deps.Aux`·`AuxOf`·`ErrNoAux`, nil Store → "없음" Store | R39 (sets 는 자기 루프의 제어만) |
 | 0.10 | 캐시 키 없음 | `cache` 가 `Options.CacheKey` = 세션 ID (ST-FR-62) | R33 |
 | 0.9 | `cache` 의 메시지 힌트 = 요청의 마지막 메시지 (모드 지시 같은 Ephemeral 이면 다음 요청에서 다시 맞지 않음) | 꼬리 앞 마지막 메시지 (ST-FR-61), `StableLen` (ST-FR-60). Ephemeral 이 없으면 같음 | R29 ⓔ |
 | 0.8 | 설정에 `aux` 없음, Deps 에 모드 없음 | `aux`(ST-FR-54), `AuxModel`·`Complete`(3.2b), `Deps.Modes`(ST-FR-57~59). 기존 세트 동작 변화 없음 | R27 |

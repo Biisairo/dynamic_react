@@ -71,7 +71,7 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 | [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 비대화형 검증용 CLI (입출력만) | 스펙 v0.2, 구현 |
 | [`examples/inject/`](examples/inject/SPEC.md) | 주입 예시: 매 턴 규칙 덧붙이기 + `rm -rf` 차단 | 스펙 v0.2, 구현 |
 | [`examples/verify/`](examples/verify/SPEC.md) | 자기검증 세트 예시: 변경 뒤 끝낼 때 셸 명령으로 검증, 실패하면 출력을 모델에 돌려줌, `-i` 대화형 | 스펙 v0.3, 구현 |
-| [`examples/modes/`](examples/modes/SPEC.md) | 모드 예시: goal(품질 게이트 → 보조 모델 판정 루프)·plan(쓰기 도구 차단) | 스펙 v0.3, 구현 |
+| [`examples/modes/`](examples/modes/SPEC.md) | 모드 예시: goal(품질 게이트 → 보조 모델 판정 루프)·plan(쓰기 도구 차단) | 스펙 v0.4, 구현 |
 | [`docs/`](docs/DECISIONS.md) | 결정 기록, 주입 가이드([`INJECT.md`](docs/INJECT.md)), 22 step 표현 검증, 인계 문서 | — |
 
 ## 실행
@@ -146,7 +146,7 @@ a, err := agent.New(ctx, agent.Options{
 
 - 진입: 사용자(`/mode <name> [arg]`, `EnterMode`) 또는 모델(`mode` 도구 — 기본 모드이고 예약이 없을 때만). 이탈: 모드의 세트(`sets.ModesOf(d).Exit`) 또는 사용자(`/mode off`). 모델은 이탈할 수 없다.
 - 적용: run 안에서는 다음 `turn.start`, run 밖 예약은 다음 run 시작. 세션 상태(`harness.mode`)로 저장되어 재개 뒤에도 유지된다.
-- 판단기 같은 세트는 `sets.Complete` + `sets.AuxModel(cfg, role)` 로 보조 모델을 부른다 (설정 `agent.aux.<role>`, 없으면 본 모델). run 밖에서는 `Agent.Complete`.
+- 판단기 같은 세트는 `sets.AuxOf(d).Complete(ctx, config, role, system, msgs)` 로 보조 모델을 부른다. 모델·max tokens·thinking 은 하네스가 설정 `agent.aux.<role>` 로 정한다 (없으면 본 모델). run 밖에서는 `Agent.Complete`.
 - 예시: [`examples/modes`](examples/modes/main.go) (`cd examples/modes && go run . [-check "go test ./..."]`).
 - 자세한 사용법은 [`docs/INJECT.md`](docs/INJECT.md) 5장. run 이 끝난 뒤 다음 run 을 언제 시작할지 정하는 대기 제어(WAIT 자동 재개·주기 실행)는 하지 않는다 (R28).
 

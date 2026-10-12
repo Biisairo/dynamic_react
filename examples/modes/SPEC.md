@@ -1,8 +1,8 @@
 # examples/modes — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.3 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D12, R24, R26, R27, R29, R37, R38)
+- 버전: 0.4 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D12, R24, R26, R27, R29, R37, R38, R39, R40)
 - 의존 명세: `L2_harness/SPEC.md` (3.6e 모드), `L2_harness/agent/SPEC.md` (3.14b), `L1_inject/sets/SPEC.md` (3.2a verify, 3.2b 보조 모델), `examples/verify/SPEC.md` (같은 대화형 형태)
 - 사용하는 쪽: 개발자 (모드 메커니즘 사용법 예시)
 
@@ -38,7 +38,7 @@ modes-example [-check "<shell command>"] [-attempts N] [-goal-turns N] [-model p
 ### 2.2 제약
 - MX-C1. 키 값을 출력하지 않는다. 환경변수를 읽지 않는다 (R21).
 - MX-C2. 로직은 `run` 에 두고 `main` 은 `os.Exit(run(signalCtx, os.Args[1:], os.Stdout, os.Stderr))` 만 한다. 테스트는 `runWith(ctx, args, stdout, stderr, mod func(*agent.Options))` 와 dr 과 같은 `isTerminal`·`open` 바꿔 넣기로.
-- MX-C3. 판정은 보조 모델 역할 `goal_judge` 다 (설정 `agent.aux.goal_judge`, 없으면 본 모델).
+- MX-C3. 판정은 보조 모델 역할 `goal_judge` 다 (설정 `agent.aux.goal_judge`, 없으면 본 모델). 모델·max tokens·thinking 은 하네스가 정한다 (harness HN-FR-72, R39·R40) — 세트는 `Deps.Aux` 통로로만 부른다.
 
 ---
 
@@ -53,7 +53,7 @@ func PlanSet(d sets.Deps) inject.FunctionSet                // Name "plan"
 |---|---|
 | MX-FR-01 | **goal 4 context.inject**: `Deps.Modes.Current(sid)` 의 Arg 가 비지 않으면 임시 메시지 하나 `[goal mode] Goal: <Arg>\nWork toward this goal. When it is complete, say so and show concrete evidence (command output, file contents, test results).` (user 역할, 이번 요청에만) |
 | MX-FR-02 | **goal 20 turn.finish**: `ctx.Next()` 의 신호에 settle 이 없으면(에러 포함) 그대로 돌려준다. settle 이 있어도 입력함에 소비하지 않은 메시지가 있으면(`len(Conv().Inbox())` > base 의 공개 상태 `base`/`inbox.consumed`, sets ST-FR-43) 판정·턴 계산·이탈 없이 그대로 돌려준다 — 사용자 입력이 먼저 돌고 그 턴 뒤에 판정한다 (Hermes 와 같음, R38). 그 밖에 settle 이 있으면: Arg 가 비면 `Modes.Exit("no goal")` 후 그대로. 아니면 판정(MX-FR-03) → `done`: `Exit("goal achieved: <reason>")` 후 그대로 / `blocked`: `Exit("goal blocked: <reason>")` 후 그대로 / `continue`: 상태 `progress = {arg, turns}`(arg 가 지금 Arg 와 다르면 turns 0 부터)의 turns+1 을 저장하고, turns ≥ maxTurns 면 `Exit("goal turn budget <n>/<max>")` 후 그대로, 아니면 `[inject_input(continuation), continue_turn]` (settle 은 뺌, 다른 효과 신호는 유지) |
-| MX-FR-03 | 판정 = `sets.Complete(ctx, d.Model, {Model: AuxModel(cfg, "goal_judge"), System: [판정 지시], Messages: [user: "Goal:\n<Arg>\n\nAgent's most recent response:\n<응답 텍스트 앞 4000자>"]})`. MX-FR-11 의 메시지가 있으면 user 메시지 끝에 `\n\nMessages the user sent while the goal was active (they may add to or change the criteria; ignore those that do not):\n- <메시지>` 를 줄마다 붙인다 — 메시지마다 앞 500자(넘으면 끝에 `…`), 오래된 것부터 쓰되 메시지 줄들(`- ` 포함, 줄바꿈 제외)의 rune 합이 2000 을 넘지 않도록 오래된 것부터 뺀다. 남는 것이 없으면 블록을 붙이지 않는다. 판정 지시 = Hermes `JUDGE_SYSTEM_PROMPT` 의 done/blocked/continue 부분 요약 + `Reply ONLY with one JSON object: {"verdict": "done"|"blocked"|"continue", "reason": "<one sentence>"}`. 응답에서 첫 `{…}` 를 JSON 으로 읽고, 호출 에러·JSON 아님·모르는 verdict 는 `continue`(reason = 그 사유) — Hermes 와 같은 fail-open, 상한은 maxTurns |
+| MX-FR-03 | 판정 = `sets.AuxOf(d).Complete(ctx, Env().Config(), "goal_judge", [판정 지시], [user: "Goal:\n<Arg>\n\nAgent's most recent response:\n<응답 텍스트 앞 4000자>\n\nIs the goal satisfied — done, blocked, or continue?"])` (R39). MX-FR-11 의 메시지가 있으면 user 메시지 끝에 `\n\nMessages the user sent while the goal was active (they may add to or change the criteria; ignore those that do not):\n- <메시지>` 를 줄마다 붙인다 — 메시지마다 앞 500자(넘으면 끝에 `…`), 오래된 것부터 쓰되 메시지 줄들(`- ` 포함, 줄바꿈 제외)의 rune 합이 2000 을 넘지 않도록 오래된 것부터 뺀다. 남는 것이 없으면 블록을 붙이지 않는다. 판정 지시 = Hermes `JUDGE_SYSTEM_PROMPT` 의 done/blocked/continue 부분 요약 + `Reply ONLY with one JSON object: {"verdict": "done"|"blocked"|"continue", "reason": "<one sentence>"}`. 응답에서 첫 `{…}` 를 JSON 으로 읽고, 호출 에러(설정 에러·`ErrNoAux` 포함, reason = `judge error: <에러>`)·JSON 아님·모르는 verdict 는 `continue`(reason = 그 사유) — Hermes 와 같은 fail-open, 상한은 maxTurns |
 | MX-FR-04 | continuation = user 메시지(ID `d.NewID()`, 시각 `d.Now()`) `[Continuing toward your standing goal]\nGoal: <Arg>\nJudge: <reason>\nTake the next concrete step. If the goal is complete, say so with evidence and stop.` |
 | MX-FR-05 | **plan 4 context.inject**: `[plan mode] Plan only — do not implement. Investigate with read-only tools and reply with a step-by-step plan (goal, approach, tasks with exact file paths, verification commands, risks).\nBlocked tools in this mode: bash, edit, write. Calls to them return an error.` + Arg 가 있으면 `\nTask: <Arg>`. 막힌 도구 이름은 MX-FR-06 의 목록을 이름순으로 쓴다 |
 | MX-FR-06 | **plan 16 tool.before**: `write`·`edit`·`bash` 면 ShortCircuit `{Status: error, text "blocked in plan mode"}`, 아니면 `ctx.Next(call)`. plan 은 request.finalize 를 채우지 않는다 — 요청의 도구 목록은 기본 배치와 같다 (R29 ⓐⓒ: 도구 목록을 바꾸면 캐시 접두 전체가 깨진다) |
@@ -81,6 +81,7 @@ func PlanSet(d sets.Deps) inject.FunctionSet                // Name "plan"
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.4 | 판단기가 `sets.AuxModel`·`sets.Complete` 로 직접 부름, 요청에 max tokens·thinking 없음, 설정 에러는 `judge config: …` | `Deps.Aux` 로 부름 — 하네스 규칙(aux 의 모델·max tokens·thinking, 폴백)을 따름, 설정 에러도 `judge error: …` | R39, R40 |
 | 0.3 | 입력함에 사용자 메시지가 있어도 판정, 판단기는 목표와 마지막 답만 봄 | 사용자 메시지가 있으면 판정을 미룸(MX-FR-02), goal 진행 중 사용자 메시지를 모아 판정에 추가 기준으로 넘김(MX-FR-03·11) | R38 (EX-3) |
 | 0.2 | plan 이 request.finalize 에서 write·edit·bash 를 도구 목록에서 뺌 | 도구 목록은 그대로, 지시에 막힌 도구를 적고 tool.before 로만 막음 (MX-FR-05·06) | R29 ⑤ |
 | 0.1 | 모드 예시 없음 | 이 모듈 | R27 (범위 "메커니즘만" — goal·plan 은 예시) |

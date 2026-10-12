@@ -65,7 +65,7 @@ Hermes 는 하나의 ReAct 턴 엔진(`agent/conversation_loop.py`) 위에, 턴 
 |---|---|---|---|---|
 | 29 | verify-on-stop: 코드 편집 뒤 증거 없이 끝내면 계속 (`turn_stop_gates.py`) | 20 turn.finish `[inject_input(보고), continue_turn]` — `sets.Verify` | ● | sets 테스트 (R24) |
 | 30 | kanban 종료 도구 가드: 완료 도구 없이 끝내면 nudge | 20 turn.finish, Transcript 에서 완료 도구 호출 여부 확인 | ● | 구현 없음 (#29 와 같은 형태) |
-| 31 | `/goal` 판정 루프: 턴 뒤 judge → done / blocked / continue, 턴 예산 (`goals.py` `evaluate_after_turn`) | 모드 `goal`: Push 세트의 20 turn.finish 가 `ctx.Next()` 의 settle 을 보고 보조 모델(`sets.Complete`, 역할 `goal_judge`)로 판정 → continue 면 settle 을 빼고 `[inject_input(continuation), continue_turn]`, done·blocked·예산이면 `Modes.Exit` | ● | `examples/modes` `TestGoalLoop`·`TestGoalStops` |
+| 31 | `/goal` 판정 루프: 턴 뒤 judge → done / blocked / continue, 턴 예산 (`goals.py` `evaluate_after_turn`) | 모드 `goal`: Push 세트의 20 turn.finish 가 `ctx.Next()` 의 settle 을 보고 보조 모델(`Deps.Aux` 통로, 역할 `goal_judge`)로 판정 → continue 면 settle 을 빼고 `[inject_input(continuation), continue_turn]`, done·blocked·예산이면 `Modes.Exit` | ● | `examples/modes` `TestGoalLoop`·`TestGoalStops` |
 | 32 | `/goal` 품질 게이트: 셸 명령이 실패하면 judge 를 부르지 않음 | 모드 `goal` 의 Push 를 `[verify, goal]` 로 — verify 가 실패하면 settle 을 빼므로 판단기가 판정하지 않음 | ● | `TestGoalCheckFirst` |
 | 33 | `/goal` contract·subgoal: 완료 조건을 judge 프롬프트에 넣음 | #31 의 판정 지시에 조건을 넣음. 모드 인자(`Arg`)나 세트 상태로 보관 | ● | 구현 없음 |
 | 34 | `/goal` 진행 중 사용자 입력 우선 | 실행 중 입력은 Steer → 입력함 → 다음 턴의 2 turn.start 가 가져감. 판정을 미루려면 20 에서 `Conv().Inbox()` 를 확인 | ● | 미룸 규칙은 구현 없음 (입력은 다음 턴에 합쳐짐) |

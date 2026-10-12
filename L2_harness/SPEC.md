@@ -1,8 +1,8 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 1.8 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26, R27, R29, R30, R35)
+- 버전: 1.9 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26, R27, R29, R30, R35, R39, R40)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
@@ -60,7 +60,7 @@ L1(inject + sets) 위에서 **코딩 에이전트를 함수 하나(`Agent`)로**
  harness.New ── ToolSet(tools.All(env)) ── Store(session.New(env, dir)) ── System(prompt.Build(...)) ── Summarizer(summary.New(model))
         │        └──────────────────────────── sets.Deps ──────────────────────────────┘
         ▼
- inject.BindWith(StateStore: sets.StateStoreOf(store), Sets(deps)...)   // Sets nil → DefaultSets = sets.Base, sets.Resilient
+ inject.BindWith(StateStore: stateStore(store), Sets(deps)...)   // Sets nil → DefaultSets = sets.Base, sets.Resilient
         ▼
  core.New(dispatcher, core.Options{Observer}) ── Agent.Start(ctx, RunRequest) -> *core.Run
 ```
@@ -114,6 +114,7 @@ type Env interface {
 | HN-FR-01 | Env 의 경로 인자는 **절대 경로**다. 상대 경로·`~` 해석은 harness 가 한다 (HN-FR-05). 구분자는 `/` |
 | HN-FR-02 | 없는 파일은 `errors.Is(err, fs.ErrNotExist)` 로 판별 가능한 에러여야 한다 (Env 구현 계약) |
 | HN-FR-03 | `AppendFile` 호출 하나는 한 번의 write 로 쓴다 (세션 줄 원자성, HN-FR-12). `Exec` 는 ctx 취소·Timeout 시 **자식 프로세스 전체**를 끝내고 반환한다. Timeout 이면 `TimedOut=true`, 에러 아님. 실행 자체를 못 하면 error (Env 구현 계약) |
+| HN-FR-04a | `harness/storetest` 패키지가 프로세스 메모리 `sets.Store` 구현(`storetest.New() *MemoryStore`)을 제공한다 (R39, 이전 sets ST-FR-39): 세션별로 메시지·편집·상태를 순서대로 보관하고 다음 run 의 `Load` 로 복사본을 돌려준다. 동시 사용에 안전하다. 테스트 지원용이다 |
 | HN-FR-04 | `harness/envtest` 패키지가 메모리 FileSystem 과 스크립트된 Shell 로 된 가짜 Env(`envtest.New(cwd, home)`)를 제공한다. `SetSymlink(p)` 는 이미 있는 파일·디렉터리 p 를 링크로 표시해 `ListDir` 이 `Symlink=true` 로 돌려주게 한다 (읽기·순회는 대상 그대로). 계약 테스트 `envtest.ConformanceFS(t, fs, root)`(HN-FR-02·03 의 FileSystem 부분, 메모리 FS 도 통과)와 `envtest.ConformanceShell(t, sh, dir)`(실제 셸용: 출력 합치기, 종료 코드, Timeout, 취소 시 자식 종료)를 둔다 |
 
 ### 3.2 도구 (`harness/tools`)
@@ -211,7 +212,7 @@ type RunRequest struct {
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-26 | `harness.New(ctx, Options) (*Agent, error)`: 레지스트리, 세션 Store, 시스템 프롬프트(`ContextFiles`·`Skills` 포함), 요약기를 HN-FR-38 의 순서로 한 번 만들고 `inject.BindWith(sets.StateStoreOf(store), Sets(deps)...)` 로 Dispatcher 를 만든다. Env·Model·SessionDir 누락, Bind 실패, 프롬프트 수집의 Env 에러(없는 파일 제외), HN-FR-38 의 nil 결과 에러는 에러 |
+| HN-FR-26 | `harness.New(ctx, Options) (*Agent, error)`: 레지스트리, 세션 Store, 시스템 프롬프트(`ContextFiles`·`Skills` 포함), 요약기를 HN-FR-38 의 순서로 한 번 만들고 `inject.BindWith(StateStore(store) (HN-FR-84), Sets(deps)...)` 로 Dispatcher 를 만든다. Env·Model·SessionDir 누락, Bind 실패, 프롬프트 수집의 Env 에러(없는 파일 제외), HN-FR-38 의 nil 결과 에러는 에러 |
 | HN-FR-27 | `Agent.Start(ctx, RunRequest) (*core.Run, string, error)`: Config 를 `sets.ParseConfig` 로 검사하고(실패하면 run 없이 에러), sessionID 를 검사·생성해 run 을 시작한다. 두 번째 반환값은 쓰인 sessionID. `RunRequest.Observer` 가 있으면 그 run 만 그 Observer 로 도는 Kernel(같은 Dispatcher)에서 시작한다 — core 의 RunID 는 내부에서 만들어지고 Observer 이벤트에 세션이 없으므로, run 별 Observer 가 panic 을 그 run 에 귀속시키는 유일한 방법이다 |
 | HN-FR-28 | 여러 run 을 동시에 시작할 수 있다 (세션이 다르면 독립). 같은 세션의 동시 run 은 보장하지 않는다 |
 | HN-FR-29 | `Agent.System() []contract.Block`, `Agent.Tools() sets.ToolRegistry`, `Agent.Store() Store` 로 조립 결과를 조회할 수 있다 (L3 표시용, Store 는 agent 의 목록·이력용, R22) |
@@ -322,9 +323,9 @@ func (a *Agent) Store() Store
 
 | id | 요구사항 |
 |---|---|
-| HN-FR-38 | `New` 는 아래 순서로 만든다. ① 도구: def = `tools.All(Env)`. `ToolSet(def)` 의 결과를 순서대로 `sets.NewRegistry` 에 넣는다 (같은 이름은 뒤의 것이 앞의 자리를 덮음, ST-FR-41). 빈 결과는 허용한다 (도구 없는 에이전트) ② 저장소: def = `session.New(Env, SessionDir)` (SessionDir 은 여전히 필수). `Store(def)` 가 nil 이면 에러 `harness: Store returned nil` ③ 시스템 프롬프트: def = 3.4 의 조립(①의 registry 기준). `System(def)` 의 결과를 그대로 쓴다 (nil·빈 결과 = 시스템 프롬프트 없음, HN-C4 는 그대로) ④ 요약기: def = `summary.New(Model, Now)`. `Summarizer(def)` 가 nil 이면 압축을 끈다 (ST-FR-36, 수동 압축은 HN-FR-36 의 에러). `OnEvent` 가 있으면 nil 이 아닐 때만 compaction 이벤트로 감싼다 (3.6a) ⑤ 세트: `sets.Deps{Model, Tools: ①, Store: ②, System: ③, Summarizer: ④, Sleep, Now, NewID}` 로 `Sets(deps)` 를 **한 번** 부르고(nil → `DefaultSets(deps)`) 등록 목록으로 둔다. 이름이 비거나 겹치면 에러. `Layout` 으로 처음 배치를 정하고(HN-FR-52) 켜진 세트를 배치 순서대로 3.6a 래핑(HN-FR-41)한 뒤 `inject.BindWith(StateStore: sets.StateStoreOf(②))`. Bind 에러(빈 step 등)는 `harness: sets: …` 에러 |
+| HN-FR-38 | `New` 는 아래 순서로 만든다. ① 도구: def = `tools.All(Env)`. `ToolSet(def)` 의 결과를 순서대로 harness 레지스트리(HN-FR-84)에 넣는다 (같은 이름은 뒤의 것이 앞의 자리를 덮음). 빈 결과는 허용한다 (도구 없는 에이전트) ② 저장소: def = `session.New(Env, SessionDir)` (SessionDir 은 여전히 필수). `Store(def)` 가 nil 이면 에러 `harness: Store returned nil` ③ 시스템 프롬프트: def = 3.4 의 조립(①의 registry 기준). `System(def)` 의 결과를 그대로 쓴다 (nil·빈 결과 = 시스템 프롬프트 없음, HN-C4 는 그대로) ④ 요약기: def = `summary.New(Model, Now)`. `Summarizer(def)` 가 nil 이면 압축을 끈다 (ST-FR-36, 수동 압축은 HN-FR-36 의 에러). `OnEvent` 가 있으면 nil 이 아닐 때만 compaction 이벤트로 감싼다 (3.6a) ⑤ 세트: `sets.Deps{Model, Tools: ①, Store: ②, System: ③, Summarizer: ④, Sleep, Now, NewID, Modes: HN-FR-71, Aux: HN-FR-85}` 로 `Sets(deps)` 를 **한 번** 부르고(nil → `DefaultSets(deps)`) 등록 목록으로 둔다. 이름이 비거나 겹치면 에러. `Layout` 으로 처음 배치를 정하고(HN-FR-52) 켜진 세트를 배치 순서대로 3.6a 래핑(HN-FR-41)한 뒤 `inject.BindWith(StateStore: ②를 감싼 것(HN-FR-84))`. Bind 에러(빈 step 등)는 `harness: sets: …` 에러 |
 | HN-FR-39 | `DefaultSets(d)` = `[Base, Require, Cache, Guard, Truncate, Resilient]`(sets 3.0) 전부 `On: true` — 이 순서·켜짐이 기본 구성(프리셋)이고 harness 가 갖는 유일한 순서 지식이다 (R26 ③). 전부 켜면 v1.2 의 기본 동작과 같다. 사용자는 이것에 덧붙이거나, 원소를 고치거나, 쓰지 않는다(base·require 포함 전부 교체) |
-| HN-FR-40 | `Store` 의 `List` 는 그 저장소에 저장된 세션 ID 를 돌려준다. `Load` 는 저장되지 않은 ID 에 빈 세션을 돌려준다 (`sets.Store` 와 같음). run·수동 압축·state 저장(`StateStoreOf`)·agent 의 목록과 이력(AG-FR-29·30)이 모두 이 하나의 저장소를 쓴다 |
+| HN-FR-40 | `Store` 의 `List` 는 그 저장소에 저장된 세션 ID 를 돌려준다. `Load` 는 저장되지 않은 ID 에 빈 세션을 돌려준다 (`sets.Store` 와 같음). run·수동 압축·state 저장(HN-FR-84)·agent 의 목록과 이력(AG-FR-29·30)이 모두 이 하나의 저장소를 쓴다 |
 | HN-FR-41 | 사용자 세트와 surface 래핑: 3.6a 래핑은 켜진 세트들 중 step 마다 **가장 위 층** 함수를 그 세트 안에서 감싼다 (위 층이 `ctx.Next` 로 아래 층을 부르므로 체인 전체가 감싸진다). 그래서 **승인(Gate)과 이벤트(OnEvent)는 사용자 세트·배치가 무엇이든 유지된다.** 없는 도구·스키마 검사(ST-FR-38)는 `guard` 세트다 — 끄거나 base 위에 `ctx.Next` 를 부르지 않는 `tool.before` 를 쌓으면 검사가 빠지고, Gate 는 검사 없이 그 호출에 불린다. 이것은 사용자의 책임이다. base 공개 상태 `inbox.consumed`(HN-FR-30)를 쓰는 기능(agent 의 Steer, AG-FR-24)은 이름이 `base` 인 세트가 그 상태를 갱신할 때만 맞게 동작한다 |
 | HN-FR-42 | `Agent.Store()` 는 HN-FR-38 ②의 결과다 |
 
@@ -369,6 +370,9 @@ func (a *Agent) ModeStatus(ctx context.Context, sessionID string) (ModeStatus, e
 func (a *Agent) RequestMode(ctx context.Context, sessionID string, r ModeRequest) error
 func (a *Agent) Complete(ctx context.Context, config json.RawMessage, role string,
     system []contract.Block, msgs []contract.Message) (contract.Message, error)
+
+type AuxModel struct { Provider, ID string; MaxOutputTokens int; Thinking string } // JSON: provider, id, maxOutputTokens, thinking
+func ParseAux(config json.RawMessage) (map[string]AuxModel, error)
 ```
 
 가정 (사용자에게 알림): ① 한 세션의 활성 모드는 하나다. 모드 → 다른 모드 직접 전환은 사용자만 한다 ② "다음 턴" = run 안에서는 다음 `turn.start` 직전, run 밖에서 예약됐으면 다음 run 시작 직전 ③ 세트의 이탈 요청은 dispatch 원자성 밖에서 바로 기록된다 (ST-FR-59)
@@ -433,7 +437,11 @@ func (a *Agent) Complete(ctx context.Context, config json.RawMessage, role strin
 | id | 요구사항 |
 |---|---|
 | HN-FR-71 | `Sets(deps)` 에 넘기는 `Deps.Modes` 는 harness 구현이다: `Current(sid)` = `ModeStatus` 의 `Active`·`Arg`, `Exit(sid, reason)` = `RequestMode(sid, {To: "", Origin: set, Reason: reason})` |
-| HN-FR-72 | `Complete`: `sets.ParseConfig(config)`(실패 = 에러) → ref = `sets.AuxModel(cfg, role)` → `Model.Lookup` 이 알면 ref 의 API 와 MaxOutputTokens(cfg 값이 0 이 아니면 그것)를 채움 → 요청 `{Model: ref, System: system, Messages: msgs, Options.MaxOutputTokens}` (도구·thinking 없음) → `sets.Complete(ctx, Options.Model, req)`. 세션·run·이벤트·저장 없음 |
+| HN-FR-72 | `Complete` (R39·R40): `sets.ParseConfig(config)`·`ParseAux(config)`(HN-FR-86, 실패 = 에러) → 역할의 보조 모델 m = `aux[role]` 이 있으면 그것, 없으면 `{cfg.Model, 옵션 없음}` → ref = m 의 Provider·ID, `Model.Lookup` 이 알면 ref 의 API → MaxOutputTokens = m 의 값 → 0 이면 `cfg.MaxOutputTokens` → 0 이면 Lookup 의 값 → Thinking = m 의 값 (본 모델의 `thinking` 은 물려받지 않음, 비면 보내지 않음) → 요청 `{Model: ref, System: system, Messages: msgs, Options{MaxOutputTokens, Thinking}}` (도구 없음) → 모델을 한 번 불러 done 메시지를 돌려준다(HN-FR-87). 세션·run·이벤트·저장 없음 |
+| HN-FR-84 | (sets 에서 옮김, R39) 레지스트리: 등록 순서를 지키는 맵 `sets.ToolRegistry` 구현 (같은 이름은 그 자리에서 덮음, 동시 사용에 안전). StateStore: `Store.Load` 의 `Session.State` 로 복원하고 `SaveState` 로 저장하는 `inject.StateStore` (inject IN-FR-26). 둘 다 비공개 |
+| HN-FR-85 | `Sets(deps)` 에 넘기는 `Deps.Aux` 는 harness 구현이다: `Complete(ctx, config, role, system, msgs)` = `Agent.Complete` (HN-FR-72). 세트(예: goal 판단기)는 `sets.AuxOf(d)` 로 꺼내 그 run 의 설정(`Env().Config()`)을 넘긴다 |
+| HN-FR-86 | `ParseAux(config json.RawMessage) (map[string]AuxModel, error)` (R39·R40, 이전 sets ST-FR-54): 설정 문서의 최상위 `aux` 만 읽는다 (다른 키는 보지 않음, 없으면 빈 맵). `aux` = 역할 이름 → `{provider, id, maxOutputTokens?, thinking?}`. 역할 이름·provider·id 가 비면 에러, `maxOutputTokens` 가 음수면 에러, 항목 안의 모르는 키는 에러, `aux` 가 객체가 아니면 에러. 에러 문구는 `harness: config: aux…` 로 시작한다 |
+| HN-FR-87 | (sets 에서 옮김, R39, 이전 ST-FR-56) 단발 호출: `Model.Call(ctx, req)` 를 끝까지 소비해 `done` 이벤트의 메시지를 돌려준다. `error` 이벤트면 그 `*contract.CallError`(`errors.As` 로 꺼냄), iterator 에러면 그 에러, done 없이 끝나면 에러 `harness: complete: stream ended without done`, done·error 이벤트에 값이 없으면 에러. ctx 가 취소되어 끝나면 ctx 에러. 도구를 실행하지 않고 재시도하지 않는다 |
 
 ### 3.6f 캐시 접두 감지 (R29)
 
@@ -529,6 +537,8 @@ func (a *Agent) Stats(sessionID string) (Stats, bool) // false = 기록 없음
 | HN-FR-64~67 | 가짜 ModelCaller 시나리오: 턴1 `mode` 도구 호출 → 턴1 요청엔 없고 턴2 요청에 Push 세트의 `context.inject` 가 있음 / run 밖 예약 → 다음 Start 첫 요청부터 / 세트가 turn.finish 에서 Exit 후 settle → 다음 run 은 기본 배치 / 교체 뒤에도 base `inbox.consumed`·resilient 상태 유지(Steer 동작) / turn.start 외 step 에서 예약해도 그 턴은 그대로 / `mode` 이벤트 필드·RunID / 저장 실패 → 에러 / 동시 run·요청(-race) |
 | HN-FR-68~70 | 도구 spec(enum·설명), 모델 진입 거부(활성 모드 있음·예약 있음) → error 결과, ToolSet 으로 제거, Modes 비면 도구 없음 |
 | HN-FR-71~72 | Deps.Modes 의 Origin 이 set, Complete 가 aux 모델·폴백·MaxOutputTokens 로 요청·도구 없음, 잘못된 config 에러 |
+| HN-FR-72, 85~87 | Complete: aux 의 maxOutputTokens·thinking 이 요청에 실림, aux 에 없으면 설정 → Lookup 순 폴백, aux 항목이 없는 역할은 본 모델·thinking 없음(본 설정 thinking 무시) / 세트가 `sets.AuxOf(d).Complete` 로 부르면 같은 요청 / `ParseAux`: 없음 → 빈 맵, 빈 역할·빈 provider·빈 id·음수·모르는 키·객체 아님 → 에러, 다른 최상위 키 무시 / 단발 호출: done, error 이벤트 → `*contract.CallError`, iterator 에러, done 없이 끝남, 값 없는 done·error, ctx 취소 |
+| HN-FR-04a, 84 | storetest 재생·상태 복원·복사본, 레지스트리 순서·덮기, StateStore 복원·저장 |
 | HN-FR-73~78 | 가짜 ModelCaller·`OnEvent` 로: 덧붙기만 하는 3턴 → 이벤트 없음 / 세션 첫 요청 → 없음 / 위층 세트가 2턴째 tools 를 바꿈 → Part tools·At -1·Total / system 을 바꿈 → Part system / tools·system 이 같고 메시지 중간이 바뀜 → Part messages·At·Expected false / `context.maintain` 이 편집(replace_range)을 낸 턴 → Part messages·Edits [replace_range]·Expected true / 도구 결과의 내용만 바뀜 → Part messages / 편집과 tools 변경이 같은 요청 → Part tools·Expected false / Ephemeral 꼬리만 바뀜 → 없음 / 모드 진입·이탈에서 tools 를 바꾸는 Push 세트 → 진입 턴과 이탈 뒤 첫 턴에 Part tools / 모델 A → B → A(설정·`reselect`) → B 첫 요청에 Part model, A 로 돌아오면 덧붙기뿐이면 없음 / 다음 run(같은 세션)의 첫 요청은 직전 run 의 기준과 비교 / `Arrange` 로 tools 를 바꾸는 세트를 켬 → 다음 run 첫 요청에 Part tools / `recall` → 없음 / ID·Timestamp 만 다른 짝 복구 메시지 → 없음 / 이벤트가 `message_start` 앞 / 동시 run(-race). `OnEvent` nil 이면 감싸지 않는 것(HN-FR-73)은 관찰할 수단이 없어 코드 검토로 확인 (3.6a 의 `OnEvent == nil` 분기 뒤에 둠) |
 | HN-FR-79~83 | 가짜 ModelCaller(Usage 에 CacheRead 포함)·`OnEvent` 로: 기록 없음 → false / 한 run 3요청 → Requests·Prompt·CacheRead 합, 첫 요청은 상한 제외, 둘째부터 상한 = 직전 Prompt, CacheRead 가 상한보다 크면 자름 / 다음 run → LastRun 다시 시작·Session 누적 / 다른 세션과 섞이지 않음 / 모델 A → B → A: B 첫 요청은 상한 제외, A 로 돌아오면 A 의 직전 Prompt 가 상한 / Context = Prompt + Output, Window, Threshold(기본 reserve·설정 reserve·`compaction.enabled` false → 0) / Usage 없는 응답은 세지 않음 / 동시 run(-race) |
 | HN-NFR-02~04 | 종단 시나리오, `go list -deps` |
@@ -547,6 +557,7 @@ func (a *Agent) Stats(sessionID string) (Stats, bool) // false = 기록 없음
 | R27 | 3.6e (HN-FR-55~72), HN-FR-31 (mode 이벤트) |
 | R29 | 3.6f (HN-FR-73~78), HN-FR-31 (prefix_break 이벤트) |
 | R30 | 3.6g (HN-FR-79~83) |
+| R39, R40 | HN-FR-04a, 72, 84~87 |
 | sets ST-FR-19, 35 | HN-C4, HN-FR-21 |
 | sets ST-FR-24, 27, 36 | 3.5 |
 | 자격증명 보호 | HN-C2 |
@@ -568,6 +579,7 @@ func (a *Agent) Stats(sessionID string) (Stats, bool) // false = 기록 없음
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 1.9 | 보조 모델 규칙·단발 호출·레지스트리·메모리 Store·StateStore 연결이 sets 에 있음, aux 는 모델만 | sets 에서 옮김(HN-FR-04a·84·87), `ParseAux`(HN-FR-86)·aux 의 `maxOutputTokens`·`thinking`(HN-FR-72), 세트용 통로 `Deps.Aux`(HN-FR-85) | R39, R40 |
 | 1.8 | `PrefixBreak.Kept`(messages 면 At 과 같고 그 밖에는 0) | 필드 없음. 유지된 메시지 수는 `At` 이다 | R35 |
 | 1.7 | `Modes` 가 빈 Agent 의 run 이 모드 상태를 읽는지 정하지 않음 | 읽지 않는다고 명시 (HN-FR-65·66). 코드는 이미 그렇게 동작 — 동작 변경 없음 | GOALS MD-1 뮤테이션 검사 |
 | 1.6 | 사용량 조회 없음 | `Stats`(3.6g): 세션별 요청·입력·캐시·효율 상한, 마지막 요청의 컨텍스트·창·압축 기준. `OnEvent` 가 nil 이면 기록 없음 | R30 |

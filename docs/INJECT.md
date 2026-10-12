@@ -200,20 +200,18 @@ func goalSet(d sets.Deps) inject.FunctionSet {
 
 ```json
 {"agent": {"model": {"provider": "deepseek", "id": "deepseek-flash"},
-           "aux":   {"goal_judge": {"provider": "anthropic", "id": "claude-haiku-4-5-20251001"}}}}
+           "aux":   {"goal_judge": {"provider": "anthropic", "id": "claude-haiku-4-5-20251001",
+                                    "maxOutputTokens": 512, "thinking": ""}}}}
 ```
 
 ```go
-cfg, _ := sets.ParseConfig(ctx.Env().Config())
-m := sets.AuxModel(cfg, "goal_judge")             // aux 에 없으면 본 모델
-msg, err := sets.Complete(ctx.Context(), d.Model, contract.Request{
-    Model:  contract.ModelRef{Provider: m.Provider, ID: m.ID},
-    System: []contract.Block{{Kind: contract.BlockText, Text: judgeRules}},
-    Messages: []contract.Message{question},
-})
+// 모델·max tokens·thinking 은 하네스가 aux 설정으로 정한다 (aux 에 없으면 본 모델)
+msg, err := sets.AuxOf(d).Complete(ctx.Context(), ctx.Env().Config(), "goal_judge",
+    []contract.Block{{Kind: contract.BlockText, Text: judgeRules}},
+    []contract.Message{question})
 ```
 
-- `sets.Complete` 는 단발 호출이다. 도구를 실행하지 않고 재시도하지 않는다. 판정 실패를 어떻게 다룰지(Hermes 는 "계속"으로 봄)는 판단기가 정한다.
+- 보조 모델 호출은 단발이다. 도구를 실행하지 않고 재시도하지 않는다. 세트는 하네스가 준 통로(`Deps.Aux`)로만 부른다 — 보조 모델 규칙은 하네스의 몫이다 (R39). 판정 실패를 어떻게 다룰지(Hermes 는 "계속"으로 봄)는 판단기가 정한다.
 - run 밖에서 같은 호출이 필요하면 `Agent.Complete(ctx, role, system, msgs)` 를 쓴다.
 - 판정은 작업 모델의 답과 하네스가 관찰한 것(예: `ctx.Conv().Transcript()` 의 도구 결과)을 근거로 쓸 수 있다. Hermes 의 judge 는 마지막 답 텍스트만 본다.
 - **로컬 서버 주의 (R32)**: 판정 요청이 본 대화와 같은 서버·같은 모델로 가면, 서버의 캐시 칸(슬롯)을 판정 요청이 덮을 수 있다. 그러면 다음 본 요청은 대화 전체를 다시 계산한다. 아래 중 하나로 피한다.

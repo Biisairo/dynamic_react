@@ -1,8 +1,8 @@
 # agent — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.10 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18, R20, R21, R22, R23, R26, R27, R30)
+- 버전: 0.11 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R12, R14, R17, R18, R20, R21, R22, R23, R26, R27, R30, R39)
 - 의존 명세: `L2_harness/SPEC.md`, `L2_harness/osenv/SPEC.md`, `L1_inject/adapters/SPEC.md`, `L1_inject/sets/SPEC.md` (설정 JSON)
 - 사용하는 쪽: `L3_ui/cmd/dr-print`, 이후 L3 surfaces
 
@@ -72,7 +72,7 @@
 | AG-FR-01 | 경로: `Options.ConfigPath` 가 있으면 그것(상대 경로면 Cwd 기준), 없으면 `<home>/.dynamic_react/config.json`. **기본 경로에 파일이 없으면 빈 설정** `{}`, 명시한 경로에 없으면 에러 |
 | AG-FR-02 | 최상위 키는 `sessionDir`·`shellPath`·`agent`·`providers`·`models`·`permissions`·`sets`(AG-FR-44) 뿐이다. 모르는 키, JSON 이 아닌 내용, 뒤따르는 데이터는 에러 |
 | AG-FR-03 | `providers`·`models` 는 `{"providers":…, "models":…}` 로 묶어 `adapters.ParseConfig` 로 검사한다 (모르는 키 에러는 adapters 가 낸다) |
-| AG-FR-04 | `agent` 는 sets 설정 JSON 이다 (없으면 `{}`). `Options.Model` 이 있으면 `agent.model` 을 `{"provider", "id"}` 로 덮는다. 합친 결과를 `New` 에서 검사한다: **모델이 없으면 에러가 아니라 모델 문제(`ErrNoModel`, AG-FR-32)** 로 기록하고, 그 밖의 `sets.ParseConfig` 에러는 `New` 에러다. **raw JSON 그대로** Start 때 넘긴다 (sets.Config 값을 쓰지 않음, HN-FR-27) |
+| AG-FR-04 | `agent` 는 sets 설정 JSON 이다 (없으면 `{}`). `Options.Model` 이 있으면 `agent.model` 을 `{"provider", "id"}` 로 덮는다. 합친 결과를 `New` 에서 검사한다: **모델이 없으면 에러가 아니라 모델 문제(`ErrNoModel`, AG-FR-32)** 로 기록하고, 그 밖의 `sets.ParseConfig` 에러와 `harness.ParseAux` 에러(HN-FR-86)는 `New` 에러다. **raw JSON 그대로** Start 때 넘긴다 (sets.Config 값을 쓰지 않음, HN-FR-27) |
 | AG-FR-05 | `Options.Model` 형식은 `provider/id` 다. **첫** `/` 에서 나눈다 (id 에 `/` 허용, 예: `openrouter/anthropic/claude-x`). 어느 쪽이 비면 에러 |
 
 ### 3.2 환경
@@ -317,7 +317,7 @@ func (a *Agent) Complete(ctx context.Context, role string, system []contract.Blo
 
 | id | 요구사항 |
 |---|---|
-| AG-FR-47 | 설정 `agent.aux`(sets ST-FR-54)는 `agent` 의 다른 키와 같이 sets 설정으로 그대로 넘어간다 (AG-FR-04). 형식 에러는 `New` 에러다 |
+| AG-FR-47 | 설정 `agent.aux`(harness HN-FR-86, R39)는 `agent` 의 다른 키와 같이 raw 설정으로 그대로 넘어간다 (AG-FR-04). 형식 에러(`harness.ParseAux`)는 `New` 에러다 |
 | AG-FR-48 | `Options.Modes` 를 `harness.Options.Modes` 로 넘긴다. harness 의 모드 검사 에러(HN-FR-55)는 `agent: ` 접두어로 `New` 에러 |
 | AG-FR-49 | `Modes()` = harness `Modes()`. `ModeStatus` = harness `ModeStatus`. `EnterMode(sid, name, arg)` = `RequestMode(sid, {To: name, Arg: arg, Origin: user})`, `ExitMode(sid)` = `RequestMode(sid, {To: "", Origin: user})`. 세션 잠금(AG-FR-22)을 잡지 않으므로 실행 중인 세션에도 부를 수 있다 (적용은 다음 turn.start, HN-FR-66) |
 | AG-FR-50 | `Complete(role, system, msgs)`: 모델 문제(AG-FR-32)가 있으면 그 에러. 아니면 `harness.Complete(ctx, AG-FR-04 의 raw 설정, role, system, msgs)` |
@@ -396,6 +396,7 @@ func (a *Agent) Complete(ctx context.Context, role string, system []contract.Blo
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.11 | `aux` 형식 에러를 `sets.ParseConfig` 가 냄 (`sets: config: aux…`) | `harness.ParseAux` 가 냄 (`harness: config: aux…`), 항목에 `maxOutputTokens`·`thinking` 허용. 그 밖의 동작 같음 | R39, R40 |
 | 0.10 | 상태 조회 없음 | `Stats`, `ToolNames` (3.14c) | R30 |
 | 0.9 | 모드 없음, run 밖 모델 호출 없음 | `Options.Modes`, `Modes`·`ModeStatus`·`EnterMode`·`ExitMode`, `Complete`(역할별 보조 모델, 설정 `agent.aux`) (3.14b). 모드를 등록하지 않으면 이전과 같음 | R27 |
 | 0.8 | `Sets` 는 `[]inject.FunctionSet`, 세트 구성 고정, 설정 최상위 키 6개 | `Sets` 는 `[]harness.SetEntry`, 설정 `sets`(배치), `Sets()`·`ArrangeSets`(저장) | R26 |
