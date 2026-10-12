@@ -14,7 +14,7 @@
              cmd/dr-print  non-interactive test CLI             (spec v0.2)
  ─────────────────────────────────────────────────────────────────
  L2_harness  the real agent on the user's environment (R17)
-             harness   agent assembly over Env + ModelCaller:   (spec v1.6)
+             harness   agent assembly over Env + ModelCaller:   (spec v1.7)
                        tool logic, JSONL sessions, prompt,
                        summarizer, session modes (no real I/O)
              osenv     Env on the OS: files, shell, groups      (spec v0.3)
@@ -63,7 +63,7 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 | [`L1_inject/inject/`](L1_inject/inject/SPEC.md) | 함수 주입 프레임워크 + 층 바인딩(`ctx.Next`) + 조합 함수 + 공유 run 표 | 스펙 v0.5, 구현 |
 | [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 함수 세트 부품 (base·require·cache·guard·truncate·resilient, 주입용 verify), 보조 모델 호출, 세트용 모드 인터페이스, 캐시 지점·키 | 스펙 v0.10, 구현 |
 | [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그, Chat 방언 캐시 지점·`prompt_cache_key` | 스펙 v0.8, 구현 |
-| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 7종 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입, 세트 배치(켜기·끄기·순서), 세션 모드(턴 경계 세트 교체), 캐시 접두 감지(`prefix_break`)·사용량 집계 | 스펙 v1.6, 구현 |
+| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 7종 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입, 세트 배치(켜기·끄기·순서), 세션 모드(턴 경계 세트 교체), 캐시 접두 감지(`prefix_break`)·사용량 집계 | 스펙 v1.7, 구현 |
 | [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.3, 구현 |
 | [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키·세트 배치 저장·모드·상태 조회), 주입 통로 | 스펙 v0.10, 구현 |
 | [`L3_ui/surfaces/terminal/`](L3_ui/surfaces/terminal/SPEC.md) | 대화형 터미널 surface 라이브러리 | 스펙 v0.8, 구현 |

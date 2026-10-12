@@ -1,7 +1,7 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 1.6 (초안)
+- 버전: 1.7 (초안)
 - 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26, R27, R29, R30)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
@@ -416,8 +416,8 @@ func (a *Agent) Complete(ctx context.Context, config json.RawMessage, role strin
 | id | 요구사항 |
 |---|---|
 | HN-FR-64 | 적용 = `Active, Arg` ← 예약의 `To, Arg`, 예약 지움, 저장(HN-FR-59), `mode` 이벤트. 저장 실패는 적용하지 않은 것으로 본다 (run 시작이면 `Start` 에러, run 안이면 그 dispatch 의 에러) |
-| HN-FR-65 | **run 시작**: `Start` 는 sessionID 를 정한 뒤 core run 을 시작하기 전에 그 세션의 예약을 적용하고, `Active` 의 Bind 결과로 run 을 시작한다 |
-| HN-FR-66 | **run 스위처**: `Start` 가 Kernel 에 넘기는 Dispatcher 는 harness 스위처다. run(RunID) 마다 지금 쓰는 Bind 결과를 기억하고 모든 dispatch 를 그것으로 보낸다. **`turn.start` dispatch 직전에만** 그 세션의 예약을 확인해 있으면 적용(HN-FR-64)하고 새 `Active` 의 Bind 결과로 바꾼다. `run.settled` 뒤 그 run 의 기억을 지운다. 묶음들은 같은 RunTable 을 쓰므로 세트 상태가 이어진다 |
+| HN-FR-65 | **run 시작**: `Start` 는 sessionID 를 정한 뒤 core run 을 시작하기 전에 그 세션의 예약을 적용하고, `Active` 의 Bind 결과로 run 을 시작한다. `Modes` 가 비면 적용하지 않고 모드 상태를 읽지도 않는다 (기본 배치로 시작) |
+| HN-FR-66 | **run 스위처**: `Start` 가 Kernel 에 넘기는 Dispatcher 는 harness 스위처다. run(RunID) 마다 지금 쓰는 Bind 결과를 기억하고 모든 dispatch 를 그것으로 보낸다. **`turn.start` dispatch 직전에만** 그 세션의 예약을 확인해 있으면 적용(HN-FR-64)하고 새 `Active` 의 Bind 결과로 바꾼다. `run.settled` 뒤 그 run 의 기억을 지운다. 묶음들은 같은 RunTable 을 쓰므로 세트 상태가 이어진다. `Modes` 가 비면 `turn.start` 에서도 모드 상태를 읽지 않는다 — 이전 설정의 모드 상태가 남은 세션이라도 run 중에 고침(HN-FR-60)·`mode` 이벤트가 없다 |
 | HN-FR-67 | 이벤트 `mode` (13번째 종류, HN-FR-31 표에 추가): 적용(HN-FR-64)·고침(HN-FR-60)마다 하나, `Event.Mode = &ModeChange{…}`. run 시작 전 적용은 RunID "" |
 
 **`mode` 도구**
@@ -569,6 +569,7 @@ func (a *Agent) Stats(sessionID string) (Stats, bool) // false = 기록 없음
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 1.7 | `Modes` 가 빈 Agent 의 run 이 모드 상태를 읽는지 정하지 않음 | 읽지 않는다고 명시 (HN-FR-65·66). 코드는 이미 그렇게 동작 — 동작 변경 없음 | GOALS MD-1 뮤테이션 검사 |
 | 1.6 | 사용량 조회 없음 | `Stats`(3.6g): 세션별 요청·입력·캐시·효율 상한, 마지막 요청의 컨텍스트·창·압축 기준. `OnEvent` 가 nil 이면 기록 없음 | R30 |
 | 1.5 | 이벤트 13종. 요청 접두가 바뀌어도 알 방법 없음 | 접두 감지(3.6f)와 `prefix_break` 이벤트(14번째). `OnEvent` 가 nil 이면 이전과 같음 | R29 |
 | 1.4 | 세트 배치는 Agent 하나, run 도중 바뀌지 않음. 이벤트 12종 | 모드(3.6e): 세션별 모드·예약·권한, 턴 경계에서 배치 교체, `mode` 도구, `mode` 이벤트, `Complete`. 모드를 등록하지 않으면 이전과 같음 | R27 |
