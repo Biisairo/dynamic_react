@@ -1,8 +1,8 @@
 # terminal — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.8 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26, R27, R29, R30)
+- 버전: 0.9 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26, R27, R29, R30, R35)
 - 의존 명세: `L2_harness/agent/SPEC.md` v0.4 (3.4~3.12), `L2_harness/SPEC.md` v0.8 (3.6a Event)
 - 사용하는 쪽: `L3_ui/cmd/dr` (`L3_ui/cmd/dr/SPEC.md`)
 
@@ -163,7 +163,7 @@ var ErrNotTerminal error
 | TM-FR-33 | `message_start`·`turn_end` 는 그리지 않는다 |
 | TM-FR-54 | `input` (R25): Message ID 가 이 Terminal 이 `Start`·`Steer`·`FollowUp` 으로 보낸 메시지(이미 TM-FR-23 으로 그림)면 그리지 않는다. 아니면(세트가 넣은 메시지) `» `(Color 면 노랑) + 텍스트 — text 블록을 줄바꿈으로 잇고 image 는 `[image]`, TM-FR-24 정리. 앞 20줄만 그리고 이어지는 줄은 `  ` 들여쓰기, 더 있으면 `  … +N줄 생략`(흐림). 보낸 메시지 ID 는 그 `input` 을 받으면 잊는다 |
 | TM-FR-59 | `mode` (R27): `── 모드 <From 또는 기본> → <To 또는 기본> (<Origin>)` + Reason 이 있으면 `: <Reason>` 한 줄(흐림) |
-| TM-FR-60 | `prefix_break` (R29, HN-FR-75): `Expected` 면 그리지 않는다 (같은 순간에 compaction 줄이 나온다). Part `model` → `· 캐시 새로 시작: 모델 변경 → <Provider>/<ID>` 한 줄(흐림). Part `tools`·`system` → `⚠`(Color 면 노랑) + ` 캐시 접두 깨짐: <Part> 변경 (0/<Total> 메시지 유지)`. Part `messages` → `⚠` + ` 캐시 접두 깨짐: 메시지 #<At> 변경, 편집 없음 (<Kept>/<Total> 유지)`. 줄은 `Width()` 로 자른다 |
+| TM-FR-60 | `prefix_break` (R29, HN-FR-75): `Expected` 면 그리지 않는다 (같은 순간에 compaction 줄이 나온다). Part `model` → `· 캐시 새로 시작: 모델 변경 → <Provider>/<ID>` 한 줄(흐림). Part `tools`·`system` → `⚠`(Color 면 노랑) + ` 캐시 접두 깨짐: <Part> 변경 (0/<Total> 메시지 유지)`. Part `messages` → `⚠` + ` 캐시 접두 깨짐: 메시지 #<At> 변경, 편집 없음 (<At>/<Total> 유지)`. 줄은 `Width()` 로 자른다 |
 
 ### 3.6 승인 프롬프트
 
@@ -302,6 +302,7 @@ hit = CacheRead ÷ Prompt, eff = CeilingRead ÷ Ceiling.
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.9 | messages 줄의 유지 수 = `PrefixBreak.Kept` | 유지 수 = `At` (harness v1.8 에서 Kept 제거, 값은 같음) | R35 |
 | 0.8 | run_end 에 캐시 정보 없음, 상태 명령 없음 | run_end 의 ` (캐시 <p>%)` (TM-FR-32), `/status` (TM-FR-61) | R30 |
 | 0.7 | `prefix_break` 이벤트를 그리지 않음 (모르는 종류) | TM-FR-60 | R29 ④ |
 | 0.6 | 모드 명령 없음 | `/modes`·`/mode`(TM-FR-57·58), `mode` 이벤트 줄(TM-FR-59), `/help` 에 포함 | R27 |

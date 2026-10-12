@@ -1,8 +1,8 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 1.7 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26, R27, R29, R30)
+- 버전: 1.8 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26, R27, R29, R30, R35)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
@@ -447,7 +447,6 @@ type PrefixPart string // PrefixTools "tools" | PrefixSystem "system" | PrefixMe
 type PrefixBreak struct {
     Part     PrefixPart
     At       int                 // messages: 처음 다른 메시지의 인덱스, 그 밖 -1
-    Kept     int                 // 기준의 안정 메시지 중 아직 맞는 수 (tools·system·model 이면 0)
     Total    int                 // 기준의 안정 메시지 수 (model 이면 0)
     Edits    []contract.EditKind // 기준 이후 새로 생긴 편집의 종류 (Conv().Edits() 순서)
     Expected bool                // Part == messages 이고 len(Edits) > 0
@@ -459,7 +458,7 @@ type PrefixBreak struct {
 |---|---|
 | HN-FR-73 | 감지는 `OnEvent` 가 nil 이 아닐 때만 한다 (3.6a 래핑과 같은 조건). 기본 배치와 모든 모드 배치(HN-FR-57)에 같이 적용한다 |
 | HN-FR-74 | **지문**: 맨 위 `request.finalize` 가 에러 없이 돌려준 요청 req 로 만든다. ① tools = `req.Tools` 전체의 해시 ② system = `req.System` 의 해시 ③ 메시지 = `req.Messages` 의 메시지마다 provider 에 보내는 필드(`Role`, `Content`, `Result` 의 `CallID`·`Status`·`Content`)의 해시 목록. `ID`·`Timestamp`·`Usage`·`StopReason` 은 넣지 않는다 ④ 안정 길이 = `sets.StableLen(req.Messages, ctx.Conv().Ephemeral())` (ST-FR-60) ⑤ 편집 ID 집합 = `ctx.Conv().Edits()` 의 ID. 해시는 각 값의 `encoding/json` 직렬화에 대한 SHA-256 이다. 지문은 그 run 의 다음 `model.call` 까지 둔다 |
-| HN-FR-75 | **비교**: 맨 위 `model.call` 진입 때 한다. 모델 키 = `ctx.Request().Current().Model` 의 Provider·ID. 기준 = 같은 세션·같은 모델 키의 직전 요청 지문(HN-FR-76). ① 기준이 없고 그 세션에 다른 모델 키의 기준이 있으면 Part `model`(At -1) ② 기준이 없고 그 세션에 기준이 하나도 없으면 이벤트 없음 ③ 기준이 있으면 tools 해시가 다르면 Part `tools`, 아니면 system 해시가 다르면 Part `system`(둘 다 At -1, Kept 0) ④ 둘 다 같으면 i = 0 부터 기준의 안정 길이까지 이번 요청의 메시지 해시(꼬리 포함 전체)와 비교해 처음 다른 i(이번 요청이 짧으면 그 길이)를 At·Kept 로 하고 Part `messages`. 끝까지 같으면 이벤트 없음. Total = 기준의 안정 길이, Edits = 이번 지문의 편집 중 ID 가 기준의 편집 ID 집합에 없는 것의 Kind. 이벤트는 그 호출의 `message_start` 보다 먼저 온다 |
+| HN-FR-75 | **비교**: 맨 위 `model.call` 진입 때 한다. 모델 키 = `ctx.Request().Current().Model` 의 Provider·ID. 기준 = 같은 세션·같은 모델 키의 직전 요청 지문(HN-FR-76). ① 기준이 없고 그 세션에 다른 모델 키의 기준이 있으면 Part `model`(At -1) ② 기준이 없고 그 세션에 기준이 하나도 없으면 이벤트 없음 ③ 기준이 있으면 tools 해시가 다르면 Part `tools`, 아니면 system 해시가 다르면 Part `system`(둘 다 At -1) ④ 둘 다 같으면 i = 0 부터 기준의 안정 길이까지 이번 요청의 메시지 해시(꼬리 포함 전체)와 비교해 처음 다른 i(이번 요청이 짧으면 그 길이)를 At 으로 하고 Part `messages`. At 은 기준의 안정 메시지 중 아직 맞는 수이기도 하다. 끝까지 같으면 이벤트 없음. Total = 기준의 안정 길이, Edits = 이번 지문의 편집 중 ID 가 기준의 편집 ID 집합에 없는 것의 Kind. 이벤트는 그 호출의 `message_start` 보다 먼저 온다 |
 | HN-FR-76 | **기준 저장**: 비교 뒤(이벤트 유무와 무관) 그 세션·모델 키의 기준을 이번 지문의 tools·system 해시, 안정 메시지 해시(안정 길이까지), 편집 ID 집합으로 바꾼다. 호출 결과(성공·에러)와 무관하다. 기준은 Agent 메모리에만 두고 저장소에 쓰지 않는다. 프로세스 수명 동안 run·`Arrange`·모드 전환을 넘어 유지한다. 동시 run 에 안전하다 |
 | HN-FR-77 | 같은 지문으로 `model.call` 이 다시 불리면(`recall`·`reselect`) 그때의 모델 키로 다시 비교한다. 같은 모델로 같은 요청을 다시 보내면 이벤트가 없다 |
 | HN-FR-78 | 한계: `model.call` 을 감싸서 요청을 고치는 세트, 어댑터의 직렬화 차이, 요청 옵션(`Options` — thinking 설정 등, provider 에 따라 캐시에 영향), provider 측 캐시 만료는 감지하지 않는다. 이벤트는 접두가 바뀌었다는 뜻이고 캐시 적중을 보장하거나 측정하지 않는다 (적중은 `Usage.CacheRead`) |
@@ -530,7 +529,7 @@ func (a *Agent) Stats(sessionID string) (Stats, bool) // false = 기록 없음
 | HN-FR-64~67 | 가짜 ModelCaller 시나리오: 턴1 `mode` 도구 호출 → 턴1 요청엔 없고 턴2 요청에 Push 세트의 `context.inject` 가 있음 / run 밖 예약 → 다음 Start 첫 요청부터 / 세트가 turn.finish 에서 Exit 후 settle → 다음 run 은 기본 배치 / 교체 뒤에도 base `inbox.consumed`·resilient 상태 유지(Steer 동작) / turn.start 외 step 에서 예약해도 그 턴은 그대로 / `mode` 이벤트 필드·RunID / 저장 실패 → 에러 / 동시 run·요청(-race) |
 | HN-FR-68~70 | 도구 spec(enum·설명), 모델 진입 거부(활성 모드 있음·예약 있음) → error 결과, ToolSet 으로 제거, Modes 비면 도구 없음 |
 | HN-FR-71~72 | Deps.Modes 의 Origin 이 set, Complete 가 aux 모델·폴백·MaxOutputTokens 로 요청·도구 없음, 잘못된 config 에러 |
-| HN-FR-73~78 | 가짜 ModelCaller·`OnEvent` 로: 덧붙기만 하는 3턴 → 이벤트 없음 / 세션 첫 요청 → 없음 / 위층 세트가 2턴째 tools 를 바꿈 → Part tools·Kept 0·Total / system 을 바꿈 → Part system / tools·system 이 같고 메시지 중간이 바뀜 → Part messages·At·Kept·Expected false / `context.maintain` 이 편집(replace_range)을 낸 턴 → Part messages·Edits [replace_range]·Expected true / 도구 결과의 내용만 바뀜 → Part messages / 편집과 tools 변경이 같은 요청 → Part tools·Expected false / Ephemeral 꼬리만 바뀜 → 없음 / 모드 진입·이탈에서 tools 를 바꾸는 Push 세트 → 진입 턴과 이탈 뒤 첫 턴에 Part tools / 모델 A → B → A(설정·`reselect`) → B 첫 요청에 Part model, A 로 돌아오면 덧붙기뿐이면 없음 / 다음 run(같은 세션)의 첫 요청은 직전 run 의 기준과 비교 / `Arrange` 로 tools 를 바꾸는 세트를 켬 → 다음 run 첫 요청에 Part tools / `recall` → 없음 / ID·Timestamp 만 다른 짝 복구 메시지 → 없음 / 이벤트가 `message_start` 앞 / 동시 run(-race). `OnEvent` nil 이면 감싸지 않는 것(HN-FR-73)은 관찰할 수단이 없어 코드 검토로 확인 (3.6a 의 `OnEvent == nil` 분기 뒤에 둠) |
+| HN-FR-73~78 | 가짜 ModelCaller·`OnEvent` 로: 덧붙기만 하는 3턴 → 이벤트 없음 / 세션 첫 요청 → 없음 / 위층 세트가 2턴째 tools 를 바꿈 → Part tools·At -1·Total / system 을 바꿈 → Part system / tools·system 이 같고 메시지 중간이 바뀜 → Part messages·At·Expected false / `context.maintain` 이 편집(replace_range)을 낸 턴 → Part messages·Edits [replace_range]·Expected true / 도구 결과의 내용만 바뀜 → Part messages / 편집과 tools 변경이 같은 요청 → Part tools·Expected false / Ephemeral 꼬리만 바뀜 → 없음 / 모드 진입·이탈에서 tools 를 바꾸는 Push 세트 → 진입 턴과 이탈 뒤 첫 턴에 Part tools / 모델 A → B → A(설정·`reselect`) → B 첫 요청에 Part model, A 로 돌아오면 덧붙기뿐이면 없음 / 다음 run(같은 세션)의 첫 요청은 직전 run 의 기준과 비교 / `Arrange` 로 tools 를 바꾸는 세트를 켬 → 다음 run 첫 요청에 Part tools / `recall` → 없음 / ID·Timestamp 만 다른 짝 복구 메시지 → 없음 / 이벤트가 `message_start` 앞 / 동시 run(-race). `OnEvent` nil 이면 감싸지 않는 것(HN-FR-73)은 관찰할 수단이 없어 코드 검토로 확인 (3.6a 의 `OnEvent == nil` 분기 뒤에 둠) |
 | HN-FR-79~83 | 가짜 ModelCaller(Usage 에 CacheRead 포함)·`OnEvent` 로: 기록 없음 → false / 한 run 3요청 → Requests·Prompt·CacheRead 합, 첫 요청은 상한 제외, 둘째부터 상한 = 직전 Prompt, CacheRead 가 상한보다 크면 자름 / 다음 run → LastRun 다시 시작·Session 누적 / 다른 세션과 섞이지 않음 / 모델 A → B → A: B 첫 요청은 상한 제외, A 로 돌아오면 A 의 직전 Prompt 가 상한 / Context = Prompt + Output, Window, Threshold(기본 reserve·설정 reserve·`compaction.enabled` false → 0) / Usage 없는 응답은 세지 않음 / 동시 run(-race) |
 | HN-NFR-02~04 | 종단 시나리오, `go list -deps` |
 
@@ -569,6 +568,7 @@ func (a *Agent) Stats(sessionID string) (Stats, bool) // false = 기록 없음
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 1.8 | `PrefixBreak.Kept`(messages 면 At 과 같고 그 밖에는 0) | 필드 없음. 유지된 메시지 수는 `At` 이다 | R35 |
 | 1.7 | `Modes` 가 빈 Agent 의 run 이 모드 상태를 읽는지 정하지 않음 | 읽지 않는다고 명시 (HN-FR-65·66). 코드는 이미 그렇게 동작 — 동작 변경 없음 | GOALS MD-1 뮤테이션 검사 |
 | 1.6 | 사용량 조회 없음 | `Stats`(3.6g): 세션별 요청·입력·캐시·효율 상한, 마지막 요청의 컨텍스트·창·압축 기준. `OnEvent` 가 nil 이면 기록 없음 | R30 |
 | 1.5 | 이벤트 13종. 요청 접두가 바뀌어도 알 방법 없음 | 접두 감지(3.6f)와 `prefix_break` 이벤트(14번째). `OnEvent` 가 nil 이면 이전과 같음 | R29 |
