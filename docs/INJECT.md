@@ -216,6 +216,12 @@ msg, err := sets.Complete(ctx.Context(), d.Model, contract.Request{
 - `sets.Complete` 는 단발 호출이다. 도구를 실행하지 않고 재시도하지 않는다. 판정 실패를 어떻게 다룰지(Hermes 는 "계속"으로 봄)는 판단기가 정한다.
 - run 밖에서 같은 호출이 필요하면 `Agent.Complete(ctx, role, system, msgs)` 를 쓴다.
 - 판정은 작업 모델의 답과 하네스가 관찰한 것(예: `ctx.Conv().Transcript()` 의 도구 결과)을 근거로 쓸 수 있다. Hermes 의 judge 는 마지막 답 텍스트만 본다.
+- **로컬 서버 주의 (R32)**: 판정 요청이 본 대화와 같은 서버·같은 모델로 가면, 서버의 캐시 칸(슬롯)을 판정 요청이 덮을 수 있다. 그러면 다음 본 요청은 대화 전체를 다시 계산한다. 아래 중 하나로 피한다.
+  - 보조 모델을 본 모델과 다른 모델로 둔다 (`agent.aux.<role>`).
+  - llama.cpp 는 슬롯을 2개 이상 둔다. 기본값(`-np -1`, 자동)이면 대체로 충족된다. 슬롯이 여러 개면 서버가 프롬프트가 겹치지 않는 판정 요청을 빈 슬롯으로 보낸다.
+  - llama.cpp 에서 슬롯을 직접 고르려면 판정 요청의 `Options.Extra` 에 `"id_slot": json.RawMessage("1")` 을 넣는다. Chat 방언은 `Extra` 를 요청 본문에 그대로 합친다.
+  - Ollama 는 `OLLAMA_NUM_PARALLEL` 을 2 이상으로 둔다 (기본값 1).
+  - 위 서버 동작은 문서 기준이다. 실제 서버로는 확인하지 않았다.
 
 ### 5.5 지켜지는 것과 사용자 책임
 
