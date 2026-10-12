@@ -58,20 +58,20 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 
 | 폴더 | 내용 | 상태 |
 |---|---|---|
-| [`L0_core/contract/`](L0_core/contract/SPEC.md) | 공유 데이터 계약 | 스펙 v0.4, 구현 |
+| [`L0_core/contract/`](L0_core/contract/SPEC.md) | 공유 데이터 계약 | 스펙 v0.5, 구현 |
 | [`L0_core/core/`](L0_core/core/SPEC.md) | 루프 본체 | 스펙 v0.2, 구현 |
 | [`L1_inject/inject/`](L1_inject/inject/SPEC.md) | 함수 주입 프레임워크 + 층 바인딩(`ctx.Next`) + 조합 함수 + 공유 run 표 | 스펙 v0.5, 구현 |
-| [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 함수 세트 부품 (base·require·cache·guard·truncate·resilient, 주입용 verify), 보조 모델 호출, 세트용 모드 인터페이스 | 스펙 v0.8, 구현 |
-| [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그 | 스펙 v0.6, 구현 |
-| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 7종 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입, 세트 배치(켜기·끄기·순서), 세션 모드(턴 경계 세트 교체) | 스펙 v1.4, 구현 |
+| [`L1_inject/sets/`](L1_inject/sets/SPEC.md) | 함수 세트 부품 (base·require·cache·guard·truncate·resilient, 주입용 verify), 보조 모델 호출, 세트용 모드 인터페이스, 캐시 지점·키 | 스펙 v0.10, 구현 |
+| [`L1_inject/adapters/`](L1_inject/adapters/SPEC.md) | 모델 방언 어댑터 + provider 프로필 + 카탈로그, Chat 방언 캐시 지점·`prompt_cache_key` | 스펙 v0.8, 구현 |
+| [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 7종 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입, 세트 배치(켜기·끄기·순서), 세션 모드(턴 경계 세트 교체), 캐시 접두 감지(`prefix_break`)·사용량 집계 | 스펙 v1.6, 구현 |
 | [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.3, 구현 |
-| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키·세트 배치 저장·모드), 주입 통로 | 스펙 v0.9, 구현 |
-| [`L3_ui/surfaces/terminal/`](L3_ui/surfaces/terminal/SPEC.md) | 대화형 터미널 surface 라이브러리 | 스펙 v0.6, 구현 |
+| [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키·세트 배치 저장·모드·상태 조회), 주입 통로 | 스펙 v0.10, 구현 |
+| [`L3_ui/surfaces/terminal/`](L3_ui/surfaces/terminal/SPEC.md) | 대화형 터미널 surface 라이브러리 | 스펙 v0.8, 구현 |
 | [`L3_ui/cmd/dr/`](L3_ui/cmd/dr/SPEC.md) | 대화형 진입점 | 스펙 v0.3, 구현 |
 | [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 비대화형 검증용 CLI (입출력만) | 스펙 v0.2, 구현 |
 | [`examples/inject/`](examples/inject/SPEC.md) | 주입 예시: 매 턴 규칙 덧붙이기 + `rm -rf` 차단 | 스펙 v0.2, 구현 |
 | [`examples/verify/`](examples/verify/SPEC.md) | 자기검증 세트 예시: 변경 뒤 끝낼 때 셸 명령으로 검증, 실패하면 출력을 모델에 돌려줌, `-i` 대화형 | 스펙 v0.3, 구현 |
-| [`examples/modes/`](examples/modes/SPEC.md) | 모드 예시: goal(품질 게이트 → 보조 모델 판정 루프)·plan(쓰기 도구 차단) | 스펙 v0.1, 구현 |
+| [`examples/modes/`](examples/modes/SPEC.md) | 모드 예시: goal(품질 게이트 → 보조 모델 판정 루프)·plan(쓰기 도구 차단) | 스펙 v0.2, 구현 |
 | [`docs/`](docs/DECISIONS.md) | 결정 기록, 주입 가이드([`INJECT.md`](docs/INJECT.md)), 22 step 표현 검증, 인계 문서 | — |
 
 ## 실행
@@ -83,7 +83,7 @@ cd L3_ui/cmd/dr-print && go run . "질문"        # 비대화형 (stdin 도 받�
 
 - 처음 실행하면 모델이 없으므로 모델 선택 화면이 뜬다. 키가 필요한 provider 는 `/login <provider>` 로 키를 넣어야 목록에 나온다. 고른 모델은 설정 파일에 저장된다.
 - dr 플래그: `-model provider/id`(이번 실행만, 저장 안 함) · `-cwd` · `-config` · `-session <id>` / `-c`(최근 세션) / `-r`(세션 목록) · `-no-color`.
-- 명령: `/model [provider/id]` · `/login [provider]` · `/logout [provider]` · `/sets` · `/set <name> on|off|to <n>` · `/modes` · `/mode <name> [arg]` · `/mode off` · `/sessions` · `/resume [번호|id]` · `/new` · `/compact` · `/help` · `/quit`. 키: Enter 전송(실행 중 steer), Alt+Enter follow-up, Shift+Enter·Ctrl+J 줄바꿈, Esc·Ctrl+C 실행 중 중단.
+- 명령: `/model [provider/id]` · `/login [provider]` · `/logout [provider]` · `/sets` · `/set <name> on|off|to <n>` · `/modes` · `/mode <name> [arg]` · `/mode off` · `/status` · `/sessions` · `/resume [번호|id]` · `/new` · `/compact` · `/help` · `/quit`. 키: Enter 전송(실행 중 steer), Alt+Enter follow-up, Shift+Enter·Ctrl+J 줄바꿈, Esc·Ctrl+C 실행 중 중단.
 
 | 파일 | 내용 |
 |---|---|

@@ -74,7 +74,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | CA-2 | plan 모드는 도구 목록을 그대로 두고 `tool.before` 차단만 쓴다. 지시문에 막힌 도구 이름을 적는다 | C1 을 없앤다. 대가로 모델이 막힌 도구를 한 번 부를 수 있다. 차단은 이미 `tool.before`에 있으므로 안전성은 같다 | 해소 (R29, examples/modes v0.2) |
 | CA-3 | 모드 세트 작성 지침: "도구 목록과 system 은 바꾸지 않는다. 매 턴 지시는 `context.inject`로 넣는다"를 `INJECT.md` 5.5 에 적는다. 3.2 의 표를 옮긴다 | CA-1·CA-2 결정 뒤에 적는다 | 해소 (R29, `INJECT.md` 5.5a) |
 | CA-4 | 결정론적 테스트: 모드가 켜진 요청에서 메시지 힌트의 인덱스가 영속 구간의 끝인지 확인한다. 모드 진입 전후의 도구 목록이 같은지 확인한다 (CA-2 채택 시) | CA-1 과 함께 | 해소 (R29: sets `TestCacheHintBeforeTail`, examples `TestPlanMode`. 실행 중 감지 `prefix_break` 이벤트 — harness v1.5 3.6f, terminal TM-FR-60) |
-| CA-5 | 실제 모델 확인: plan 모드를 여러 턴 돌려 턴마다 `Usage.CacheRead` 를 기록하고 R29 전후를 비교한다 | **DeepSeek(`deepseek-flash`, 자동 접두) 측정 완료 (2026-10-12)**. 시나리오 = 기본 1 run → plan 진입 → plan 1 run(파일 읽기 후 계획) → 이탈 → 기본 2 run. 예전 plan(도구 목록에서 write·edit·bash 를 뺌)과 R29 plan 을 같은 프로그램으로 돌림. 첫 메시지에 실행마다 고유값을 넣은 2회씩: 전체 적중 old 82.0%·83.6% → new 86.6%·88.8%. 진입 직후 요청 old 78.6%·70.2% → new 90.7%·92.2%. 이탈 직후 요청 old 60.4%·66.0% → new 64.5%·77.2%. plan 안의 턴끼리는 둘 다 80~93% (꼬리 지시가 매 턴 바뀌어도 자동 접두에서는 손해가 작음, C2 는 Anthropic 한정이라는 분석과 맞음). `prefix_break` 는 실제 모델에서도 old 에서만 진입·이탈 두 번 `tools` 로 나옴. 관찰: ① DeepSeek 은 도구 목록이 바뀌어도 앞부분 일부(1408토큰)가 맞았다 — 예전 실행이 "system + 줄어든 도구 목록" 접두를 캐시에 남겼기 때문으로 보인다 (첫 old 실행에서는 640토큰) ② 적중률이 Claude Code 처럼 99% 에 가깝지 않은 것은 접두 문제가 아니다. 상한 = 직전 요청과 공통인 앞부분 ÷ 이번 요청인데, 요청이 2~3.6k 토큰으로 작아 턴마다 새로 붙는 내용(답·도구 결과·새 입력, 100~1000 토큰)이 5~30% 를 차지한다. 또 cached 값은 모두 128 의 배수이고 "공통 앞부분을 128 단위로 내림한 값"과 대부분 맞는다(맞지 않는 칸 하나는 DeepSeek 의 최선 노력 캐시 영향일 수 있으나 확인 못 함). 이 기준으로 보면 new 는 상한에 거의 붙어 있다. 이탈 직후가 낮은 것도 계획 전문이 새 내용이기 때문이다(상한 약 69%, 실제 64.5%) ③ 같은 문장으로 반복 실행하면 실행끼리 캐시를 공유해 비교가 흐려진다. Anthropic(지점 방식, C2·CA-1 효과)은 측정하지 않음 | 해소 (DeepSeek). Anthropic 은 열림 |
+| CA-5 | 실제 모델 확인: plan 모드를 여러 턴 돌려 턴마다 `Usage.CacheRead` 를 기록하고 R29 전후를 비교한다 | **DeepSeek(`deepseek-flash`, 자동 접두) 측정 완료 (2026-10-12)**. 시나리오 = 기본 1 run → plan 진입 → plan 1 run(파일 읽기 후 계획) → 이탈 → 기본 2 run. 예전 plan(도구 목록에서 write·edit·bash 를 뺌)과 R29 plan 을 같은 프로그램으로 돌림. 첫 메시지에 실행마다 고유값을 넣은 2회씩: 전체 적중 old 82.0%·83.6% → new 86.6%·88.8%. 진입 직후 요청 old 78.6%·70.2% → new 90.7%·92.2%. 이탈 직후 요청 old 60.4%·66.0% → new 64.5%·77.2%. plan 안의 턴끼리는 둘 다 80~93% (꼬리 지시가 매 턴 바뀌어도 자동 접두에서는 손해가 작음, C2 는 Anthropic 한정이라는 분석과 맞음). `prefix_break` 는 실제 모델에서도 old 에서만 진입·이탈 두 번 `tools` 로 나옴. 관찰: ① DeepSeek 은 도구 목록이 바뀌어도 앞부분 일부(1408토큰)가 맞았다 — 예전 실행이 "system + 줄어든 도구 목록" 접두를 캐시에 남겼기 때문으로 보인다 (첫 old 실행에서는 640토큰) ② 적중률이 Claude Code 처럼 99% 에 가깝지 않은 것은 접두 문제가 아니다. 상한 = 직전 요청과 공통인 앞부분 ÷ 이번 요청인데, 요청이 2~3.6k 토큰으로 작아 턴마다 새로 붙는 내용(답·도구 결과·새 입력, 100~1000 토큰)이 5~30% 를 차지한다. 또 cached 값은 모두 128 의 배수이고 "공통 앞부분을 128 단위로 내림한 값"과 대부분 맞는다(맞지 않는 칸 하나는 DeepSeek 의 최선 노력 캐시 영향일 수 있으나 확인 못 함). 이 기준으로 보면 new 는 상한에 거의 붙어 있다. 이탈 직후가 낮은 것도 계획 전문이 새 내용이기 때문이다(상한 약 69%, 실제 64.5%) ③ 같은 문장으로 반복 실행하면 실행끼리 캐시를 공유해 비교가 흐려진다. Anthropic(지점 방식, C2·CA-1 효과)은 측정하지 않음 | 해소 (DeepSeek). Anthropic 측정은 하지 않음 (사용자 결정, 2026-10-12) |
 | CA-6 | 턴별 캐시 적중률을 이벤트나 `/status` 같은 곳에 보여 줄지 | 측정 수단이 없으면 회귀를 놓친다. 표시 위치는 L3 이고 값은 이미 `contract.Usage`에 있다. R29 의 `prefix_break` 는 접두 변경만 알리고 적중률은 재지 않는다. 표시한다면 hit% 와 함께 "직전 요청 대비 효율"(cached ÷ 직전과 공통인 앞부분)을 후보로 둔다 — 작은 세션에서는 hit% 만으로는 문제가 있는 것처럼 보인다 (CA-5 관찰 ②) | 해소 (R30: run_end 에 캐시 비율, `/status` 에 세션·모델·모드·세트·도구·컨텍스트·마지막 run·세션 누적과 효율. harness v1.6 3.6g, agent v0.10, terminal v0.8) |
 | CA-7 | Chat 방언(`adapters/chat.go`)이 `CacheHints`를 버린다. OpenRouter 로 Claude 를 쓰면 캐시가 전혀 되지 않는다 (OpenRouter 는 메시지 안의 `cache_control` 을 요구) | 코드로 확인한 사실. 지점 방식 흉내(R29 ⓔ)를 Chat 방언에도 넓힐지 정해야 한다 | 해소 (R31: 프로필 `CacheControl`, 내장 openrouter 는 `anthropic/` 모델에서 켬, 위치는 `cache` 세트 힌트를 따름. adapters v0.7 AD-FR-54·55. 실제 OpenRouter 로는 확인 안 함) |
 | CA-8 | 로컬 서버(llama.cpp·Ollama)에서 보조 모델 호출(goal 판단기)이 같은 서버·모델로 가면 슬롯의 KV 캐시를 덮어, 다음 본 요청이 대화 전체를 다시 계산할 수 있다 | 추론만 함. 실제 확인 필요 | 해소 (R32: 코드 변경 없이 `INJECT.md` 5.4 에 피하는 방법 안내. 서버 동작은 문서 기준, 실제 서버로는 확인 안 함) |
@@ -98,6 +98,8 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | VF-2 | Anthropic·OpenAI 방언의 실제 응답 검증 | 열림 (API 키·크레딧 필요) | impl-06 |
 | VF-3 | provider overflow 에러 복구를 실제 모델로 확인 (지금은 가짜 서버로만 검증) | 열림 | impl-06 |
 | VF-5 | R29 새 코드의 뮤테이션 검사: harness `prefix.go` 의 `check`·`compare`, surface 래핑, sets `StableLen`·`Cache`, terminal `prefix_break` 줄 | 해소 (29/29 KILLED. 처음 살아남은 4개 — 도구 결과 해시, 편집 + tools 의 Expected, Kept 표시, 모델 줄 흐림 — 는 테스트를 보강해 잡음) | R29 |
+| VF-6 | terminal `TestRunCompact` 가 부하 중 한 번 실패했다 (전체 `-race` 실행에서 다른 테스트가 10초 멈춘 때). 5회 반복·전체 2회에서는 재현 안 됨. 대기 조건 보강 여부 | 열림 | R30 작업 중 관찰 |
+| VF-7 | R30~R33 새 코드의 뮤테이션 검사: harness `stats.go`, agent `ToolNames`, terminal `status.go`·run_end 비율, adapters `chatCacheHints`·`markText`·`setCacheKey`, sets 캐시 키 | 열림 (커버리지만 확인) | R30~R33 |
 | VF-4 | 관측 불가 뮤턴트 2개: agent `NoRemoteCatalog` 전달, terminal 종료 중 경합 | 보류 (외부 네트워크·경합이라 관측 불가) | impl-05, impl-07 |
 
 ## 6. examples/modes
@@ -124,6 +126,8 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | DC-1 | verify 세트: 검증 보고가 사용자 지시보다 우선한다는 문구를 바꿀지 | impl-08 |
 | DC-2 | 저장소 LICENSE. 사용자가 묻지 않으면 손대지 않는다 | impl-06 |
 | DC-3 | agent 사용자 도구의 패턴 규칙 비교 값 (`Target func(args) string`). 필요해지면 다룬다 | impl-07 |
+| DC-4 | harness 의 접두 기준표(R29)와 사용량 집계(R30)는 세션마다 프로세스 메모리에 쌓이고 지우지 않는다. 대화형 터미널에서는 문제가 없지만, 오래 떠 있는 서버형 surface 에서는 세션 수만큼 늘어난다. 정리 정책(세션 종료 시 삭제, 개수 상한 등)을 정할지 | R29, R30 |
+| DC-5 | `PrefixBreak.Kept` 는 Part messages 일 때 항상 `At` 과 같고, 그 밖에는 0 이다. 필드를 남길지 정리할지 | R29 |
 
 ## 9. 보류와 하지 않음
 
@@ -134,7 +138,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | NG-3 | Bind 시점 Next 검사 | 보류 | R26 비목표 |
 | NG-4 | 이미 빌드된 `dr`·`dr-print`에 주입하기. 주입은 자기 main 에서 한다 | 보류 (D12 의도) | impl-07 |
 | NG-5 | run 드라이버(대기 제어): WAIT 자동 재개, `/loop`, heartbeat | 하지 않음 | R28 |
-| NG-6 | core(L0) 수정, 구독 계정 로그인, 환경변수 읽기 추가, L3 가 설정 파일 직접 읽기·쓰기 | 하지 않음 | R21, R17 |
+| NG-6 | core 루프(L0 core) 수정, 구독 계정 로그인, 환경변수 읽기 추가, L3 가 설정 파일 직접 읽기·쓰기. L0 contract 의 필드 추가는 사용자 승인으로만 (R33 `CacheKey`) | 하지 않음 | R21, R17, R33 |
 
 ## 10. 해소된 항목 (추적용)
 
