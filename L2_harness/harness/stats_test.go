@@ -10,7 +10,9 @@ import (
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L1_inject/inject"
+	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness"
+	"github.com/Biisairo/dynamic_react/L2_harness/harness/envtest"
 )
 
 func replyU(id string, u *contract.Usage, stop contract.StopKind, blocks ...contract.Block) []contract.StreamEvent {
@@ -94,6 +96,27 @@ func TestStatsThreshold(t *testing.T) {
 	}
 	if st := run("s2", `{"model":{"provider":"p","id":"m"},"compaction":{"enabled":false}}`); st.Threshold != 0 || st.Window != 100000 {
 		t.Fatalf("disabled %+v", st)
+	}
+}
+
+// HN-FR-82: 압축이 켜져 있어도 요약기가 없거나 Window 가 0 이면 0.
+func TestStatsThresholdOff(t *testing.T) {
+	a := newAgent(t, envtest.New("/w", "/h"), usageModel(&contract.Usage{Input: 10, Output: 1}), func(o *harness.Options) {
+		o.OnEvent = (&recorder{}).on
+		o.Summarizer = func(sets.Summarizer) sets.Summarizer { return nil }
+	})
+	start(t, a, "s1", user("u1", "hi"))
+	if st := stats(t, a, "s1"); st.Threshold != 0 || st.Window != 100000 {
+		t.Fatalf("no summarizer %+v", st)
+	}
+	unknown := inject.FunctionSet{Name: "route", Description: "test route",
+		ModelSelect: func(ctx *inject.ModelSelectCtx, req contract.Request) (contract.ModelInfo, []inject.ModelSelectSignal, error) {
+			return contract.ModelInfo{Ref: contract.ModelRef{Provider: "p", ID: "m", API: "x"}, MaxOutputTokens: 500}, nil, nil
+		}}
+	b := prefixAgent(t, usageModel(&contract.Usage{Input: 10, Output: 1}), &recorder{}, harness.SetEntry{Set: unknown, On: true})
+	start(t, b, "s1", user("u1", "hi"))
+	if st := stats(t, b, "s1"); st.Threshold != 0 || st.Window != 0 {
+		t.Fatalf("no window %+v", st)
 	}
 }
 

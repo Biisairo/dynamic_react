@@ -16,14 +16,13 @@ type UsageTotals struct {
 	CeilingRead int
 }
 
-func (t *UsageTotals) add(u contract.Usage, ceiling int, hasCeiling bool) {
+// add 는 요청 하나를 더한다. 첫 요청은 ceiling 이 0 이라 상한에 들어가지 않는다 (HN-FR-81).
+func (t *UsageTotals) add(u contract.Usage, ceiling int) {
 	t.Requests++
 	t.Prompt += u.Prompt()
 	t.CacheRead += u.CacheRead
-	if hasCeiling {
-		t.Ceiling += ceiling
-		t.CeilingRead += min(u.CacheRead, ceiling)
-	}
+	t.Ceiling += ceiling
+	t.CeilingRead += min(u.CacheRead, ceiling)
 }
 
 // Stats 는 세션 하나의 사용량 집계다 (R30, 3.6g).
@@ -66,9 +65,9 @@ func (t *statsTable) record(sid, runID string, model contract.ModelInfo, cfg set
 		s.runID, s.LastRun = runID, UsageTotals{}
 	}
 	key := modelKey{model.Ref.Provider, model.Ref.ID}
-	ceiling, ok := s.last[key]
-	s.LastRun.add(u, ceiling, ok)
-	s.Session.add(u, ceiling, ok)
+	ceiling := s.last[key]
+	s.LastRun.add(u, ceiling)
+	s.Session.add(u, ceiling)
 	s.last[key] = u.Prompt()
 	s.Model, s.Context, s.Window, s.Threshold = model.Ref, u.Prompt()+u.Output, model.ContextWindow, 0
 	if cfg.Compaction.Enabled && t.summarizer && model.ContextWindow > 0 {

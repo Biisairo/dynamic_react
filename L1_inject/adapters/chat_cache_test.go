@@ -54,10 +54,24 @@ func marked(t *testing.T, body []byte) []int {
 
 func send(t *testing.T, kind string, req contract.Request) []byte {
 	t.Helper()
+	return sendPatch(t, cachePatch(kind), req)
+}
+
+func sendPatch(t *testing.T, patch string, req contract.Request) []byte {
+	t.Helper()
 	f := newFake(t)
 	f.sseText("/chat/completions", chatText("stop", ""))
-	collect(t, client(t, f, "golden", cachePatch(kind)), req)
+	collect(t, client(t, f, "golden", patch), req)
 	return f.body("/chat/completions")
+}
+
+func marks(t *testing.T, body []byte) string {
+	t.Helper()
+	var got strings.Builder
+	for _, n := range marked(t, body) {
+		got.WriteByte(byte('0' + n))
+	}
+	return got.String()
 }
 
 // AD-FR-54, 55
@@ -79,15 +93,12 @@ func TestChatCacheControl(t *testing.T) {
 		{"same target twice", "anthropic", "m", []contract.CacheHint{msg(2), msg(3)}, "0001000"},
 		{"models: anthropic/", "anthropic-models", "anthropic/claude-x", []contract.CacheHint{sys, msg(0)}, "1100000"},
 		{"models: other", "anthropic-models", "openai/gpt-x", []contract.CacheHint{sys, msg(0)}, "0000000"},
+		{"models: no slash", "anthropic-models", "anthropicx/claude-x", []contract.CacheHint{sys, msg(0)}, "0000000"},
 	}
 	for _, c := range cases {
 		body := send(t, c.kind, cacheReq(c.model, c.hints...))
-		var got strings.Builder
-		for _, n := range marked(t, body) {
-			got.WriteByte(byte('0' + n))
-		}
-		if got.String() != c.want {
-			t.Errorf("%s: %s, want %s\n%s", c.name, got.String(), c.want, body)
+		if got := marks(t, body); got != c.want {
+			t.Errorf("%s: %s, want %s\n%s", c.name, got, c.want, body)
 		}
 	}
 	// 문자열 content 는 text 파트 하나로 바뀐다
@@ -101,6 +112,41 @@ func TestChatCacheControl(t *testing.T) {
 	}
 	if msgs[2].(map[string]any)["content"] != "looking" {
 		t.Fatalf("unmarked message changed %v", msgs[2])
+	}
+}
+
+// AD-FR-55: developer 역할도 system 이다. system 이 없으면 system 힌트는 버린다.
+// 빈 tool 결과와 call 만 있는 assistant 를 지나 system 까지는 거슬러 오르지 않는다.
+func TestChatCacheControlEdges(t *testing.T) {
+	sys := contract.CacheHint{Target: contract.CacheSystem, Index: 0}
+	msg := func(i int) contract.CacheHint { return contract.CacheHint{Target: contract.CacheMessage, Index: i} }
+	dev := `{"api":"openai-chat","requiresKey":true,"maxTokensField":"max_tokens","thinking":"openai","cacheControl":"anthropic","developerRole":true}`
+	body := sendPatch(t, dev, cacheReq("m", sys))
+	if role := jsonOf(t, body)["messages"].([]any)[0].(map[string]any)["role"]; role != "developer" || marks(t, body) != "1000000" {
+		t.Errorf("developer: %v %s", role, marks(t, body))
+	}
+
+	noSys := cacheReq("m", sys)
+	noSys.System = nil
+	if got := marks(t, send(t, "anthropic", noSys)); got != "000000" {
+		t.Errorf("no system: %s", got)
+	}
+
+	call := contract.Block{Kind: contract.BlockToolCall, ToolCall: &contract.ToolCall{ID: "c1", Name: "shot", Args: json.RawMessage(`{}`)}}
+	req := simple("golden", "m")
+	req.System = []contract.Block{text("sys")}
+	req.Messages = []contract.Message{
+		{ID: "a1", Role: contract.RoleAssistant, Timestamp: ts, Content: []contract.Block{call}},
+		result("r1", "c1", "", contract.StatusOK),
+	}
+	req.Options.CacheHints = []contract.CacheHint{msg(1)}
+	if got := marks(t, send(t, "anthropic", req)); got != "000" {
+		t.Errorf("no text before: %s", got)
+	}
+	req.Messages = append([]contract.Message{user("u1", "q")}, req.Messages...)
+	req.Options.CacheHints = []contract.CacheHint{msg(2)}
+	if got := marks(t, send(t, "anthropic", req)); got != "0100" {
+		t.Errorf("empty result falls back: %s", got)
 	}
 }
 

@@ -28,12 +28,12 @@ func TestStatusLines(t *testing.T) {
 
 	in.ok = true
 	in.stats = harness.Stats{Model: contract.ModelRef{Provider: "p", ID: "m"}, Context: 3600, Window: 128000, Threshold: 111616,
-		LastRun: harness.UsageTotals{Requests: 5, Prompt: 12100, CacheRead: 10400, Ceiling: 10800, CeilingRead: 10400},
+		LastRun: harness.UsageTotals{Requests: 5, Prompt: 12100, CacheRead: 10400, Ceiling: 10800, CeilingRead: 9800},
 		Session: harness.UsageTotals{Requests: 1, Prompt: 2000, CacheRead: 0}}
 	got = strings.Join(term.statusLines(in), "\n")
 	want = "── 상태\n   세션 s1 · 모델 p/m · 모드 plan\n   세트 base plan\n   도구 read bash\n" +
 		"   컨텍스트 3.6k / 128.0k (3%) · 압축 기준 111.6k\n" +
-		"   마지막 run 요청 5 · 입력 12.1k · 캐시 10.4k (86%) · 효율 96%\n" +
+		"   마지막 run 요청 5 · 입력 12.1k · 캐시 10.4k (86%) · 효율 91%\n" +
 		"   세션 누적 요청 1 · 입력 2.0k · 캐시 0 (0%) · 효율 -\n" +
 		"   (효율 = 캐시 ÷ 직전 요청 크기, 같은 모델 기준 근삿값)"
 	if got != want {
