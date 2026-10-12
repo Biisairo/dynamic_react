@@ -60,7 +60,8 @@ func (t *Terminal) modeCommand(text string, args []string) {
 		t.say(t.paint(sgrRed, "✗") + " 사용법: /mode <name> [arg] | /mode off")
 		return
 	}
-	if t.st != stIdle {
+	running := t.st == stRunning
+	if t.st != stIdle && !(running && args[0] == "off") {
 		t.say(t.paint(sgrRed, "✗") + " 실행 중에는 모드를 바꿀 수 없습니다")
 		return
 	}
@@ -83,7 +84,11 @@ func (t *Terminal) modeCommand(text string, args []string) {
 		t.fail(err)
 		return
 	}
-	t.say("── 모드 예약: " + modeName(to) + " (다음 메시지부터)")
+	when := "다음 메시지부터"
+	if running {
+		when = "다음 턴부터"
+	}
+	t.say("── 모드 예약: " + modeName(to) + " (" + when + ")")
 }
 
 // modeLine 은 TM-FR-59 이다.

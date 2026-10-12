@@ -49,7 +49,7 @@ func TestModeLine(t *testing.T) {
 func TestRunModes(t *testing.T) {
 	e := newEnv(t)
 	e.mod = withGoalMode
-	l := newLLM(t, textReply("one"), textReply("two"), textReply("three"))
+	l := newLLM(t, textReply("one"), textReply("two"), toolReply("call_1", "ls", `{}`), textReply("three"))
 	h := e.start(t, context.Background(), config(l.URL, "", ""), Start{})
 	h.waitFn("idle", func(s string) bool { return strings.HasSuffix(s, ">") })
 	h.typ("/modes\r")
@@ -76,13 +76,24 @@ func TestRunModes(t *testing.T) {
 	h.typ("/mode\r")
 	h.wait("✗ 사용법: /mode <name> [arg] | /mode off")
 
+	// R36: 실행 중 /mode off 는 같은 run 의 다음 턴부터, /mode <name> 은 거부
 	gate := l.block()
 	h.typ("again\r")
 	h.wait("● 실행 중")
-	h.typ("/mode off\r")
+	h.typ("/mode plan\r")
 	h.wait("✗ 실행 중에는 모드를 바꿀 수 없습니다")
+	h.typ("/mode off\r")
+	h.wait("── 모드 예약: 기본 (다음 턴부터)")
 	gate <- struct{}{}
+	gate <- struct{}{}
+	h.wait("ls 승인 필요")
+	h.typ("y")
+	h.wait("── 모드 goal → 기본 (user)")
 	h.waitCount("── completed", 3)
+	if l.count() != 4 || !strings.Contains(l.body(2), goalRule) || strings.Contains(l.body(3), goalRule) {
+		t.Fatalf("off not applied at the next turn: %d requests", l.count())
+	}
+	h.idle()
 	h.typ("/mode off\r")
 	h.wait("── 모드 예약: 기본 (다음 메시지부터)")
 	h.typ("/help\r")
