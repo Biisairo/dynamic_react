@@ -79,7 +79,7 @@ func TestRunModes(t *testing.T) {
 	// R36: 실행 중 /mode off 는 같은 run 의 다음 턴부터, /mode <name> 은 거부
 	gate := l.block()
 	h.typ("again\r")
-	h.wait("● 실행 중")
+	waitUntil(t, func() bool { return l.count() == 3 }) // 첫 turn.start 가 지나 goal 배치로 요청이 나간 뒤
 	h.typ("/mode plan\r")
 	h.wait("✗ 실행 중에는 모드를 바꿀 수 없습니다")
 	h.typ("/mode off\r")
