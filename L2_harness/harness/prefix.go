@@ -26,7 +26,6 @@ const (
 type PrefixBreak struct {
 	Part     PrefixPart
 	At       int
-	Kept     int
 	Total    int
 	Edits    []contract.EditKind
 	Expected bool
@@ -145,7 +144,7 @@ func compare(base *baseline, fp *fingerprint) *PrefixBreak {
 	}
 	for i, h := range base.msgs {
 		if i >= len(fp.msgs) || fp.msgs[i] != h {
-			return &PrefixBreak{Part: PrefixMessages, At: i, Kept: i, Total: total}
+			return &PrefixBreak{Part: PrefixMessages, At: i, Total: total}
 		}
 	}
 	return nil

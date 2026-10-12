@@ -310,7 +310,7 @@ func (t *Terminal) prefixLine(p harness.PrefixBreak) string {
 	}
 	s := fmt.Sprintf("⚠ 캐시 접두 깨짐: %s 변경 (0/%d 메시지 유지)", p.Part, p.Total)
 	if p.Part == harness.PrefixMessages {
-		s = fmt.Sprintf("⚠ 캐시 접두 깨짐: 메시지 #%d 변경, 편집 없음 (%d/%d 유지)", p.At, p.Kept, p.Total)
+		s = fmt.Sprintf("⚠ 캐시 접두 깨짐: 메시지 #%d 변경, 편집 없음 (%d/%d 유지)", p.At, p.At, p.Total)
 	}
 	return t.paint(sgrYellow, "⚠") + strings.TrimPrefix(truncate(s, t.scr.cols()), "⚠")
 }

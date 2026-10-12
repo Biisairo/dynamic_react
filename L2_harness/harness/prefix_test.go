@@ -97,7 +97,7 @@ func TestPrefixTools(t *testing.T) {
 	}), On: true})
 	start(t, a, "s1", user("u1", "go"))
 	b := breaks(rec)
-	if len(b) != 1 || b[0].Part != harness.PrefixTools || b[0].At != -1 || b[0].Kept != 0 || b[0].Total != 1 ||
+	if len(b) != 1 || b[0].Part != harness.PrefixTools || b[0].At != -1 || b[0].Total != 1 ||
 		b[0].Expected || len(b[0].Edits) != 0 || b[0].Model.Provider != "p" || b[0].Model.ID != "m" {
 		t.Fatalf("breaks %+v", b)
 	}
@@ -117,7 +117,7 @@ func TestPrefixSystem(t *testing.T) {
 		return req
 	}), On: true})
 	start(t, a, "s1", user("u1", "go"))
-	if b := breaks(rec); len(b) != 1 || b[0].Part != harness.PrefixSystem || b[0].At != -1 || b[0].Kept != 0 || b[0].Expected {
+	if b := breaks(rec); len(b) != 1 || b[0].Part != harness.PrefixSystem || b[0].At != -1 || b[0].Expected {
 		t.Fatalf("breaks %+v", b)
 	}
 }
@@ -135,7 +135,7 @@ func TestPrefixMessages(t *testing.T) {
 	}), On: true})
 	start(t, a, "s1", user("u1", "go"))
 	// 턴1 의 안정 구간 = u1, a0, r0 (꼬리 tag 제외)
-	if b := breaks(rec); len(b) != 1 || b[0].Part != harness.PrefixMessages || b[0].At != 1 || b[0].Kept != 1 || b[0].Total != 3 ||
+	if b := breaks(rec); len(b) != 1 || b[0].Part != harness.PrefixMessages || b[0].At != 1 || b[0].Total != 3 ||
 		b[0].Expected || len(b[0].Edits) != 0 {
 		t.Fatalf("breaks %+v", b)
 	}
