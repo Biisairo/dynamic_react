@@ -317,7 +317,7 @@ func TestSets(t *testing.T) {
 		}
 		names = append(names, e.Set.Name)
 	}
-	if strings.Join(names, ",") != "base,require,cache,guard,truncate,resilient" {
+	if strings.Join(names, ",") != "base,require,cache,guard,truncate,resilient,repeat" {
 		t.Fatalf("DefaultSets %v", names)
 	}
 

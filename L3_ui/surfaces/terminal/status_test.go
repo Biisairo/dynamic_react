@@ -77,7 +77,7 @@ func TestRunStatus(t *testing.T) {
 	h := e.start(t, context.Background(), config(l.URL, "", ""), Start{})
 	h.waitFn("idle", func(s string) bool { return strings.HasSuffix(s, ">") })
 	h.typ("/status\r")
-	h.wait("── 상태\n   세션 없음 · 모델 test/m · 모드 기본\n   세트 base require cache guard truncate resilient\n   도구 read bash edit write grep find ls\n   기록 없음")
+	h.wait("── 상태\n   세션 없음 · 모델 test/m · 모드 기본\n   세트 base require cache guard truncate resilient repeat\n   도구 read bash edit write grep find ls\n   기록 없음")
 	h.typ("hi\r")
 	h.wait("입력 2.0k (캐시 0%) / 출력 10 토큰")
 	h.typ("again\r")

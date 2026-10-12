@@ -30,7 +30,7 @@ func TestRunSets(t *testing.T) {
 	h.typ("/sets\r")
 	h.wait("1. on base  session load/save, input, edits, tool execution\n2. on require  request, model call")
 	h.wait("4. on guard  reject unknown tools")
-	h.wait("6. on resilient  retry, overflow recovery, threshold compaction, follow-up\n  (다음 run 부터 적용 · /set <name> on|off|to <n>)")
+	h.wait("6. on resilient  retry, overflow recovery, threshold compaction, follow-up\n7. on repeat  stop repeating the same tool calls turn after turn\n  (다음 run 부터 적용 · /set <name> on|off|to <n>)")
 
 	h.typ("/set guard off\r")
 	h.wait("── 세트 guard 끔 (다음 run 부터, 저장됨)")
@@ -46,7 +46,7 @@ func TestRunSets(t *testing.T) {
 			On   bool
 		}
 	}
-	if err := json.Unmarshal(b, &cfg); err != nil || len(cfg.Sets) != 6 || cfg.Sets[3].Name != "guard" || cfg.Sets[3].On {
+	if err := json.Unmarshal(b, &cfg); err != nil || len(cfg.Sets) != 7 || cfg.Sets[3].Name != "guard" || cfg.Sets[3].On {
 		t.Fatalf("saved %s", b)
 	}
 	h.typ("/set guard to 6\r")
@@ -60,7 +60,7 @@ func TestRunSets(t *testing.T) {
 	h.typ("/set ghost on\r")
 	h.wait("✗ 없는 세트: ghost (/sets)")
 	const usage = "✗ 사용법: /set <name> on|off|to <n>"
-	for i, bad := range []string{"/set", "/set guard", "/set guard maybe", "/set guard on x", "/set guard to", "/set guard to x", "/set guard to 0", "/set guard to 7", "/set guard to 1 x"} {
+	for i, bad := range []string{"/set", "/set guard", "/set guard maybe", "/set guard on x", "/set guard to", "/set guard to x", "/set guard to 0", "/set guard to 8", "/set guard to 1 x"} {
 		h.typ(bad + "\r")
 		h.waitCount(usage, i+1)
 	}
