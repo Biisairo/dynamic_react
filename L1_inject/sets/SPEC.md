@@ -1,8 +1,8 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.9 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27, R29)
+- 버전: 0.10 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27, R29, R33)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 - 사용하는 쪽: `L2_harness` (도구·저장소·프롬프트·요약기 구현을 주입)
 
@@ -105,7 +105,7 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 |---|---|---|---|
 | `base` | 1 History·이전 편집 복원, 편집 수 기록, 초기 입력 보관 / 2 입력·입력함, `inbox.consumed` 공개 / 5 편집 적용·Ephemeral·미기록 편집 저장 / 14 응답 저장 / 16 통과(`BeforeOut{Call}`) / 17 `Tool.Run` / 18 통과(결과 그대로) / 19 결과 메시지 저장 | 없음 | L2·L3 가 기대는 계약: agent History·Sessions·`/resume`(저장), Steer(`inbox.consumed`, AG-FR-24), Gate·이벤트가 감싸는 16·17·18 |
 | `require` | 1 짝 복구(ST-FR-40, base 의 결과에 덧붙임) / 3·4·10·13·21·22 아무것도 안 함 / 6 요청 조립 / 7 짝 검증·복구(캐시 힌트 없음) / 8 모델 선택 / 9 모델 호출 / 11 응답 확정 / 12 재시도 없이 fail / 15 순차 계획 / 20 도구 호출이 있으면 continue_turn, 없으면 settle (R2) | 1 | 동작에 필수 (없으면 루프가 묶이지 않거나 provider 가 요청을 거부) |
-| `cache` | 7 캐시 힌트(system 마지막 블록, 꼬리 앞 마지막 메시지 — ST-FR-61) | 7 | 정책 |
+| `cache` | 7 캐시 힌트(system 마지막 블록, 꼬리 앞 마지막 메시지 — ST-FR-61), 캐시 키 = 세션 ID (ST-FR-62) | 7 | 정책 |
 | `guard` | 16 없는 도구·스키마 검사(ST-FR-38), 통과하면 아래 층 | 16 | 정책 |
 | `truncate` | 18 `Tool.Truncate`, 없으면 2000줄 / 50KB 기본 절단 (아래 층 결과에) | 18 | 정책 |
 | `resilient` | 3.2 그대로 (3·12·13·21) | 없음 | 정책 |
@@ -242,6 +242,7 @@ func Complete(ctx context.Context, m ModelCaller, req contract.Request) (contrac
 |---|---|
 | ST-FR-60 | `StableLen(msgs, ephemeral)`: 꼬리 = `msgs` 의 끝에서부터 연속으로 ID 가 `ephemeral` 의 ID 집합에 있는 메시지들. 반환 = `len(msgs)` − 꼬리 길이. 꼬리가 아닌 위치(중간)의 Ephemeral ID 메시지는 안정 구간에 센다. `ephemeral` 이 비면 `len(msgs)`. harness 의 접두 감지(HN-FR-74)도 같은 함수를 쓴다 |
 | ST-FR-61 | `cache` 의 메시지 힌트 Index = `StableLen(req.Messages, ctx.Conv().Ephemeral()) − 1` (req = 아래 층 결과). 결과가 0 보다 작으면 메시지 힌트를 두지 않는다. system 힌트는 그대로다. Ephemeral 이 없으면 v0.8 과 같다 |
+| ST-FR-62 | `cache` 는 `req.Options.CacheKey` 를 `ctx.Flow().SessionID()` 로 채운다 (R33). 아래 층이 이미 채웠어도 덮는다 |
 
 ### 3.3 도구 레지스트리
 
@@ -360,6 +361,7 @@ type Deps struct {
 | ST-FR-54~56 | `aux` 형식 에러(빈 역할·빈 provider·빈 id), 모르는 키 에러 유지, `AuxModel` 폴백, `Complete`: done 메시지, error 이벤트 → `*contract.CallError`, iterator 에러, done 없이 끝남, ctx 취소 |
 | ST-FR-57~59 | `ModesOf(Deps{})` → `Exit` 가 `ErrNoModes`·`Current` 가 기본 모드, `ModesOf` 가 nil 이 아닌 `Modes` 를 그대로 돌려줌 |
 | ST-FR-60~61 | `StableLen` 표: 꼬리 없음·꼬리 1개·2개·중간 Ephemeral(안정 구간)·전부 꼬리(0)·빈 목록·ephemeral 빈 목록. `cache`: Ephemeral 1개가 끝에 있으면 메시지 힌트가 그 앞, 전부 꼬리면 메시지 힌트 없음·system 힌트 있음, Ephemeral 없음 → 마지막 메시지(기존 테스트 유지) |
+| ST-FR-62 | `cache` 를 쌓은 request.finalize 결과의 CacheKey = 세션 ID, `cache` 없음 → 빈 값 |
 | ST-FR-51~53 | 기존 base·resilient 테스트 전부를 `Base, Require, Cache, Guard, Truncate(, Resilient)` 조합으로 통과, 세트별 채운 step 목록·Description, 정책 세트를 뺀 조합: cache 없음 → 캐시 힌트 없음, guard 없음 → 없는 도구가 tool.execute 에서 `unknown tool` 결과(base 17), truncate 없음 → 절단 없음, require 없이 base 만 → Bind 에러(빈 step), 아래 층 없이 guard 만 16 에 → ErrNoNext |
 | ST-FR-41~45 | 테스트가 공개 API 로만 동작을 검사, 복구 표시의 run·턴 범위(같은 run·턴 / 다른 턴 / 다른 run) |
 
@@ -378,6 +380,7 @@ type Deps struct {
 | R7 | 3.1 의 5 행 (Transcript 사용) |
 | R27 | ST-FR-54~59 (2.2, 2.3, 3.2b) |
 | R29 | ST-FR-60~61 (3.2c), 3.0 `cache` 행, 3.1 의 7 행 |
+| R33 | ST-FR-62 |
 | 자격증명 보호 | ST-C1, ST-FR-02 |
 
 ---
@@ -396,6 +399,7 @@ type Deps struct {
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.10 | 캐시 키 없음 | `cache` 가 `Options.CacheKey` = 세션 ID (ST-FR-62) | R33 |
 | 0.9 | `cache` 의 메시지 힌트 = 요청의 마지막 메시지 (모드 지시 같은 Ephemeral 이면 다음 요청에서 다시 맞지 않음) | 꼬리 앞 마지막 메시지 (ST-FR-61), `StableLen` (ST-FR-60). Ephemeral 이 없으면 같음 | R29 ⓔ |
 | 0.8 | 설정에 `aux` 없음, Deps 에 모드 없음 | `aux`(ST-FR-54), `AuxModel`·`Complete`(3.2b), `Deps.Modes`(ST-FR-57~59). 기존 세트 동작 변화 없음 | R27 |
 | 0.7 | `Base` 하나가 22 step 전부, step 별 생성자 `Base<Step>`, verify 의 `VerifyOptions.Next` | `Base`·`Require`·`Cache`·`Guard`·`Truncate` 로 분해(3.0), `Base<Step>` 삭제(ST-FR-04), verify 는 `ctx.Next()`. 전부 쌓으면 같은 동작(ST-FR-51) | R26 ② |

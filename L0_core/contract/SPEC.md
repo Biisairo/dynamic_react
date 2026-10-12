@@ -1,7 +1,7 @@
 # contract — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.4 (초안)
+- 버전: 0.5 (초안)
 - 상위 근거: `docs/DECISIONS.md`
 - 관련 명세: `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 
@@ -81,7 +81,7 @@ surfaces   sets   adapters
 | id | 요구사항 |
 |---|---|
 | CT-FR-11 | `Request` 는 `Model ModelRef`, `System []Block`, `Messages []Message`, `Tools []ToolSpec`, `Options` 를 가진다 |
-| CT-FR-12 | `Options` 는 `MaxOutputTokens`, `Thinking`(level 문자열, 선택), `ToolChoice`(auto / none / required / 이름), `CacheHints []CacheHint`(캐시 지점: `{Target: system|message, Index}`. system 이면 `System` 블록 인덱스, message 이면 `Messages` 인덱스. 힌트는 그 위치의 마지막 블록에 붙는다. 요청 하나 안에서만 쓰는 값이라 인덱스를 쓴다 — CT-FR-25 는 저장되는 ContextEdit 규칙), `Extra map[string]json.RawMessage`(방언 전용 값) 를 가진다 |
+| CT-FR-12 | `Options` 는 `MaxOutputTokens`, `Thinking`(level 문자열, 선택), `ToolChoice`(auto / none / required / 이름), `CacheHints []CacheHint`(캐시 지점: `{Target: system|message, Index}`. system 이면 `System` 블록 인덱스, message 이면 `Messages` 인덱스. 힌트는 그 위치의 마지막 블록에 붙는다. 요청 하나 안에서만 쓰는 값이라 인덱스를 쓴다 — CT-FR-25 는 저장되는 ContextEdit 규칙), `CacheKey`(캐시 라우팅 키, 선택 — 같은 키의 요청을 provider 가 같은 캐시로 보내게 함, R33), `Extra map[string]json.RawMessage`(방언 전용 값) 를 가진다 |
 | CT-FR-13 | `ModelRef` 는 `Provider`, `ID`, `API`(방언 이름) 를 가진다 |
 
 ### 3.4 스트림 이벤트 (C2)
@@ -194,6 +194,7 @@ surfaces   sets   adapters
 | C6 | CT-FR-22, 23 |
 | D9, R3 | CT-FR-24, 25 |
 | 계약 버전 규칙 | CT-FR-26~28 |
+| R33 | CT-FR-12 (`CacheKey`), `ContractVersion` 2 |
 
 ---
 
@@ -205,4 +206,5 @@ surfaces   sets   adapters
 | 0.2 | CacheHint = 메시지 인덱스 | `{Target: system|message, Index}` | sets 7 이 system 끝에 힌트를 걸어야 함. 사용자 확정 |
 | 0.2 | Go 표현 미정 | 3.9 추가 (CT-FR-29~36, Validate 표) | 구현 착수 |
 | 0.3 | CT-C3: protobuf 1:1 대응 | 원격 경계는 결정적 JSON 을 bytes 로 | 계약을 proto 로 중복 정의하지 않음, 모르는 enum 거부(CT-FR-28)가 그대로 적용. 사용자 확정 (R10) |
+| 0.5 | `Options` 에 캐시 키 없음, `ContractVersion` 1 | `Options.CacheKey`, `ContractVersion` 2 (추가만, CT-FR-27) | R33 |
 | 0.4 | CT-C3: 원격 경계는 결정적 JSON | JSON 왕복 무손실 (저장용) | D12 정정: 원격 경계 없음 |
