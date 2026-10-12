@@ -23,6 +23,7 @@ type reasoningPD struct {
 
 func (responsesDialect) build(req contract.Request, p Profile, info record) ([]byte, *contract.CallError) {
 	body := obj{"model": req.Model.ID, "stream": true, "store": false}
+	setCacheKey(body, p, req.Options.CacheKey)
 	if p.EncryptedReasoning {
 		body["include"] = []string{"reasoning.encrypted_content"}
 	}

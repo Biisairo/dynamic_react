@@ -66,7 +66,7 @@ func TestEnvBinding(t *testing.T) {
 	set := workingSet("base")
 	set.RunBeforeSettle = func(ctx *inject.RunBeforeSettleCtx) ([]inject.RunBeforeSettleSignal, error) {
 		got = ctx.Env().Binding()
-		if ctx.Env().ContractVersion() != 1 || string(ctx.Env().Config()) != `{"a":1}` {
+		if ctx.Env().ContractVersion() != 2 || string(ctx.Env().Config()) != `{"a":1}` {
 			t.Errorf("env %d %s", ctx.Env().ContractVersion(), ctx.Env().Config())
 		}
 		return nil, nil

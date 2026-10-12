@@ -123,7 +123,7 @@ func TestUnknownEnumInsideStruct(t *testing.T) {
 }
 
 func TestContractVersion(t *testing.T) {
-	if contract.ContractVersion != 1 {
-		t.Fatalf("ContractVersion = %d, want 1", contract.ContractVersion)
+	if contract.ContractVersion != 2 {
+		t.Fatalf("ContractVersion = %d, want 2", contract.ContractVersion)
 	}
 }

@@ -17,6 +17,7 @@ type Options struct {
 	Thinking        string                     `json:"thinking,omitempty"`
 	ToolChoice      *ToolChoice                `json:"toolChoice,omitempty"`
 	CacheHints      []CacheHint                `json:"cacheHints,omitempty"`
+	CacheKey        string                     `json:"cacheKey,omitempty"`
 	Extra           map[string]json.RawMessage `json:"extra,omitempty"`
 }
 

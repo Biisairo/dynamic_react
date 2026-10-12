@@ -8,7 +8,7 @@ import (
 )
 
 // ContractVersion 은 계약 버전이다. 증가 시 추가만 허용한다 (CT-FR-27).
-const ContractVersion = 1
+const ContractVersion = 2
 
 // ErrInvalid 는 모든 Validate 에러가 감싸는 값이다.
 var ErrInvalid = errors.New("contract: invalid")

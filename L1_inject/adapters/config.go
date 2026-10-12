@@ -30,6 +30,7 @@ type ProfilePatch struct {
 	ToolResultName     *bool             `json:"toolResultName,omitempty"`
 	EncryptedReasoning *bool             `json:"encryptedReasoning,omitempty"`
 	CacheControl       *CacheControlKind `json:"cacheControl,omitempty"`
+	PromptCacheKey     *bool             `json:"promptCacheKey,omitempty"`
 }
 
 // ModelPatch 는 모델 하나의 수치다 (카탈로그 1순위, R11).

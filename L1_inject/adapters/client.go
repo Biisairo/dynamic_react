@@ -443,6 +443,20 @@ func dataURL(img *contract.Image) string {
 }
 
 // withExtra 는 Options.Extra 를 최상위에 싣는다 (Extra 가 이긴다).
+// promptCacheKeyMax 는 prompt_cache_key 의 최대 문자 수다 (AD-FR-56, pi OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH).
+const promptCacheKeyMax = 64
+
+// setCacheKey 는 AD-FR-56 이다: 프로필이 허용하고 키가 있으면 prompt_cache_key 를 넣는다.
+func setCacheKey(body map[string]any, p Profile, key string) {
+	if !p.PromptCacheKey || key == "" {
+		return
+	}
+	if r := []rune(key); len(r) > promptCacheKeyMax {
+		key = string(r[:promptCacheKeyMax])
+	}
+	body["prompt_cache_key"] = key
+}
+
 func withExtra(body map[string]any, extra map[string]json.RawMessage) ([]byte, *contract.CallError) {
 	for k, v := range extra {
 		body[k] = v

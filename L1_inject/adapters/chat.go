@@ -34,6 +34,7 @@ func (chatDialect) build(req contract.Request, p Profile, info record) ([]byte, 
 		chatCacheHints(msgs, pos, req.Options.CacheHints)
 	}
 	body["messages"] = msgs
+	setCacheKey(body, p, req.Options.CacheKey)
 	if len(req.Tools) > 0 {
 		tools := make([]obj, len(req.Tools))
 		for i, t := range req.Tools {

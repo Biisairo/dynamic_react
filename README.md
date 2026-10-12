@@ -26,16 +26,16 @@
              inject    function interfaces, per-step ctx,       (spec v0.5)
                        layered binding (ctx.Next), combinators,
                        shared run table
-             sets      function sets: base, require, cache,     (spec v0.9)
+             sets      function sets: base, require, cache,     (spec v0.10)
                        guard, truncate, resilient, verify,
                        aux model call, mode interface
-             adapters  dialects: Anthropic, Chat, Responses;    (spec v0.7)
+             adapters  dialects: Anthropic, Chat, Responses;    (spec v0.8)
                        provider profiles, model catalog
  ─────────────────────────────────────────────────────────────────
  L0_core     the core
              core      the loop: 22 fixed steps, transitions,   (spec v0.2)
                        signals, stream/tool concurrency
-             contract  shared data types                        (spec v0.4)
+             contract  shared data types                        (spec v0.5)
 ```
 
 L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L2 부터가 사용자 환경 위의 실제 에이전트다 (R17). 환경변수는 어느 레이어도 읽지 않는다 — 모든 값은 설정 파일에서 온다 (R21). 의존 방향은 위 → 아래만. 폴더마다 독립 Go 모듈이다 (R8, 경로 `github.com/Biisairo/dynamic_react/<폴더>`). 개발은 루트 `go.work` 로 묶는다.

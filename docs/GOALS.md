@@ -78,7 +78,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | CA-6 | 턴별 캐시 적중률을 이벤트나 `/status` 같은 곳에 보여 줄지 | 측정 수단이 없으면 회귀를 놓친다. 표시 위치는 L3 이고 값은 이미 `contract.Usage`에 있다. R29 의 `prefix_break` 는 접두 변경만 알리고 적중률은 재지 않는다. 표시한다면 hit% 와 함께 "직전 요청 대비 효율"(cached ÷ 직전과 공통인 앞부분)을 후보로 둔다 — 작은 세션에서는 hit% 만으로는 문제가 있는 것처럼 보인다 (CA-5 관찰 ②) | 해소 (R30: run_end 에 캐시 비율, `/status` 에 세션·모델·모드·세트·도구·컨텍스트·마지막 run·세션 누적과 효율. harness v1.6 3.6g, agent v0.10, terminal v0.8) |
 | CA-7 | Chat 방언(`adapters/chat.go`)이 `CacheHints`를 버린다. OpenRouter 로 Claude 를 쓰면 캐시가 전혀 되지 않는다 (OpenRouter 는 메시지 안의 `cache_control` 을 요구) | 코드로 확인한 사실. 지점 방식 흉내(R29 ⓔ)를 Chat 방언에도 넓힐지 정해야 한다 | 해소 (R31: 프로필 `CacheControl`, 내장 openrouter 는 `anthropic/` 모델에서 켬, 위치는 `cache` 세트 힌트를 따름. adapters v0.7 AD-FR-54·55. 실제 OpenRouter 로는 확인 안 함) |
 | CA-8 | 로컬 서버(llama.cpp·Ollama)에서 보조 모델 호출(goal 판단기)이 같은 서버·모델로 가면 슬롯의 KV 캐시를 덮어, 다음 본 요청이 대화 전체를 다시 계산할 수 있다 | 추론만 함. 실제 확인 필요 | 해소 (R32: 코드 변경 없이 `INJECT.md` 5.4 에 피하는 방법 안내. 서버 동작은 문서 기준, 실제 서버로는 확인 안 함) |
-| CA-9 | OpenAI Responses 방언에 `prompt_cache_key`(세션 ID 기반)를 보내지 않는다. 보내면 같은 서버로 가서 적중률이 오른다 | 비용이 적다 | 열림 |
+| CA-9 | OpenAI Responses 방언에 `prompt_cache_key`(세션 ID 기반)를 보내지 않는다. 보내면 같은 서버로 가서 적중률이 오른다 | 비용이 적다 | 해소 (R33: `contract.Options.CacheKey`(ContractVersion 2), `cache` 세트가 세션 ID 로 채움, 프로필 `PromptCacheKey` 가 켜진 provider 만 `prompt_cache_key` — 내장은 openai 만. 실제 OpenAI 로는 확인 안 함) |
 
 ## 4. 모드 (R27)
 

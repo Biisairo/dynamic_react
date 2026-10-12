@@ -87,6 +87,7 @@ type Profile struct {
 	ToolResultName     bool             `json:"toolResultName"`
 	EncryptedReasoning bool             `json:"encryptedReasoning"`
 	CacheControl       CacheControlKind `json:"cacheControl"`
+	PromptCacheKey     bool             `json:"promptCacheKey"`
 }
 
 const (
@@ -135,7 +136,7 @@ func BuiltinProfiles() map[string]Profile {
 		"minimax-cn":        anthropic("https://api.minimaxi.com/anthropic", LookupNone),
 		"fireworks":         anthropic("https://api.fireworks.ai/inference", LookupNone),
 		"vercel-ai-gateway": anthropic("https://ai-gateway.vercel.sh", LookupNone),
-		"openai":            {API: APIResponses, BaseURL: "https://api.openai.com/v1", RequiresKey: true, Lookup: LookupNone, DeveloperRole: true, EncryptedReasoning: true},
+		"openai":            {API: APIResponses, BaseURL: "https://api.openai.com/v1", RequiresKey: true, Lookup: LookupNone, DeveloperRole: true, EncryptedReasoning: true, PromptCacheKey: true},
 		"xai":               {API: APIResponses, BaseURL: "https://api.x.ai/v1", RequiresKey: true, Lookup: LookupNone},
 		"deepseek":          deepseek,
 		"zai":               chat("https://api.z.ai/api/paas/v4", false, maxTokens, ThinkZai),
@@ -189,5 +190,6 @@ func (pp ProfilePatch) apply(p Profile) Profile {
 	if pp.CacheControl != nil {
 		p.CacheControl = *pp.CacheControl
 	}
+	setB(&p.PromptCacheKey, pp.PromptCacheKey)
 	return p
 }
