@@ -84,7 +84,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 
 | id | 내용 | 상태 | 출처 |
 |---|---|---|---|
-| MD-1 | 뮤테이션 검사: harness `mode.go`의 `decide`·`applyPending`·`runSwitch` 핵심 분기 | 열림 | impl-09 |
+| MD-1 | 뮤테이션 검사: harness `mode.go`의 `decide`·`applyPending`·`runSwitch` 핵심 분기 | 해소 (`decide`·`applyPending`·`runSwitch.Dispatch`·`pick` 34/34 KILLED. 처음 살아남은 8개 — 모드 안에서 세트 진입, 예약이 있을 때 지금 상태로 가는 요청, 같은 모드 다른 Arg, 세트 Exit 적용 이벤트의 Reason, 적용 저장 실패 때 고침 이벤트, 고침 저장 실패의 `Start` 에러, run 안 적용 실패, Modes 없는 Agent 의 run — 는 테스트를 보강해 잡음. 마지막 것은 스펙에 없어 harness v1.7 HN-FR-65·66 에 명시함 — 동작 변경 없음) | impl-09 |
 | MD-2 | 보조 모델의 thinking·max tokens 설정 (지금은 모델만 정한다) | 열림 | impl-09 |
 | MD-3 | 터미널에서 실행 중에 `/mode off` (지금은 대기 중에만 된다. agent API 는 실행 중에도 받는다) | 열림 | impl-09 |
 | MD-4 | 전체 배치형 모드 (`Mode.Layout`) | 보류 (R27 비목표) | impl-09 |

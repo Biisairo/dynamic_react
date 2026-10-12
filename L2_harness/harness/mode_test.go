@@ -207,6 +207,8 @@ func TestModeExitBySet(t *testing.T) {
 	var cur sets.ModeState
 	o := options(envtest.New("/w", "/h"), m)
 	withModes()(&o)
+	rec := &recorder{}
+	o.OnEvent = rec.on
 	inner := o.Sets
 	o.Sets = func(d sets.Deps) []harness.SetEntry {
 		probe := inject.FunctionSet{Name: "probe",
@@ -239,6 +241,15 @@ func TestModeExitBySet(t *testing.T) {
 	}
 	if st := status(t, a, "s1"); st.Active != "" || st.Pending != nil {
 		t.Fatalf("status after exit %+v", st)
+	}
+	var last *harness.ModeChange
+	for _, ev := range rec.all() {
+		if ev.Kind == harness.EventMode {
+			last = ev.Mode
+		}
+	}
+	if last == nil || *last != (harness.ModeChange{From: "m", Origin: harness.ModeSet, Reason: "judged done"}) {
+		t.Fatalf("exit event %+v", last)
 	}
 }
 
@@ -286,11 +297,20 @@ func TestModePermissions(t *testing.T) {
 	if err := request(a, "s1", "m", harness.ModeModel); !denied(err) {
 		t.Fatalf("model enter in mode: %v", err)
 	}
+	if err := request(a, "s1", "m", harness.ModeSet); !denied(err) {
+		t.Fatalf("set enter in mode: %v", err)
+	}
 	if err := request(a, "s1", "n", harness.ModeUser); err != nil {
 		t.Fatal(err)
 	}
 	if st := status(t, a, "s1"); st.Pending != nil {
 		t.Fatalf("same-state request should be a no-op: %+v", st)
+	}
+	if err := a.RequestMode(context.Background(), "s1", harness.ModeRequest{To: "n", Arg: "other", Origin: harness.ModeUser}); err != nil {
+		t.Fatal(err)
+	}
+	if st := status(t, a, "s1"); st.Pending == nil || st.Pending.To != "n" || st.Pending.Arg != "other" {
+		t.Fatalf("same mode with another arg: %+v", st)
 	}
 	if err := request(a, "s1", "m", harness.ModeUser); err != nil {
 		t.Fatal(err)
@@ -306,6 +326,12 @@ func TestModePermissions(t *testing.T) {
 	}
 	if st := status(t, a, "s1"); st.Pending == nil || st.Pending.To != "" || st.Pending.Origin != harness.ModeUser {
 		t.Fatalf("user exit in mode: %+v", st)
+	}
+	if err := request(a, "s1", "n", harness.ModeUser); err != nil {
+		t.Fatal(err)
+	}
+	if st := status(t, a, "s1"); st.Pending == nil || st.Pending.To != "n" || st.Pending.Origin != harness.ModeUser {
+		t.Fatalf("current-state request must replace pending: %+v", st)
 	}
 }
 
@@ -421,6 +447,121 @@ func TestModeSaveFailure(t *testing.T) {
 	}
 	if st := status(t, a, "s1"); st.Active != "" || st.Pending == nil {
 		t.Fatalf("apply failure changed status: %+v", st)
+	}
+}
+
+// countState 는 모드 상태 저장을 센다. failFrom 번째(1부터)부터 실패한다. 0 이면 실패하지 않는다.
+type countState struct {
+	harness.Store
+	mu       sync.Mutex
+	saves    int
+	failFrom int
+}
+
+func (c *countState) SaveState(ctx context.Context, sid, ns string, d inject.StateDelta) error {
+	if ns == harness.ModeNamespace {
+		c.mu.Lock()
+		c.saves++
+		fail := c.failFrom > 0 && c.saves >= c.failFrom
+		c.mu.Unlock()
+		if fail {
+			return errors.New("disk full")
+		}
+	}
+	return c.Store.SaveState(ctx, sid, ns, d)
+}
+
+func modeEvents(rec *recorder) []harness.ModeChange {
+	var out []harness.ModeChange
+	for _, ev := range rec.all() {
+		if ev.Kind == harness.EventMode {
+			out = append(out, *ev.Mode)
+		}
+	}
+	return out
+}
+
+// HN-FR-60, 64, 67: 고침 저장 실패 → Start 에러. 고침은 저장됐는데 적용 저장이 실패하면 Start 에러이고 고침 이벤트는 나간다.
+func TestModeApplyFailureAtStart(t *testing.T) {
+	e := envtest.New("/w", "/h")
+	a := newAgent(t, e, textModel(), withModes())
+	if err := request(a, "s1", "m", harness.ModeUser); err != nil {
+		t.Fatal(err)
+	}
+	start(t, a, "s1", user("u1", "hi"))
+	if err := request(a, "s1", "n", harness.ModeUser); err != nil {
+		t.Fatal(err)
+	}
+	onlyN := func(cs *countState, rec *recorder) func(*harness.Options) {
+		return func(o *harness.Options) {
+			withModes()(o)
+			o.Modes = o.Modes[1:]
+			o.OnEvent = rec.on
+			o.Store = func(def harness.Store) harness.Store { cs.Store = def; return cs }
+		}
+	}
+	run := func(a *harness.Agent) error {
+		_, _, err := a.Start(context.Background(), harness.RunRequest{SessionID: "s1", Input: []contract.Message{user("u2", "hi")}, Config: json.RawMessage(cfg)})
+		return err
+	}
+
+	rec := &recorder{}
+	b := newAgent(t, e, textModel(), onlyN(&countState{failFrom: 1}, rec))
+	if err := run(b); err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("fix save failure: %v", err)
+	}
+	if evs := modeEvents(rec); len(evs) != 0 {
+		t.Fatalf("events after failed fix %+v", evs)
+	}
+
+	rec = &recorder{}
+	c := newAgent(t, e, textModel(), onlyN(&countState{failFrom: 2}, rec))
+	if err := run(c); err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("apply save failure: %v", err)
+	}
+	if evs := modeEvents(rec); len(evs) != 1 || evs[0] != (harness.ModeChange{From: "m", Origin: harness.ModeUser, Reason: "unknown mode m"}) {
+		t.Fatalf("fix event %+v", evs)
+	}
+}
+
+// HN-FR-64, 66: run 안에서 turn.start 적용 저장이 실패하면 그 dispatch 의 에러로 run 이 실패한다.
+func TestModeApplyFailureInRun(t *testing.T) {
+	m := &fakeModel{script: func(n int, req contract.Request) []contract.StreamEvent {
+		if n == 0 {
+			return reply("a0", contract.StopToolUse, call("c0", "mode", `{"name":"m"}`))
+		}
+		return reply("a1", contract.StopStop, text("done"))
+	}}
+	cs := &countState{failFrom: 2} // 1: 도구의 예약, 2: 다음 turn.start 의 적용
+	a := newAgent(t, envtest.New("/w", "/h"), m, func(o *harness.Options) {
+		withModes()(o)
+		o.Store = func(def harness.Store) harness.Store { cs.Store = def; return cs }
+	})
+	s, _ := start(t, a, "s1", user("u1", "hi"))
+	if s.Reason != core.SettleFailed || s.Err == nil || !strings.Contains(s.Err.Error(), "disk full") {
+		t.Fatalf("settle %+v", s)
+	}
+	if len(m.requests()) != 1 {
+		t.Fatalf("requests after failed apply: %d", len(m.requests()))
+	}
+}
+
+// HN-FR-65, 66: Modes 가 빈 Agent 의 run 은 남은 모드 상태를 읽지도 고치지도 않는다.
+func TestModeNoneIgnoresState(t *testing.T) {
+	e := envtest.New("/w", "/h")
+	a := newAgent(t, e, textModel(), withModes())
+	if err := request(a, "s1", "m", harness.ModeUser); err != nil {
+		t.Fatal(err)
+	}
+	start(t, a, "s1", user("u1", "hi"))
+	rec := &recorder{}
+	b := newAgent(t, e, textModel(), func(o *harness.Options) { o.OnEvent = rec.on })
+	start(t, b, "s1", user("u2", "again"))
+	if evs := modeEvents(rec); len(evs) != 0 {
+		t.Fatalf("mode events without modes %+v", evs)
+	}
+	if st := status(t, newAgent(t, e, textModel(), withModes()), "s1"); st.Active != "m" {
+		t.Fatalf("state changed %+v", st)
 	}
 }
 
