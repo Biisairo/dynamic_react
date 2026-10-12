@@ -77,11 +77,11 @@ func Require(d Deps) inject.FunctionSet {
 	}
 }
 
-// Cache 는 아래 층의 요청에 캐시 힌트(system 마지막 블록, 마지막 메시지)를 붙인다 (3.0).
+// Cache 는 아래 층의 요청에 캐시 힌트(system 마지막 블록, 꼬리 앞 마지막 메시지)를 붙인다 (3.0, ST-FR-61).
 func Cache(d Deps) inject.FunctionSet {
 	return inject.FunctionSet{
 		Name:        "cache",
-		Description: "cache hints on the last system block and last message",
+		Description: "cache hints on the last system block and the last message before the ephemeral tail",
 		RequestFinalize: func(ctx *inject.RequestFinalizeCtx, req contract.Request) (contract.Request, []inject.RequestFinalizeSignal, error) {
 			req, sigs, err := ctx.Next(req)
 			if err != nil {
@@ -91,13 +91,26 @@ func Cache(d Deps) inject.FunctionSet {
 			if len(req.System) > 0 {
 				hints = append(hints, contract.CacheHint{Target: contract.CacheSystem, Index: len(req.System) - 1})
 			}
-			if len(req.Messages) > 0 {
-				hints = append(hints, contract.CacheHint{Target: contract.CacheMessage, Index: len(req.Messages) - 1})
+			if n := StableLen(req.Messages, ctx.Conv().Ephemeral()); n > 0 {
+				hints = append(hints, contract.CacheHint{Target: contract.CacheMessage, Index: n - 1})
 			}
 			req.Options.CacheHints = hints
 			return req, sigs, nil
 		},
 	}
+}
+
+// StableLen 은 msgs 에서 꼬리(끝에서부터 연속으로 ID 가 ephemeral 에 있는 메시지)를 뺀 길이다 (ST-FR-60).
+func StableLen(msgs, ephemeral []contract.Message) int {
+	eph := map[string]bool{}
+	for _, m := range ephemeral {
+		eph[m.ID] = true
+	}
+	n := len(msgs)
+	for n > 0 && eph[msgs[n-1].ID] {
+		n--
+	}
+	return n
 }
 
 // Guard 는 등록되지 않은 도구와 스키마에 맞지 않는 인자를 error 결과로 막고, 통과하면 아래 층을 부른다 (ST-FR-38).

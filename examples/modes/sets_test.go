@@ -102,15 +102,19 @@ func toolNames(req contract.Request) string {
 }
 
 type modeEvents struct {
-	mu  sync.Mutex
-	evs []harness.ModeChange
+	mu     sync.Mutex
+	evs    []harness.ModeChange
+	prefix []harness.PrefixBreak
 }
 
 func (r *modeEvents) on(ev harness.Event) {
-	if ev.Kind == harness.EventMode {
-		r.mu.Lock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	switch ev.Kind {
+	case harness.EventMode:
 		r.evs = append(r.evs, *ev.Mode)
-		r.mu.Unlock()
+	case harness.EventPrefixBreak:
+		r.prefix = append(r.prefix, *ev.Prefix)
 	}
 }
 
@@ -238,31 +242,44 @@ func TestGoalCheckFirst(t *testing.T) {
 	}
 }
 
-// MX-FR-05~07: 쓰기 도구 차단·이탈 → 다음 run 은 기본
+// MX-FR-05~07: 지시에 막힌 도구, 쓰기 도구 차단, 도구 목록 유지(R29), 이탈 → 다음 run 은 기본
 func TestPlanMode(t *testing.T) {
 	m := &fakeModel{judge: verdicts(`{}`),
 		worker: func(n int, req contract.Request) contract.Message {
-			if n == 0 {
+			if n == 1 {
 				return assistant("try", toolCall("c1", "write", `{"path":"/w/a.txt","content":"a"}`))
 			}
 			return assistant("1. do it")
 		}}
-	a, _ := newHarness(t, m, config{goalTurns: 20})
+	a, rec := newHarness(t, m, config{goalTurns: 20})
+	runOnce(t, a, "hi")
 	enter(t, a, "plan", "add login")
 	runOnce(t, a, "go")
-	work, _ := m.snapshot()
-	if got := toolNames(work[0]); strings.Contains(got, "write") || strings.Contains(got, "edit") || strings.Contains(got, "bash") || !strings.Contains(got, "read") {
-		t.Fatalf("plan tools %s", got)
-	}
-	if !has(work[0], "[plan mode] Plan only") || !has(work[0], "Task: add login") || !has(work[1], "blocked in plan mode") {
-		t.Fatal("plan instruction or block missing")
-	}
 	if st := active(t, a); st.Pending == nil || st.Pending.Reason != "plan done" {
 		t.Fatalf("plan status %+v", st)
 	}
 	runOnce(t, a, "now do it")
-	work, _ = m.snapshot()
-	if !strings.Contains(toolNames(work[2]), "write") || has(work[2], "[plan mode]") {
-		t.Fatal("plan still applied after exit")
+	work, _ := m.snapshot()
+	if len(work) != 4 {
+		t.Fatalf("requests %d", len(work))
+	}
+	tools := toolNames(work[0])
+	if !strings.Contains(tools, "write") || !strings.Contains(tools, "edit") || !strings.Contains(tools, "bash") ||
+		toolNames(work[1]) != tools || toolNames(work[2]) != tools || toolNames(work[3]) != tools {
+		t.Fatalf("tools %s / %s / %s / %s", tools, toolNames(work[1]), toolNames(work[2]), toolNames(work[3]))
+	}
+	if !has(work[1], "[plan mode] Plan only") || !has(work[1], "Blocked tools in this mode: bash, edit, write.") ||
+		!has(work[1], "Task: add login") || !has(work[2], "blocked in plan mode") {
+		t.Fatal("plan instruction or block missing")
+	}
+	if has(work[0], "[plan mode]") || has(work[3], "[plan mode]") {
+		t.Fatal("plan applied outside the mode")
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for _, p := range rec.prefix {
+		if p.Part == harness.PrefixTools || p.Part == harness.PrefixSystem {
+			t.Fatalf("prefix break %+v", p)
+		}
 	}
 }

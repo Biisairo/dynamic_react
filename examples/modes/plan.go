@@ -1,6 +1,10 @@
 package main
 
 import (
+	"maps"
+	"slices"
+	"strings"
+
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L0_core/core"
 	"github.com/Biisairo/dynamic_react/L1_inject/inject"
@@ -9,10 +13,12 @@ import (
 
 var planBlocked = map[string]bool{"write": true, "edit": true, "bash": true}
 
-const planRule = "[plan mode] Plan only — do not implement. Investigate with read-only tools and reply with a step-by-step plan " +
-	"(goal, approach, tasks with exact file paths, verification commands, risks)."
+var planRule = "[plan mode] Plan only — do not implement. Investigate with read-only tools and reply with a step-by-step plan " +
+	"(goal, approach, tasks with exact file paths, verification commands, risks).\nBlocked tools in this mode: " +
+	strings.Join(slices.Sorted(maps.Keys(planBlocked)), ", ") + ". Calls to them return an error."
 
 // PlanSet 은 plan 모드의 세트다: 계획 지시, 쓰기 도구 차단, run 끝에서 이탈 (MX-FR-05~07).
+// 도구 목록은 바꾸지 않는다 — 바꾸면 캐시 접두 전체가 깨진다 (R29).
 func PlanSet(d sets.Deps) inject.FunctionSet {
 	modes := sets.ModesOf(d)
 	return inject.FunctionSet{Name: "plan", Description: "plan mode: plan only, write/edit/bash blocked",
@@ -26,17 +32,6 @@ func PlanSet(d sets.Deps) inject.FunctionSet {
 				rule += "\nTask: " + st.Arg
 			}
 			return append(msgs, userMessage(d, rule)), sigs, nil
-		},
-		RequestFinalize: func(ctx *inject.RequestFinalizeCtx, req contract.Request) (contract.Request, []inject.RequestFinalizeSignal, error) {
-			req, sigs, err := ctx.Next(req)
-			var tools []contract.ToolSpec
-			for _, t := range req.Tools {
-				if !planBlocked[t.Name] {
-					tools = append(tools, t)
-				}
-			}
-			req.Tools = tools
-			return req, sigs, err
 		},
 		ToolBefore: func(ctx *inject.ToolBeforeCtx, c contract.ToolCall) (core.BeforeOut, []inject.ToolBeforeSignal, error) {
 			if planBlocked[c.Name] {

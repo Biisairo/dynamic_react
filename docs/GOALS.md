@@ -6,7 +6,7 @@
 - 항목을 끝내면 상태를 `해소`로 바꾸고 커밋이나 결정 id 를 적는다. 행은 지우지 않는다.
 - 새 개선 항목은 인계 문서가 아니라 이 문서에 먼저 넣는다. 인계 문서에는 이 문서의 id 만 적는다.
 
-기준 시점: 2026-10-12, 커밋 `b8b7757` (R28 결정, impl-09 인계).
+기준 시점: 2026-10-12, R29 구현 (프롬프트 캐시 접두).
 
 ## 1. 전체 목표
 
@@ -33,7 +33,9 @@
 
 ## 3. 프롬프트 캐시: 세트·모드 전환이 일으키는 실패
 
-### 3.1 현재 구조
+R29 에서 기준을 **자동 접두 캐시**로 정했다. 요청 = [안정 접두][가변 꼬리]이고, 안정 접두(도구 목록 → system → 저장된 메시지)는 덧붙기만 한다. 원칙과 감지는 `DECISIONS.md` R29, 사용법은 `INJECT.md` 5.5a 에 있다. 3.1·3.2 는 R29 이전의 분석이다.
+
+### 3.1 R29 이전 구조
 
 | 위치 | 동작 |
 |---|---|
@@ -68,12 +70,15 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 
 | id | 내용 | 권장 (판단) | 상태 |
 |---|---|---|---|
-| CA-1 | `cache` 세트가 메시지 힌트를 Ephemeral 앞의 마지막 영속 메시지에 단다. `RequestFinalizeCtx.Conv().Ephemeral()`로 개수를 알 수 있다. 마지막 메시지에도 힌트를 둘지 정해야 한다 (Anthropic 은 지점을 최대 4개까지 허용) | C2·C4 를 한 곳에서 고친다. 1순위. sets spec ST-FR 갱신 필요 | 열림 |
-| CA-2 | plan 모드는 도구 목록을 그대로 두고 `tool.before` 차단만 쓴다. 지시문에 막힌 도구 이름을 적는다 | C1 을 없앤다. 대가로 모델이 막힌 도구를 한 번 부를 수 있다. 차단은 이미 `tool.before`에 있으므로 안전성은 같다 | 결정 대기 |
-| CA-3 | 모드 세트 작성 지침: "도구 목록과 system 은 바꾸지 않는다. 매 턴 지시는 `context.inject`로 넣는다"를 `INJECT.md` 5.5 에 적는다. 3.2 의 표를 옮긴다 | CA-1·CA-2 결정 뒤에 적는다 | 열림 |
-| CA-4 | 결정론적 테스트: 모드가 켜진 요청에서 메시지 힌트의 인덱스가 영속 구간의 끝인지 확인한다. 모드 진입 전후의 도구 목록이 같은지 확인한다 (CA-2 채택 시) | CA-1 과 함께 | 열림 |
+| CA-1 | `cache` 세트가 메시지 힌트를 Ephemeral 앞의 마지막 영속 메시지에 단다. `RequestFinalizeCtx.Conv().Ephemeral()`로 개수를 알 수 있다. 마지막 메시지에도 힌트를 둘지 정해야 한다 (Anthropic 은 지점을 최대 4개까지 허용) | C2·C4 를 한 곳에서 고친다. 1순위. sets spec ST-FR 갱신 필요 | 해소 (R29: 꼬리 앞 마지막 메시지에만, sets v0.9 ST-FR-60·61) |
+| CA-2 | plan 모드는 도구 목록을 그대로 두고 `tool.before` 차단만 쓴다. 지시문에 막힌 도구 이름을 적는다 | C1 을 없앤다. 대가로 모델이 막힌 도구를 한 번 부를 수 있다. 차단은 이미 `tool.before`에 있으므로 안전성은 같다 | 해소 (R29, examples/modes v0.2) |
+| CA-3 | 모드 세트 작성 지침: "도구 목록과 system 은 바꾸지 않는다. 매 턴 지시는 `context.inject`로 넣는다"를 `INJECT.md` 5.5 에 적는다. 3.2 의 표를 옮긴다 | CA-1·CA-2 결정 뒤에 적는다 | 해소 (R29, `INJECT.md` 5.5a) |
+| CA-4 | 결정론적 테스트: 모드가 켜진 요청에서 메시지 힌트의 인덱스가 영속 구간의 끝인지 확인한다. 모드 진입 전후의 도구 목록이 같은지 확인한다 (CA-2 채택 시) | CA-1 과 함께 | 해소 (R29: sets `TestCacheHintBeforeTail`, examples `TestPlanMode`. 실행 중 감지 `prefix_break` 이벤트 — harness v1.5 3.6f, terminal TM-FR-60) |
 | CA-5 | 실제 모델 확인: Anthropic 으로 plan·goal 모드를 여러 턴 돌려 턴마다 `Usage.CacheRead`·`CacheWrite`를 기록한다. 고치기 전과 후를 비교한다 | 외부 API 호출이므로 사용자 확인 후. 5.1 의 실제 모델 시연과 묶는다 | 열림 |
-| CA-6 | 턴별 캐시 적중률을 이벤트나 `/status` 같은 곳에 보여 줄지 | 측정 수단이 없으면 회귀를 놓친다. 표시 위치는 L3 이고 값은 이미 `contract.Usage`에 있다 | 결정 대기 |
+| CA-6 | 턴별 캐시 적중률을 이벤트나 `/status` 같은 곳에 보여 줄지 | 측정 수단이 없으면 회귀를 놓친다. 표시 위치는 L3 이고 값은 이미 `contract.Usage`에 있다. R29 의 `prefix_break` 는 접두 변경만 알리고 적중률은 재지 않는다 | 결정 대기 |
+| CA-7 | Chat 방언(`adapters/chat.go`)이 `CacheHints`를 버린다. OpenRouter 로 Claude 를 쓰면 캐시가 전혀 되지 않는다 (OpenRouter 는 메시지 안의 `cache_control` 을 요구) | 코드로 확인한 사실. 지점 방식 흉내(R29 ⓔ)를 Chat 방언에도 넓힐지 정해야 한다 | 열림 |
+| CA-8 | 로컬 서버(llama.cpp·Ollama)에서 보조 모델 호출(goal 판단기)이 같은 서버·모델로 가면 슬롯의 KV 캐시를 덮어, 다음 본 요청이 대화 전체를 다시 계산할 수 있다 | 추론만 함. 실제 확인 필요 | 열림 |
+| CA-9 | OpenAI Responses 방언에 `prompt_cache_key`(세션 ID 기반)를 보내지 않는다. 보내면 같은 서버로 가서 적중률이 오른다 | 비용이 적다 | 열림 |
 
 ## 4. 모드 (R27)
 
@@ -92,6 +97,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | VF-1 | `examples/modes` 실제 모델 시연: 임시 Go 모듈에서 `-check "go test ./..."` + `/mode goal …`, 그리고 `/mode plan …`. CA-5 와 묶는다 | 열림 (사용자 확인 후) | impl-09 |
 | VF-2 | Anthropic·OpenAI 방언의 실제 응답 검증 | 열림 (API 키·크레딧 필요) | impl-06 |
 | VF-3 | provider overflow 에러 복구를 실제 모델로 확인 (지금은 가짜 서버로만 검증) | 열림 | impl-06 |
+| VF-5 | R29 새 코드의 뮤테이션 검사: harness `prefix.go` 의 `check`·`compare`, surface 래핑, sets `StableLen` | 열림 (커버리지만 확인: 100%, `wrap` 98.2%) | R29 |
 | VF-4 | 관측 불가 뮤턴트 2개: agent `NoRemoteCatalog` 전달, terminal 종료 중 경합 | 보류 (외부 네트워크·경합이라 관측 불가) | impl-05, impl-07 |
 
 ## 6. examples/modes

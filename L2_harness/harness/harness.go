@@ -121,7 +121,7 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if o.System != nil {
 		system = o.System(system)
 	}
-	sf := &surface{onEvent: o.OnEvent, gate: o.Gate}
+	sf := &surface{onEvent: o.OnEvent, gate: o.Gate, prefix: newPrefixTable()}
 	var summarizer sets.Summarizer = summary.New(o.Model, o.Now)
 	if o.Summarizer != nil {
 		summarizer = o.Summarizer(summarizer)

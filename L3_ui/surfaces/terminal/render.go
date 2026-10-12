@@ -145,6 +145,10 @@ func (t *Terminal) event(ev harness.Event) {
 		if ev.Mode != nil {
 			t.line(t.paint(sgrDim, t.modeLine(*ev.Mode)))
 		}
+	case harness.EventPrefixBreak:
+		if ev.Prefix != nil && !ev.Prefix.Expected {
+			t.line(t.prefixLine(*ev.Prefix))
+		}
 	case harness.EventRunEnd:
 		t.newline()
 		t.line(t.runEndLine(ev.Settle))
@@ -296,6 +300,18 @@ func (t *Terminal) compactionLine(ev harness.Event) string {
 		return t.paint(sgrRed, "✗") + " 압축 실패: " + sanitize(ev.Err.Error())
 	}
 	return t.paint(sgrGreen, "✓") + " 압축 완료"
+}
+
+// prefixLine 은 prefix_break 줄이다 (TM-FR-60).
+func (t *Terminal) prefixLine(p harness.PrefixBreak) string {
+	if p.Part == harness.PrefixModel {
+		return t.paint(sgrDim, truncate("· 캐시 새로 시작: 모델 변경 → "+sanitize(p.Model.Provider+"/"+p.Model.ID), t.scr.cols()))
+	}
+	s := fmt.Sprintf("⚠ 캐시 접두 깨짐: %s 변경 (0/%d 메시지 유지)", p.Part, p.Total)
+	if p.Part == harness.PrefixMessages {
+		s = fmt.Sprintf("⚠ 캐시 접두 깨짐: 메시지 #%d 변경, 편집 없음 (%d/%d 유지)", p.At, p.Kept, p.Total)
+	}
+	return t.paint(sgrYellow, "⚠") + strings.TrimPrefix(truncate(s, t.scr.cols()), "⚠")
 }
 
 func (t *Terminal) runEndLine(s *core.Settle) string {

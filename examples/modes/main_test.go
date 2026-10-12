@@ -117,8 +117,11 @@ func TestInteractive(t *testing.T) {
 		!strings.Contains(l.body(1), "Task: add login") || strings.Contains(l.body(2), "[plan mode]") {
 		t.Fatal("plan mode applied to the wrong requests")
 	}
-	if strings.Contains(l.body(1), `"name":"write"`) || !strings.Contains(l.body(2), `"name":"write"`) {
-		t.Fatal("plan mode did not remove write from its request only")
+	if !strings.Contains(l.body(1), `"name":"write"`) || !strings.Contains(l.body(1), "Blocked tools in this mode") {
+		t.Fatal("plan mode request lacks the full tool list or the blocked tools")
+	}
+	if strings.Contains(screen(), "캐시 접두 깨짐") {
+		t.Fatalf("prefix break on screen:\n%s", screen())
 	}
 }
 

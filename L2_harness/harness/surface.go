@@ -57,6 +57,7 @@ type Event struct {
 	Err       error
 	Settle    *core.Settle
 	Mode      *ModeChange
+	Prefix    *PrefixBreak
 }
 
 type Approval struct {
@@ -76,6 +77,7 @@ type surface struct {
 	mu      sync.Mutex // OnEvent 직렬화 (HN-FR-34)
 	onEvent func(Event)
 	gate    func(ctx context.Context, in GateInput) *contract.ToolResult
+	prefix  *prefixTable
 }
 
 func (s *surface) active() bool { return s.onEvent != nil || s.gate != nil }
@@ -99,6 +101,7 @@ type runState struct {
 	retryErr   *contract.CallError
 	retryTurn  int
 	retryCount int
+	fp         *fingerprint // 다음 model.call 이 비교할 지문 (HN-FR-74)
 }
 
 func newRunState() *runState {
@@ -212,6 +215,35 @@ func (s *surface) wrap(fs []inject.FunctionSet) []inject.FunctionSet {
 				}
 			}
 			return msgs, sigs, err
+		}
+	}
+	if f := last(func(f inject.FunctionSet) bool { return f.RequestFinalize != nil }); f != nil {
+		inner := f.RequestFinalize
+		f.RequestFinalize = func(ctx *inject.RequestFinalizeCtx, req contract.Request) (contract.Request, []inject.RequestFinalizeSignal, error) {
+			out, sigs, err := inner(ctx, req)
+			if rs := stateOf(ctx.Context()); rs != nil && err == nil {
+				fp := newFingerprint(out, ctx.Conv().Ephemeral(), ctx.Conv().Edits())
+				rs.mu.Lock()
+				rs.fp = fp
+				rs.mu.Unlock()
+			}
+			return out, sigs, err
+		}
+	}
+	if f := last(func(f inject.FunctionSet) bool { return f.ModelCall != nil }); f != nil {
+		inner := f.ModelCall
+		f.ModelCall = func(ctx *inject.ModelCallCtx, req contract.Request) (core.CallStream, []inject.ModelCallSignal, error) {
+			if rs := stateOf(ctx.Context()); rs != nil {
+				rs.mu.Lock()
+				fp := rs.fp
+				rs.mu.Unlock()
+				if fp != nil {
+					if pb := s.prefix.check(ctx.Flow().SessionID(), req.Model, fp); pb != nil {
+						s.emitRun(rs, Event{Kind: EventPrefixBreak, Prefix: pb})
+					}
+				}
+			}
+			return inner(ctx, req)
 		}
 	}
 	if f := last(func(f inject.FunctionSet) bool { return f.StreamEvent != nil }); f != nil {
