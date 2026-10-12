@@ -1,8 +1,8 @@
 # terminal — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.6 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26, R27)
+- 버전: 0.7 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26, R27, R29)
 - 의존 명세: `L2_harness/agent/SPEC.md` v0.4 (3.4~3.12), `L2_harness/SPEC.md` v0.8 (3.6a Event)
 - 사용하는 쪽: `L3_ui/cmd/dr` (`L3_ui/cmd/dr/SPEC.md`)
 
@@ -163,6 +163,7 @@ var ErrNotTerminal error
 | TM-FR-33 | `message_start`·`turn_end` 는 그리지 않는다 |
 | TM-FR-54 | `input` (R25): Message ID 가 이 Terminal 이 `Start`·`Steer`·`FollowUp` 으로 보낸 메시지(이미 TM-FR-23 으로 그림)면 그리지 않는다. 아니면(세트가 넣은 메시지) `» `(Color 면 노랑) + 텍스트 — text 블록을 줄바꿈으로 잇고 image 는 `[image]`, TM-FR-24 정리. 앞 20줄만 그리고 이어지는 줄은 `  ` 들여쓰기, 더 있으면 `  … +N줄 생략`(흐림). 보낸 메시지 ID 는 그 `input` 을 받으면 잊는다 |
 | TM-FR-59 | `mode` (R27): `── 모드 <From 또는 기본> → <To 또는 기본> (<Origin>)` + Reason 이 있으면 `: <Reason>` 한 줄(흐림) |
+| TM-FR-60 | `prefix_break` (R29, HN-FR-75): `Expected` 면 그리지 않는다 (같은 순간에 compaction 줄이 나온다). Part `model` → `· 캐시 새로 시작: 모델 변경 → <Provider>/<ID>` 한 줄(흐림). Part `tools`·`system` → `⚠`(Color 면 노랑) + ` 캐시 접두 깨짐: <Part> 변경 (0/<Total> 메시지 유지)`. Part `messages` → `⚠` + ` 캐시 접두 깨짐: 메시지 #<At> 변경, 편집 없음 (<Kept>/<Total> 유지)`. 줄은 `Width()` 로 자른다 |
 
 ### 3.6 승인 프롬프트
 
@@ -226,6 +227,7 @@ var ErrNotTerminal error
 | TM-FR-11 | 입력 줄 편집기 단위 테스트: 삽입·삭제·이동·줄 처음/끝·여러 줄·기록 ↑↓·한글(rune) |
 | TM-FR-19~22 | 렌더 단위 테스트: 가짜 Out 의 바이트를 가상 화면(행 배열 + 커서, 처리 시퀀스는 이 모듈이 쓰는 것만)으로 재생해 최종 화면을 비교. 꼬리 이어 붙이기, 넓은 문자 줄 높이, 줄 넘김, Color false 면 SGR 없음 |
 | TM-FR-57~59 | 가짜 LLM·실제 agent(모드 등록): `/modes` 형식(활성 `*`·지금·예약), 모드 없음 줄, `/mode goal 목표 문구` → 예약 줄 → 다음 메시지에서 `── 모드 기본 → goal (user)`, `/mode off`, 실행 중 거부, 세션 전 거부, 모르는 이름 `✗`, `/help` 에 두 명령 |
+| TM-FR-60 | 이벤트 → 가상 화면: Part 네 종류의 문구, Expected 면 줄 없음, Color false 면 SGR 없음, 좁은 폭에서 자름 |
 | TM-FR-54 | 가짜 Agent 로: 자기가 보낸 입력의 `input` 은 두 번 그려지지 않음, 모르는 ID 의 `input` 은 `» ` 줄·여러 줄 들여쓰기·21줄 이상이면 `+N줄 생략`·이미지 `[image]`·제어 문자 정리·색 |
 | TM-FR-55~56 | 가짜 LLM·실제 agent 로: `/sets` 목록 형식(기본 구성 6줄), `/set guard off` → 저장됨 줄·`/sets` 에 off·설정 파일 반영, `/set guard to 1` → 순서, 실행 중 → 거부, 모르는 이름·형식 오류·범위 밖, harness 거부(`/set require off`) → `✗` 와 배치 그대로 |
 | TM-FR-23~33 | 이벤트 → 가상 화면: 각 종류, text↔thinking 줄바꿈, bash 20줄 상한과 `+N줄 생략`, tool_end 4종, run_end 토큰 형식(999·1000·12345)·aborted·failed |
@@ -254,6 +256,7 @@ var ErrNotTerminal error
 | R20 | TM-FR-16, 47a~51 |
 | R21 | TM-C2, TM-FR-16, 48~53 |
 | R27 | TM-FR-57~59 |
+| R29 | TM-FR-60 |
 | 인터뷰 ①~⑧ | 3.2~3.8 |
 
 ---
@@ -268,6 +271,7 @@ var ErrNotTerminal error
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.7 | `prefix_break` 이벤트를 그리지 않음 (모르는 종류) | TM-FR-60 | R29 ④ |
 | 0.6 | 모드 명령 없음 | `/modes`·`/mode`(TM-FR-57·58), `mode` 이벤트 줄(TM-FR-59), `/help` 에 포함 | R27 |
 | 0.5 | 세트 명령 없음 | `/sets`·`/set` (TM-FR-55·56), `/help` 에 포함 | R26 ⑥ |
 | 0.4 | 세트가 넣은 user 메시지는 화면에 나오지 않음 | `input` 이벤트를 `» ` 줄로 (TM-FR-54) | R25 |

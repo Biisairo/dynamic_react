@@ -1,8 +1,8 @@
 # examples/modes — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.1 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D12, R24, R26, R27)
+- 버전: 0.2 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D12, R24, R26, R27, R29)
 - 의존 명세: `L2_harness/SPEC.md` (3.6e 모드), `L2_harness/agent/SPEC.md` (3.14b), `L1_inject/sets/SPEC.md` (3.2a verify, 3.2b 보조 모델), `examples/verify/SPEC.md` (같은 대화형 형태)
 - 사용하는 쪽: 개발자 (모드 메커니즘 사용법 예시)
 
@@ -55,8 +55,8 @@ func PlanSet(d sets.Deps) inject.FunctionSet                // Name "plan"
 | MX-FR-02 | **goal 20 turn.finish**: `ctx.Next()` 의 신호에 settle 이 없으면(에러 포함) 그대로 돌려준다. 있으면: Arg 가 비면 `Modes.Exit("no goal")` 후 그대로. 아니면 판정(MX-FR-03) → `done`: `Exit("goal achieved: <reason>")` 후 그대로 / `blocked`: `Exit("goal blocked: <reason>")` 후 그대로 / `continue`: 상태 `progress = {arg, turns}`(arg 가 지금 Arg 와 다르면 turns 0 부터)의 turns+1 을 저장하고, turns ≥ maxTurns 면 `Exit("goal turn budget <n>/<max>")` 후 그대로, 아니면 `[inject_input(continuation), continue_turn]` (settle 은 뺌, 다른 효과 신호는 유지) |
 | MX-FR-03 | 판정 = `sets.Complete(ctx, d.Model, {Model: AuxModel(cfg, "goal_judge"), System: [판정 지시], Messages: [user: "Goal:\n<Arg>\n\nAgent's most recent response:\n<응답 텍스트 앞 4000자>"]})`. 판정 지시 = Hermes `JUDGE_SYSTEM_PROMPT` 의 done/blocked/continue 부분 요약 + `Reply ONLY with one JSON object: {"verdict": "done"|"blocked"|"continue", "reason": "<one sentence>"}`. 응답에서 첫 `{…}` 를 JSON 으로 읽고, 호출 에러·JSON 아님·모르는 verdict 는 `continue`(reason = 그 사유) — Hermes 와 같은 fail-open, 상한은 maxTurns |
 | MX-FR-04 | continuation = user 메시지(ID `d.NewID()`, 시각 `d.Now()`) `[Continuing toward your standing goal]\nGoal: <Arg>\nJudge: <reason>\nTake the next concrete step. If the goal is complete, say so with evidence and stop.` |
-| MX-FR-05 | **plan 4 context.inject**: `[plan mode] Plan only — do not implement. Investigate with read-only tools and reply with a step-by-step plan (goal, approach, tasks with exact file paths, verification commands, risks).` + Arg 가 있으면 `\nTask: <Arg>` |
-| MX-FR-06 | **plan 7 request.finalize**: `ctx.Next(req)` 결과에서 tools 중 `write`·`edit`·`bash` 를 뺀다. **plan 16 tool.before**: 그 세 이름이면 ShortCircuit `{Status: error, text "blocked in plan mode"}`, 아니면 `ctx.Next(call)` |
+| MX-FR-05 | **plan 4 context.inject**: `[plan mode] Plan only — do not implement. Investigate with read-only tools and reply with a step-by-step plan (goal, approach, tasks with exact file paths, verification commands, risks).\nBlocked tools in this mode: bash, edit, write. Calls to them return an error.` + Arg 가 있으면 `\nTask: <Arg>`. 막힌 도구 이름은 MX-FR-06 의 목록을 이름순으로 쓴다 |
+| MX-FR-06 | **plan 16 tool.before**: `write`·`edit`·`bash` 면 ShortCircuit `{Status: error, text "blocked in plan mode"}`, 아니면 `ctx.Next(call)`. plan 은 request.finalize 를 채우지 않는다 — 요청의 도구 목록은 기본 배치와 같다 (R29 ⓐⓒ: 도구 목록을 바꾸면 캐시 접두 전체가 깨진다) |
 | MX-FR-07 | **plan 20 turn.finish**: `ctx.Next()` 에 settle 이 있으면 `Modes.Exit("plan done")` 후 그대로 (계획은 한 run) |
 | MX-FR-08 | 플래그: `-check`(있으면 verify 세트를 `Off` 로 등록하고 goal 모드 Push 를 `[verify, goal]` — 검증 실패가 판정보다 먼저, Hermes 품질 게이트), `-attempts`(verify MaxAttempts), `-goal-turns`(기본 20), `-model`·`-cwd`·`-config`·`-no-color` 는 examples/verify VX-FR-05 와 같다. 위치 인자 → `modes-example: takes no prompt arguments`, 2 |
 | MX-FR-09 | 대화형 실행은 examples/verify VX-FR-05 와 같다 (비TTY → 2, 승인은 터미널, 새 세션, 종료 코드). `Modes` = `[{Name: "goal", Description: "keep working until a judge says the goal is met (arg = goal)", Push}, {Name: "plan", Description: "plan only; write/edit/bash are blocked (arg = task)", Push: ["plan"]}]` |
@@ -69,7 +69,7 @@ func PlanSet(d sets.Deps) inject.FunctionSet                // Name "plan"
 | 요구사항 | 방법 |
 |---|---|
 | MX-FR-01~04 | 가짜 ModelCaller(작업 응답과 판정 응답을 요청 내용으로 구별)로 harness 위 결정적 테스트: `/mode goal X` 상당(EnterMode) → 첫 요청에 `[goal mode] Goal: X` → 판정 continue → 다음 요청에 continuation → 판정 done → `mode` 이벤트 goal → 기본(set) → 다음 run 요청에 goal 주입 없음 / blocked → 이탈 / 판정 JSON 깨짐 → continue / maxTurns 2 → 예산 이탈 / `-check` 실패 → 판정 요청 없이 verify 보고로 계속 |
-| MX-FR-05~07 | plan 모드: 요청 tools 에 write·edit·bash 없음·read 있음, 모델이 write 를 불러도 `blocked in plan mode`, settle 뒤 다음 run 은 기본(write 있음) |
+| MX-FR-05~07 | plan 모드: 요청 tools 가 기본 배치와 같음(write·edit·bash 포함), 지시에 `Blocked tools in this mode: bash, edit, write.`, 모델이 write 를 불러도 `blocked in plan mode`, settle 뒤 다음 run 은 기본, 진입·이탈 전 과정에서 `prefix_break` 의 Part tools·system 이 없음 |
 | MX-FR-08~09 | 파이프 stdin·stdout + 가짜 `isTerminal`·`open`: `/modes` → 두 줄, `/mode goal …` → 예약 줄 → 메시지 → `── 모드 기본 → goal (user)` … `── 모드 goal → 기본 (set): goal achieved…`. 위치 인자 → 2, 비TTY → 2 |
 | 실제 모델 | deepseek 로 수동 시연: 임시 Go 모듈에서 `/mode goal 테스트를 모두 통과시켜` + `-check "go test ./..."` → 여러 턴 후 이탈, `/mode plan …` → write 없이 계획 응답 → 다음 메시지는 기본 |
 
@@ -79,4 +79,5 @@ func PlanSet(d sets.Deps) inject.FunctionSet                // Name "plan"
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.2 | plan 이 request.finalize 에서 write·edit·bash 를 도구 목록에서 뺌 | 도구 목록은 그대로, 지시에 막힌 도구를 적고 tool.before 로만 막음 (MX-FR-05·06) | R29 ⑤ |
 | 0.1 | 모드 예시 없음 | 이 모듈 | R27 (범위 "메커니즘만" — goal·plan 은 예시) |

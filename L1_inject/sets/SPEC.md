@@ -1,8 +1,8 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.8 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27)
+- 버전: 0.9 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27, R29)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 - 사용하는 쪽: `L2_harness` (도구·저장소·프롬프트·요약기 구현을 주입)
 
@@ -105,7 +105,7 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 |---|---|---|---|
 | `base` | 1 History·이전 편집 복원, 편집 수 기록, 초기 입력 보관 / 2 입력·입력함, `inbox.consumed` 공개 / 5 편집 적용·Ephemeral·미기록 편집 저장 / 14 응답 저장 / 16 통과(`BeforeOut{Call}`) / 17 `Tool.Run` / 18 통과(결과 그대로) / 19 결과 메시지 저장 | 없음 | L2·L3 가 기대는 계약: agent History·Sessions·`/resume`(저장), Steer(`inbox.consumed`, AG-FR-24), Gate·이벤트가 감싸는 16·17·18 |
 | `require` | 1 짝 복구(ST-FR-40, base 의 결과에 덧붙임) / 3·4·10·13·21·22 아무것도 안 함 / 6 요청 조립 / 7 짝 검증·복구(캐시 힌트 없음) / 8 모델 선택 / 9 모델 호출 / 11 응답 확정 / 12 재시도 없이 fail / 15 순차 계획 / 20 도구 호출이 있으면 continue_turn, 없으면 settle (R2) | 1 | 동작에 필수 (없으면 루프가 묶이지 않거나 provider 가 요청을 거부) |
-| `cache` | 7 캐시 힌트(system 마지막 블록, 마지막 메시지) | 7 | 정책 |
+| `cache` | 7 캐시 힌트(system 마지막 블록, 꼬리 앞 마지막 메시지 — ST-FR-61) | 7 | 정책 |
 | `guard` | 16 없는 도구·스키마 검사(ST-FR-38), 통과하면 아래 층 | 16 | 정책 |
 | `truncate` | 18 `Tool.Truncate`, 없으면 2000줄 / 50KB 기본 절단 (아래 층 결과에) | 18 | 정책 |
 | `resilient` | 3.2 그대로 (3·12·13·21) | 없음 | 정책 |
@@ -127,7 +127,7 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 | 4 | context.inject | 빈 목록 | next |
 | 5 | context.project | Transcript 에 편집 로그를 적용: `replace_range` → 구간을 요약 메시지로, `hide` → 제외, `truncate_after` → 이후 제외. 그 뒤 Ephemeral 을 끝에 붙임. **아직 Store 에 기록되지 않은 편집을 기록** | next |
 | 6 | request.build | System = `Deps.System` · Tools = 설정 `tools`(비면 전부)의 spec · Messages = 투영 · MaxOutputTokens = 설정값 또는 마지막 ModelInfo 의 값 · Thinking = 설정 `thinking` | next |
-| 7 | request.finalize | **짝 검증·복구**: 결과 없는 tool call 뒤에 aborted 결과를 끼움. 캐시 힌트: system 마지막 블록, 마지막 메시지 | next |
+| 7 | request.finalize | **짝 검증·복구**: 결과 없는 tool call 뒤에 aborted 결과를 끼움. 캐시 힌트: system 마지막 블록, 꼬리(ST-FR-60) 앞 마지막 메시지 | next |
 | 8 | model.select | 설정 model → `ModelCaller.Lookup`. 없으면 `ContextWindow 0`(모름), capability 없음으로 ModelInfo 구성 | next |
 | 9 | model.call | `CallStream{Events: Deps.Model.Call(ctx.Context(), req), Live: nil}` (R9) | next |
 | 10 | stream.event | 아무것도 안 함 | next |
@@ -234,6 +234,15 @@ func Complete(ctx context.Context, m ModelCaller, req contract.Request) (contrac
 | ST-FR-55 | `AuxModel(cfg, role)` = `cfg.Aux[role]` 이 있으면 그것, 없으면 `cfg.Model` |
 | ST-FR-56 | `Complete`: `m.Call(ctx, req)` 를 끝까지 소비해 `done` 이벤트의 메시지를 돌려준다. `error` 이벤트면 그 `*contract.CallError`(error 를 구현, `errors.As` 로 꺼냄), iterator 에러면 그 에러, done 없이 끝나면 에러 `sets: complete: stream ended without done`. 도구를 실행하지 않고(응답의 tool_call 블록은 그대로) 재시도하지 않는다. 세트 함수 안(판단기)과 run 밖(harness `Complete`) 양쪽에서 쓴다 |
 
+### 3.2c 캐시 접두 (R29)
+
+요청 = [안정 접두][가변 꼬리]. 자동 접두 캐시 provider 는 앞부분이 이전 요청과 같은 만큼 재사용한다. 꼬리는 이번 턴에만 넣은 메시지(Ephemeral)이고 다음 요청에는 없다. 지점 방식 provider(Anthropic)는 지점을 꼬리 앞에 둬야 다음 요청에서 맞는다.
+
+| id | 요구사항 |
+|---|---|
+| ST-FR-60 | `StableLen(msgs, ephemeral)`: 꼬리 = `msgs` 의 끝에서부터 연속으로 ID 가 `ephemeral` 의 ID 집합에 있는 메시지들. 반환 = `len(msgs)` − 꼬리 길이. 꼬리가 아닌 위치(중간)의 Ephemeral ID 메시지는 안정 구간에 센다. `ephemeral` 이 비면 `len(msgs)`. harness 의 접두 감지(HN-FR-74)도 같은 함수를 쓴다 |
+| ST-FR-61 | `cache` 의 메시지 힌트 Index = `StableLen(req.Messages, ctx.Conv().Ephemeral()) − 1` (req = 아래 층 결과). 결과가 0 보다 작으면 메시지 힌트를 두지 않는다. system 힌트는 그대로다. Ephemeral 이 없으면 v0.8 과 같다 |
+
 ### 3.3 도구 레지스트리
 
 | id | 요구사항 |
@@ -322,7 +331,7 @@ type Deps struct {
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`(각 `(Deps) inject.FunctionSet`), `Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식), `Verify`·`VerifyOptions`·`CheckResult`·`ErrVerifyFailed`(3.2a) |
+| ST-FR-41 | 공개 함수: `NewRegistry(tools...) *Registry`(등록 순서 유지, `Add` 는 같은 이름을 그 자리에서 덮음), `NewMemoryStore() *MemoryStore`(`Load` 는 복사본), `StateStoreOf(Store) inject.StateStore`(nil → nil), `ParseConfig(json.RawMessage) (Config, error)`, `Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`(각 `(Deps) inject.FunctionSet`), `Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식), `Verify`·`VerifyOptions`·`CheckResult`·`ErrVerifyFailed`(3.2a), `StableLen(msgs, ephemeral []contract.Message) int`(3.2c) |
 | ST-FR-42 | 세트 생성자(`Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`·`Verify`)는 Deps 의 nil 을 한 번만 기본값으로 채워 그 세트의 모든 step 이 같은 값을 쓴다 (nil Store → 메모리 Store 하나). 세트끼리는 각자 채우므로, 여러 세트가 같은 Store 를 써야 하면(base 의 저장과 require 의 짝 복구 기록) Deps 에 Store 를 채워 넘긴다. `Resilient<Step>` 생성자를 따로 부르면 각자 채운다 |
 | ST-FR-43 | base 상태 키: `input`(초기 입력, 2 가 한 번 준 뒤 삭제), `inbox.consumed`(int, publish), `edits.saved`(Store 에 기록한 편집 수). 1 이 run 마다 다시 쓴다 (상태는 Store 로 run 을 넘어 복원되므로) |
 | ST-FR-44 | resilient 상태는 run 을 넘어 복원되므로 RunID 를 함께 저장하고, RunID 가 다르면 초기 상태로 본다: `retry`{run, turn, class 별 횟수}(턴이 바뀌면 리셋), `recovered`{run, turn}(12·13 의 압축 복구), `compaction`{run, pending, invalid}, `compaction.blocked`(publish, `true`, 다른 run 에서는 삭제) |
@@ -350,6 +359,7 @@ type Deps struct {
 | ST-FR-46~50 | 가짜 ModelCaller·도구로 종단: 변경 도구 없이 끝남 → Check 안 부름, write 성공 뒤 끝남 → Check 1회·OK 면 completed, 실패 → 다음 요청에 보고 메시지(attempt 1 of N)·세션에 저장, 실패 뒤 변경 없이 끝남 → 재검증, MaxAttempts 번째 실패 → failed·`errors.Is(ErrVerifyFailed)`·첫 줄, error 결과의 변경 도구는 세지 않음, Tools 에 없는 도구는 세지 않음, 빈 Tools, 보고 끝 절단·빈 보고, Check error → failed, 아래 층을 바꿔 쌓으면(예: 항상 settle 하는 층) 그 판정을 따름·아래 층 에러 전달, 다른 run 은 상태 초기화, Check nil → 에러 |
 | ST-FR-54~56 | `aux` 형식 에러(빈 역할·빈 provider·빈 id), 모르는 키 에러 유지, `AuxModel` 폴백, `Complete`: done 메시지, error 이벤트 → `*contract.CallError`, iterator 에러, done 없이 끝남, ctx 취소 |
 | ST-FR-57~59 | `ModesOf(Deps{})` → `Exit` 가 `ErrNoModes`·`Current` 가 기본 모드, `ModesOf` 가 nil 이 아닌 `Modes` 를 그대로 돌려줌 |
+| ST-FR-60~61 | `StableLen` 표: 꼬리 없음·꼬리 1개·2개·중간 Ephemeral(안정 구간)·전부 꼬리(0)·빈 목록·ephemeral 빈 목록. `cache`: Ephemeral 1개가 끝에 있으면 메시지 힌트가 그 앞, 전부 꼬리면 메시지 힌트 없음·system 힌트 있음, Ephemeral 없음 → 마지막 메시지(기존 테스트 유지) |
 | ST-FR-51~53 | 기존 base·resilient 테스트 전부를 `Base, Require, Cache, Guard, Truncate(, Resilient)` 조합으로 통과, 세트별 채운 step 목록·Description, 정책 세트를 뺀 조합: cache 없음 → 캐시 힌트 없음, guard 없음 → 없는 도구가 tool.execute 에서 `unknown tool` 결과(base 17), truncate 없음 → 절단 없음, require 없이 base 만 → Bind 에러(빈 step), 아래 층 없이 guard 만 16 에 → ErrNoNext |
 | ST-FR-41~45 | 테스트가 공개 API 로만 동작을 검사, 복구 표시의 run·턴 범위(같은 run·턴 / 다른 턴 / 다른 run) |
 
@@ -367,6 +377,7 @@ type Deps struct {
 | R3 | 3.2 call.error overflow, classify |
 | R7 | 3.1 의 5 행 (Transcript 사용) |
 | R27 | ST-FR-54~59 (2.2, 2.3, 3.2b) |
+| R29 | ST-FR-60~61 (3.2c), 3.0 `cache` 행, 3.1 의 7 행 |
 | 자격증명 보호 | ST-C1, ST-FR-02 |
 
 ---
@@ -385,6 +396,7 @@ type Deps struct {
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.9 | `cache` 의 메시지 힌트 = 요청의 마지막 메시지 (모드 지시 같은 Ephemeral 이면 다음 요청에서 다시 맞지 않음) | 꼬리 앞 마지막 메시지 (ST-FR-61), `StableLen` (ST-FR-60). Ephemeral 이 없으면 같음 | R29 ⓔ |
 | 0.8 | 설정에 `aux` 없음, Deps 에 모드 없음 | `aux`(ST-FR-54), `AuxModel`·`Complete`(3.2b), `Deps.Modes`(ST-FR-57~59). 기존 세트 동작 변화 없음 | R27 |
 | 0.7 | `Base` 하나가 22 step 전부, step 별 생성자 `Base<Step>`, verify 의 `VerifyOptions.Next` | `Base`·`Require`·`Cache`·`Guard`·`Truncate` 로 분해(3.0), `Base<Step>` 삭제(ST-FR-04), verify 는 `ctx.Next()`. 전부 쌓으면 같은 동작(ST-FR-51) | R26 ② |
 | 0.7 | `Base(Deps{Store: nil})` 의 메모리 Store 하나를 22 step 이 공유 | 세트마다 따로 채움 (ST-FR-42). nil Store 면 require 의 짝 복구 기록이 base 가 읽는 Store 에 남지 않음 | 세트 분해의 결과 (생성자가 서로를 모름). 구현 중 확인 (impl-08) |

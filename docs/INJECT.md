@@ -191,7 +191,7 @@ func goalSet(d sets.Deps) inject.FunctionSet {
 
 - 모드 인자(`Arg`)는 진입할 때 넘긴 자유 텍스트다 (`/mode goal 테스트를 통과시켜`, `mode` 도구의 `arg`). `modes.Current` 로 읽는다.
 - 결정적 검증을 판정보다 먼저 하려면 `sets.Verify` 를 `Push` 에 함께 넣고 판단기 세트를 그 위에 둔다 (`Push: ["verify", "goal"]`). 검증이 실패하면 verify 가 settle 을 빼고 보고를 넣으므로 판단기는 판정하지 않고 그대로 넘긴다. Hermes 의 품질 게이트와 같은 순서다.
-- 도구를 실제로 막으려면 7 `request.finalize` 에서 tools 를 빼고, 16 `tool.before` 에서 ShortCircuit 한다. 모델이 목록에 없는 도구를 불러도 막힌다 (Hermes `/plan` 은 프롬프트 지시뿐이었다).
+- 도구를 막으려면 4 `context.inject` 의 지시에 막힌 도구 이름을 적고, 16 `tool.before` 에서 ShortCircuit 한다. 요청의 도구 목록에서는 빼지 않는다. 목록을 바꾸면 캐시 접두 전체가 깨진다 (5.5a). Hermes `/plan` 은 프롬프트 지시뿐이었다.
 - 전체 예시: `examples/modes` 의 `GoalSet`(goal.go)·`PlanSet`(plan.go).
 
 ### 5.4 판단기의 보조 모델 (R27 ⑥)
@@ -226,8 +226,40 @@ msg, err := sets.Complete(ctx.Context(), d.Model, contract.Request{
 | 적용 시점 | `turn.start` 직전에만 바뀐다. turn.finish 의 흐름(`continue_turn`/`settle`)을 바꾸는 사용자 세트를 쓰면 적용 시점도 달라진다 (사용자 책임, HN-FR-70) |
 | `Exit` 의 원자성 | `Exit` 는 dispatch 가 나중에 실패해도 바로 기록된다 (ST-FR-59). 실패할 수 있는 일을 먼저 하고 `Exit` 를 마지막에 부른다 |
 | `Current` 의 시점 | dispatch 스냅샷 밖의 값이다. 같은 dispatch 안에서 두 번 읽으면 다를 수 있다 |
-| 프롬프트 캐시 | 모드가 요청의 도구 목록·지시를 바꾸면 그 턴부터 캐시 접두가 달라진다. 동작만 바꾸는 모드(판정 등)는 영향이 없다 |
+| 프롬프트 캐시 | 도구 목록과 system 을 바꾸지 않고 지시는 꼬리에 넣는다 (5.5a). 어기면 `prefix_break` 이벤트로 드러난다 |
 | 등록이 사라진 모드 | 세션에 저장된 모드가 코드에서 사라지면 기본 모드로 고치고 `mode` 이벤트(Reason `unknown mode <name>`)로 알린다 |
+
+### 5.5a 프롬프트 캐시 접두 (R29)
+
+자동 접두 캐시 provider(OpenAI, DeepSeek, 로컬 서버 등)는 요청의 앞부분이 이전 요청과 같은 만큼 재사용한다. 앞쪽이 한 글자라도 바뀌면 그 위치부터 뒤는 모두 새로 계산한다. 그래서 요청을 아래 모양으로 유지한다.
+
+```text
+[tools: ALL tools][base system][stored messages ...][ephemeral tail]
+ fixed for the run  fixed        append-only           this turn only
+```
+
+세트(모드 세트 포함)를 쓸 때 아래 규칙을 지킨다.
+
+| 규칙 | 내용 |
+|---|---|
+| 도구 목록 | 바꾸지 않는다. 모드에서만 쓰는 도구도 처음부터 목록에 둔다. 막아야 하면 지시로 알리고 16 `tool.before` 로 막는다 |
+| system | 바꾸지 않는다. 시각·턴 번호·남은 예산처럼 매번 바뀌는 값을 넣지 않는다 |
+| 추가 지시 | 4 `context.inject` 로 넣는다. 이 메시지는 꼬리에 붙고, 이번 요청에만 들어가고, 저장되지 않는다. user 역할이므로 `[plan mode]` 처럼 하네스 표시를 붙인다 |
+| 저장된 대화 | 덧붙이기만 한다. 중간을 바꾸는 것은 편집(압축·숨기기·되돌리기)뿐이다 |
+| 투영 | 5 `context.project` 를 바꾸면 Ephemeral 을 끝에 둔다. 중간에 두면 그 위치부터 매 턴 놓친다 |
+
+지점 방식 provider(Anthropic)는 기본 `cache` 세트가 캐시 지점을 꼬리 바로 앞 메시지에 둔다 (`sets.StableLen`).
+
+**감지**: `OnEvent` 가 있으면 harness 가 요청마다 접두를 같은 세션·같은 모델의 직전 요청과 비교한다. 다르면 `prefix_break` 이벤트를 낸다. 요청은 막지 않는다.
+
+| Part | 뜻 | 터미널 |
+|---|---|---|
+| `tools`, `system` | 도구 목록이나 system 이 바뀌었다. 위 규칙을 어긴 세트가 있다 | `⚠ 캐시 접두 깨짐: …` |
+| `messages`, `Expected` false | 편집 없이 저장된 대화가 바뀌었다. 투영을 바꾼 세트를 확인한다 | `⚠ 캐시 접두 깨짐: 메시지 #N …` |
+| `messages`, `Expected` true | 압축 같은 편집 때문에 바뀌었다. 정상이다 | 표시 안 함 |
+| `model` | 이 세션에서 처음 쓰는 모델로 바뀌었다. 그 모델의 캐시는 비어 있다 | `· 캐시 새로 시작: …` |
+
+감지하지 않는 것: `model.call` 을 감싸서 요청을 고치는 세트, 어댑터의 직렬화 차이, provider 측 캐시 만료. 실제 적중률은 `message_end` 의 `Usage.CacheRead` 로 본다.
 
 ### 5.6 하지 않는 것
 
