@@ -1,8 +1,8 @@
 # terminal — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.9 (초안)
-- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26, R27, R29, R30, R35)
+- 버전: 0.10 (초안)
+- 상위 근거: `docs/DECISIONS.md` (R8, R17, R18, R19, R20, R25, R26, R27, R29, R30, R35, R36)
 - 의존 명세: `L2_harness/agent/SPEC.md` v0.4 (3.4~3.12), `L2_harness/SPEC.md` v0.8 (3.6a Event)
 - 사용하는 쪽: `L3_ui/cmd/dr` (`L3_ui/cmd/dr/SPEC.md`)
 
@@ -198,7 +198,7 @@ var ErrNotTerminal error
 | TM-FR-55 | `/sets` (R26): 어느 상태에서나 `Agent.Sets()` 를 덧붙인다 — 한 줄에 `<번호>. <on|off> <name>  <Description>`(번호는 배치 순서 1부터, off 는 Color 면 흐림, 줄은 `Width()` 로 자름). 끝에 `  (다음 run 부터 적용 · /set <name> on|off|to <n>)` |
 | TM-FR-56 | `/set <name> on`·`/set <name> off`·`/set <name> to <n>`: 대기 상태에서만(아니면 `✗ 실행 중에는 세트를 바꿀 수 없습니다`). 지금 배치(`Agent.Sets()`)에서 그 이름의 켜짐을 바꾸거나, 그 세트를 빼서 n 번째(1부터, 1..세트 수) 자리에 넣은 배치로 `Agent.ArrangeSets` 를 부른다. 성공 `── 세트 <name> 켬`·`── 세트 <name> 끔`·`── 세트 <name> → <n>번` + ` (다음 run 부터, 저장됨)`, 에러 `✗ <에러>`. 모르는 이름 `✗ 없는 세트: <name> (/sets)`, 인자 형식이 틀리면(인자 수·on|off|to·n 이 정수가 아니거나 범위 밖) `✗ 사용법: /set <name> on|off|to <n>` |
 | TM-FR-57 | `/modes` (R27): 어느 상태에서나. `Agent.Modes()` 가 비면 `── 등록된 모드 없음`. 아니면 모드마다 한 줄 `<* 또는 공백> <name>  <Description>`(활성 모드에 `*`, 줄은 `Width()` 로 자름), 끝에 `  (지금: <name 또는 기본>[ "<arg 앞 40자>"] · 예약: <to 또는 기본 또는 없음>)` — 세션이 아직 없으면 `(지금: 기본 · 예약: 없음)` |
-| TM-FR-58 | `/mode <name> [arg…]` = `Agent.EnterMode(sid, name, arg)`(arg = name 뒤의 나머지 원문, 앞뒤 공백 제거), `/mode off` = `Agent.ExitMode(sid)`. 대기 상태에서만(아니면 `✗ 실행 중에는 모드를 바꿀 수 없습니다`). 세션이 아직 없으면 `✗ 첫 메시지를 보낸 뒤에 쓸 수 있습니다`. 성공 `── 모드 예약: <name 또는 기본> (다음 메시지부터)`, 에러 `✗ <에러>`, 인자 없음 `✗ 사용법: /mode <name> [arg] | /mode off` |
+| TM-FR-58 | `/mode <name> [arg…]` = `Agent.EnterMode(sid, name, arg)`(arg = name 뒤의 나머지 원문, 앞뒤 공백 제거), `/mode off` = `Agent.ExitMode(sid)`. `/mode <name>` 은 대기 상태에서만, `/mode off` 는 대기·실행 중에(그 밖이면 `✗ 실행 중에는 모드를 바꿀 수 없습니다`). 세션이 아직 없으면 `✗ 첫 메시지를 보낸 뒤에 쓸 수 있습니다`. 성공 `── 모드 예약: <name 또는 기본> (다음 메시지부터)`. 실행 중 `/mode off` 의 성공은 `── 모드 예약: 기본 (다음 턴부터)` — 그 run 의 다음 `turn.start` 에서 적용된다(HN-FR-66). 그 run 에 다음 턴이 없으면 다음 메시지에서 적용된다. 에러 `✗ <에러>`, 인자 없음 `✗ 사용법: /mode <name> [arg] | /mode off` |
 | TM-FR-61 | `/status` (R30): 어느 상태에서나, 읽기만. 3.8a 의 형식으로 줄을 덧붙인다. `/help` 명령 목록에 `/status` 를 넣는다 |
 | TM-FR-47 | 그 밖의 `/…`: `✗ 알 수 없는 명령: /<이름> (/help)` |
 
@@ -255,7 +255,7 @@ hit = CacheRead ÷ Prompt, eff = CeilingRead ÷ Ceiling.
 | TM-FR-07~10 | 키 해석기 단위 테스트(표 기반): 표 10 의 모든 인코딩, 1바이트씩 쪼갠 입력, 쪼개진 UTF-8, 붙여넣기 안의 `\r`·제어 바이트, 모르는 CSI 무시, 단독 ESC 는 시간 초과 뒤 Esc·ESC+`\r` 은 Alt+Enter. 협상: 가짜 In 이 kitty 응답+DA / DA 만 / 무응답일 때 Out 에 쓰인 켜기·해제 시퀀스, 협상 응답이 키로 새지 않음 |
 | TM-FR-11 | 입력 줄 편집기 단위 테스트: 삽입·삭제·이동·줄 처음/끝·여러 줄·기록 ↑↓·한글(rune) |
 | TM-FR-19~22 | 렌더 단위 테스트: 가짜 Out 의 바이트를 가상 화면(행 배열 + 커서, 처리 시퀀스는 이 모듈이 쓰는 것만)으로 재생해 최종 화면을 비교. 꼬리 이어 붙이기, 넓은 문자 줄 높이, 줄 넘김, Color false 면 SGR 없음 |
-| TM-FR-57~59 | 가짜 LLM·실제 agent(모드 등록): `/modes` 형식(활성 `*`·지금·예약), 모드 없음 줄, `/mode goal 목표 문구` → 예약 줄 → 다음 메시지에서 `── 모드 기본 → goal (user)`, `/mode off`, 실행 중 거부, 세션 전 거부, 모르는 이름 `✗`, `/help` 에 두 명령 |
+| TM-FR-57~59 | 가짜 LLM·실제 agent(모드 등록): `/modes` 형식(활성 `*`·지금·예약), 모드 없음 줄, `/mode goal 목표 문구` → 예약 줄 → 다음 메시지에서 `── 모드 기본 → goal (user)`, `/mode off`, 실행 중 `/mode <name>` 거부, 실행 중 `/mode off` → `(다음 턴부터)` 줄 → 같은 run 의 다음 턴 요청이 기본 배치이고 `── 모드 goal → 기본 (user)` 줄, 세션 전 거부, 모르는 이름 `✗`, `/help` 에 두 명령 |
 | TM-FR-32, 61 | run_end 의 캐시 비율(CacheRead 있음·없음·입력 0), `/status`: 세션 없음 → 기록 없음, 가짜 LLM(usage 에 cached) + 실제 agent 로 두 run 뒤 세션·모델·모드·세트·도구·컨텍스트·마지막 run·세션 누적 줄, 창 크기 모름·압축 꺼짐·모델 괄호·좁은 폭·흐림(줄 단위 테스트), `/help` 에 포함. 실행 중 호출은 상태 검사가 없는 것으로 코드 검토 |
 | TM-FR-60 | 이벤트 → 가상 화면: Part 네 종류의 문구, Expected 면 줄 없음, Color false 면 SGR 없음, 좁은 폭에서 자름 |
 | TM-FR-54 | 가짜 Agent 로: 자기가 보낸 입력의 `input` 은 두 번 그려지지 않음, 모르는 ID 의 `input` 은 `» ` 줄·여러 줄 들여쓰기·21줄 이상이면 `+N줄 생략`·이미지 `[image]`·제어 문자 정리·색 |
@@ -302,6 +302,7 @@ hit = CacheRead ÷ Prompt, eff = CeilingRead ÷ Ceiling.
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.10 | `/mode off` 는 대기 상태에서만 | 실행 중에도 받는다, 성공 줄 `(다음 턴부터)`. `/mode <name>` 은 그대로 대기 상태에서만 | R36 |
 | 0.9 | messages 줄의 유지 수 = `PrefixBreak.Kept` | 유지 수 = `At` (harness v1.8 에서 Kept 제거, 값은 같음) | R35 |
 | 0.8 | run_end 에 캐시 정보 없음, 상태 명령 없음 | run_end 의 ` (캐시 <p>%)` (TM-FR-32), `/status` (TM-FR-61) | R30 |
 | 0.7 | `prefix_break` 이벤트를 그리지 않음 (모르는 종류) | TM-FR-60 | R29 ④ |

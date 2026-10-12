@@ -9,7 +9,7 @@
 ```text
  L3_ui       input/output over the finished agent: terminal,
              stream display, signals, exit codes
-             surfaces/terminal  interactive terminal library    (spec v0.9)
+             surfaces/terminal  interactive terminal library    (spec v0.10)
              cmd/dr        interactive entry point              (spec v0.3)
              cmd/dr-print  non-interactive test CLI             (spec v0.2)
  ─────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 | [`L2_harness/harness/`](L2_harness/SPEC.md) | 에이전트 조립 (도구 7종 로직, 세션 형식, 프롬프트, 요약기), 실제 I/O 는 Env interface, 세트·부품 주입, 세트 배치(켜기·끄기·순서), 세션 모드(턴 경계 세트 교체), 캐시 접두 감지(`prefix_break`)·사용량 집계 | 스펙 v1.8, 구현 |
 | [`L2_harness/osenv/`](L2_harness/osenv/SPEC.md) | Env 의 OS 구현 | 스펙 v0.3, 구현 |
 | [`L2_harness/agent/`](L2_harness/agent/SPEC.md) | 완성된 에이전트: 설정·키 파일 + osenv + adapters → harness, surface 공통 계층(승인·Steer·FollowUp·세션·모델 선택·키·세트 배치 저장·모드·상태 조회), 주입 통로 | 스펙 v0.10, 구현 |
-| [`L3_ui/surfaces/terminal/`](L3_ui/surfaces/terminal/SPEC.md) | 대화형 터미널 surface 라이브러리 | 스펙 v0.9, 구현 |
+| [`L3_ui/surfaces/terminal/`](L3_ui/surfaces/terminal/SPEC.md) | 대화형 터미널 surface 라이브러리 | 스펙 v0.10, 구현 |
 | [`L3_ui/cmd/dr/`](L3_ui/cmd/dr/SPEC.md) | 대화형 진입점 | 스펙 v0.3, 구현 |
 | [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 비대화형 검증용 CLI (입출력만) | 스펙 v0.2, 구현 |
 | [`examples/inject/`](examples/inject/SPEC.md) | 주입 예시: 매 턴 규칙 덧붙이기 + `rm -rf` 차단 | 스펙 v0.2, 구현 |
