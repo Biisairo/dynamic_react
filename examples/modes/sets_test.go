@@ -240,6 +240,102 @@ func TestGoalCheckFirst(t *testing.T) {
 	if checks != 2 || len(judges) != 1 || len(work) != 3 || !has(work[2], "Verification failed (attempt 1 of 3)") {
 		t.Fatalf("checks %d judges %d work %d", checks, len(judges), len(work))
 	}
+	if !has(judges[0], notesHeader+"\n- go") || has(judges[0], "Verification failed") {
+		t.Fatalf("notes must hold user input only: %+v", judges[0].Messages)
+	}
+}
+
+func steer(text string) contract.Message {
+	return contract.Message{ID: "steer-" + text, Role: contract.RoleUser, Timestamp: time.Now(),
+		Content: []contract.Block{{Kind: contract.BlockText, Text: text}}}
+}
+
+// MX-FR-02·03·11 (R38): 판정 턴에 사용자 입력이 있으면 판정을 미루고, 그 입력을 처리한 턴 뒤에 판정한다.
+// 판정에는 진행 중 사용자 메시지가 들어가고 continuation 은 빠진다.
+func TestGoalDefersToUserInput(t *testing.T) {
+	runs := make(chan *core.Run, 1)
+	m := &fakeModel{judge: verdicts(`{"verdict":"continue","reason":"more"}`, `{"verdict":"done","reason":"ok"}`),
+		worker: func(n int, req contract.Request) contract.Message {
+			if n == 0 {
+				(<-runs).Input(steer("also update the README"))
+				return assistant("first")
+			}
+			return assistant(fmt.Sprint("answer ", n))
+		}}
+	a, _ := newHarness(t, m, config{goalTurns: 20})
+	enter(t, a, "goal", "G")
+	in := contract.Message{ID: "u1", Role: contract.RoleUser, Timestamp: time.Now(), Content: []contract.Block{{Kind: contract.BlockText, Text: "go"}}}
+	r, _, err := a.Start(context.Background(), harness.RunRequest{SessionID: "s1", Input: []contract.Message{in}, Config: json.RawMessage(testCfg)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs <- r
+	if s := r.Wait(); s.Reason != core.SettleCompleted {
+		t.Fatalf("%+v", s)
+	}
+	work, judges := m.snapshot()
+	if len(work) != 3 || len(judges) != 2 || !has(work[1], "also update the README") {
+		t.Fatalf("work %d judges %d", len(work), len(judges))
+	}
+	if !has(judges[0], "Agent's most recent response:\nanswer 1") || !has(judges[0], notesHeader+"\n- go\n- also update the README") {
+		t.Fatalf("first judge %+v", judges[0].Messages)
+	}
+	if has(judges[1], "[Continuing toward your standing goal]") || !has(judges[1], "- also update the README") {
+		t.Fatalf("second judge %+v", judges[1].Messages)
+	}
+}
+
+// MX-FR-11: Arg 가 바뀌면 모은 메시지를 비운다. 목표가 없으면 모으지 않는다. user 역할·텍스트가 있는 것만 모은다.
+func TestGoalNotesPerArg(t *testing.T) {
+	m := &fakeModel{worker: say("w"), judge: verdicts(`{"verdict":"done","reason":"ok"}`)}
+	a, _ := newHarness(t, m, config{goalTurns: 20})
+	runOnce(t, a, "before goal")
+	enter(t, a, "goal", "A")
+	img := contract.Message{ID: "img", Role: contract.RoleUser, Timestamp: time.Now(),
+		Content: []contract.Block{{Kind: contract.BlockImage, Image: &contract.Image{MediaType: "image/png", Data: []byte{1}}}}}
+	sys := contract.Message{ID: "sys", Role: contract.RoleSystem, Timestamp: time.Now(), Content: []contract.Block{{Kind: contract.BlockText, Text: "system note"}}}
+	first := contract.Message{ID: "first", Role: contract.RoleUser, Timestamp: time.Now(), Content: []contract.Block{{Kind: contract.BlockText, Text: "first"}}}
+	r, _, err := a.Start(context.Background(), harness.RunRequest{SessionID: "s1", Input: []contract.Message{img, sys, first}, Config: json.RawMessage(testCfg)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Wait()
+	enter(t, a, "goal", "B")
+	runOnce(t, a, "second")
+	_, judges := m.snapshot()
+	if len(judges) != 2 || has(judges[0], "before goal") || has(judges[0], "system note") || !has(judges[0], notesHeader+"\n- first") {
+		t.Fatalf("judges %d %+v", len(judges), judges)
+	}
+	if has(judges[1], "- first") || !has(judges[1], notesHeader+"\n- second") {
+		t.Fatalf("second goal %+v", judges[1].Messages)
+	}
+}
+
+// MX-FR-03: 메시지당 500자(넘으면 …), 줄 합 2000 rune, 오래된 것부터 뺌, 없으면 빈 문자열.
+func TestNotesBlock(t *testing.T) {
+	if got := notesBlock(nil); got != "" {
+		t.Fatalf("empty %q", got)
+	}
+	long := strings.Repeat("가", 600)
+	got := notesBlock([]string{"old", long})
+	if want := "\n\n" + notesHeader + "\n- old\n- " + strings.Repeat("가", 500) + "…"; got != want {
+		t.Fatalf("cut %q", got)
+	}
+	exact := strings.Repeat("x", 500)
+	msgs := []string{"oldest", exact, exact, exact, strings.Repeat("y", 489)} // 줄 502·502·502·491 = 1997
+	got = notesBlock(msgs)
+	if strings.Contains(got, "oldest") || strings.Count(got, "\n- ") != 4 || strings.Contains(got, "…") {
+		t.Fatalf("budget %q", got)
+	}
+	if got := notesBlock([]string{"a", exact, exact, exact, exact}); strings.Contains(got, "- a") || strings.Count(got, "\n- ") != 3 {
+		t.Fatalf("older lines go once one does not fit: %q", got) // 1506 + 502 > 2000
+	}
+	if got := notesBlock([]string{"b", exact, exact, exact, strings.Repeat("y", 489)}); !strings.Contains(got, "\n- b\n") {
+		t.Fatalf("fits at 2000: %q", got) // 3 + 1997 = 2000
+	}
+	if got := notesBlock([]string{"a", exact, exact, exact, strings.Repeat("y", 492)}); strings.Contains(got, "\n- a\n") {
+		t.Fatalf("over 2000: %q", got) // 3 + 2000
+	}
 }
 
 // MX-FR-05~07: 지시에 막힌 도구, 쓰기 도구 차단, 도구 목록 유지(R29), 이탈 → 다음 run 은 기본
