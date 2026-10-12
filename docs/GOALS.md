@@ -97,7 +97,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | VF-1 | `examples/modes` 실제 모델 시연: 임시 Go 모듈에서 `-check "go test ./..."` + `/mode goal …`, 그리고 `/mode plan …`. CA-5 와 묶는다 | 열림 (사용자 확인 후) | impl-09 |
 | VF-2 | Anthropic·OpenAI 방언의 실제 응답 검증 | 열림 (API 키·크레딧 필요) | impl-06 |
 | VF-3 | provider overflow 에러 복구를 실제 모델로 확인 (지금은 가짜 서버로만 검증) | 열림 | impl-06 |
-| VF-5 | R29 새 코드의 뮤테이션 검사: harness `prefix.go` 의 `check`·`compare`, surface 래핑, sets `StableLen` | 열림 (커버리지만 확인: 100%, `wrap` 98.2%) | R29 |
+| VF-5 | R29 새 코드의 뮤테이션 검사: harness `prefix.go` 의 `check`·`compare`, surface 래핑, sets `StableLen`·`Cache`, terminal `prefix_break` 줄 | 해소 (29/29 KILLED. 처음 살아남은 4개 — 도구 결과 해시, 편집 + tools 의 Expected, Kept 표시, 모델 줄 흐림 — 는 테스트를 보강해 잡음) | R29 |
 | VF-4 | 관측 불가 뮤턴트 2개: agent `NoRemoteCatalog` 전달, terminal 종료 중 경합 | 보류 (외부 네트워크·경합이라 관측 불가) | impl-05, impl-07 |
 
 ## 6. examples/modes

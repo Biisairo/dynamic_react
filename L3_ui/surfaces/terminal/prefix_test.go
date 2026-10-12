@@ -18,14 +18,14 @@ func TestRenderPrefixBreak(t *testing.T) {
 	emit(term,
 		prefixEv(harness.PrefixBreak{Part: harness.PrefixTools, At: -1, Total: 12}),
 		prefixEv(harness.PrefixBreak{Part: harness.PrefixSystem, At: -1, Total: 3}),
-		prefixEv(harness.PrefixBreak{Part: harness.PrefixMessages, At: 5, Kept: 5, Total: 12}),
+		prefixEv(harness.PrefixBreak{Part: harness.PrefixMessages, At: 5, Kept: 4, Total: 12}),
 		prefixEv(harness.PrefixBreak{Part: harness.PrefixMessages, At: 0, Total: 12, Expected: true,
 			Edits: []contract.EditKind{contract.EditReplaceRange}}),
 		prefixEv(harness.PrefixBreak{Part: harness.PrefixModel, At: -1, Model: contract.ModelRef{Provider: "openai", ID: "gpt-x"}}),
 	)
 	want := "⚠ 캐시 접두 깨짐: tools 변경 (0/12 메시지 유지)\n" +
 		"⚠ 캐시 접두 깨짐: system 변경 (0/3 메시지 유지)\n" +
-		"⚠ 캐시 접두 깨짐: 메시지 #5 변경, 편집 없음 (5/12 유지)\n" +
+		"⚠ 캐시 접두 깨짐: 메시지 #5 변경, 편집 없음 (4/12 유지)\n" +
 		"· 캐시 새로 시작: 모델 변경 → openai/gpt-x"
 	if body(v) != want {
 		t.Fatalf("%q\nwant %q", body(v), want)
@@ -43,5 +43,8 @@ func TestRenderPrefixBreak(t *testing.T) {
 		prefixEv(harness.PrefixBreak{Part: harness.PrefixModel, At: -1, Model: contract.ModelRef{Provider: "p", ID: "m"}}))
 	if v.sgr < 4 {
 		t.Fatalf("sgr %d", v.sgr)
+	}
+	if l := term.prefixLine(harness.PrefixBreak{Part: harness.PrefixModel, Model: contract.ModelRef{Provider: "p", ID: "m"}}); !strings.HasPrefix(l, "\x1b[2m") {
+		t.Fatalf("model line not dim %q", l)
 	}
 }

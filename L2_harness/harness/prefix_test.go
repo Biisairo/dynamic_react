@@ -284,3 +284,55 @@ func TestPrefixConcurrent(t *testing.T) {
 		t.Fatalf("breaks %+v", b)
 	}
 }
+
+// HN-FR-74 ③: 도구 결과의 내용만 바뀌어도 Part messages.
+func TestPrefixToolResultChange(t *testing.T) {
+	rec := &recorder{}
+	a := prefixAgent(t, toolLoop(2), rec, harness.SetEntry{Set: finalizeSet("res", func(n int, req contract.Request) contract.Request {
+		if n >= 2 {
+			msgs := append([]contract.Message(nil), req.Messages...)
+			r := *msgs[2].Result
+			r.Content = []contract.Block{text("rewritten result")}
+			msgs[2].Result = &r
+			req.Messages = msgs
+		}
+		return req
+	}), On: true})
+	start(t, a, "s1", user("u1", "go"))
+	if b := breaks(rec); len(b) != 1 || b[0].Part != harness.PrefixMessages || b[0].At != 2 {
+		t.Fatalf("breaks %+v", b)
+	}
+}
+
+// HN-FR-75: 편집이 있어도 tools 가 바뀌면 Expected 는 false.
+func TestPrefixToolsWithEdit(t *testing.T) {
+	m := &fakeModel{script: func(n int, req contract.Request) []contract.StreamEvent {
+		switch {
+		case n == 0:
+			return []contract.StreamEvent{{Kind: contract.EventError, Error: &contract.CallError{Class: contract.ClassOverflow, Message: "too long"}}}
+		case len(req.System) == 1 && req.System[0].Text == summary.SystemPrompt:
+			return reply("sum", contract.StopStop, text("## Goal\nsummarized"))
+		}
+		return reply("a", contract.StopStop, text("ok"))
+	}}
+	rec := &recorder{}
+	a := newAgent(t, envtest.New("/w", "/h"), m, func(o *harness.Options) {
+		o.OnEvent = rec.on
+		o.Sets = func(d sets.Deps) []harness.SetEntry {
+			return append(harness.DefaultSets(d), harness.SetEntry{Set: finalizeSet("drop", func(n int, req contract.Request) contract.Request {
+				if n >= 1 {
+					return dropTool("write")(n, req)
+				}
+				return req
+			}), On: true})
+		}
+	})
+	long := func(id string) contract.Message { return user(id, strings.Repeat("abcd", 50)) }
+	r, _, _ := a.Start(context.Background(), harness.RunRequest{SessionID: "s1", Input: []contract.Message{long("u1"), long("u2"), long("u3")},
+		Config: json.RawMessage(`{"model":{"provider":"p","id":"m"},"compaction":{"keepRecentTokens":10}}`)})
+	wait(t, r)
+	b := breaks(rec)
+	if len(b) != 1 || b[0].Part != harness.PrefixTools || len(b[0].Edits) != 1 || b[0].Expected {
+		t.Fatalf("breaks %+v", b)
+	}
+}
