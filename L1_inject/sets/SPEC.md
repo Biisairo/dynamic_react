@@ -261,10 +261,10 @@ func Repeat(d Deps, o RepeatOptions) (inject.FunctionSet, error) // 기본값을
 | id | 요구사항 |
 |---|---|
 | ST-FR-64 | turn.finish 는 먼저 `ctx.Next()` 를 부른다. 에러면 그 에러를 돌려준다. 그다음 이번 턴의 호출 `ctx.Tools().Calls()` 로 ST-FR-65·66 을 한다. 아래 층 신호의 종류(settle 포함)는 보지 않는다 |
-| ST-FR-65 | 턴 지문: 호출마다 `이름 + "\x00" + 정규화한 인자` 를 만들고 정렬한 목록. 정규화 = 인자를 JSON 으로 읽어(숫자는 원문 유지) 다시 직렬화한 것 — 객체 키가 정렬되고 공백이 사라진다. JSON 으로 읽을 수 없으면 원문 그대로. 면제 도구의 호출도 지문에 든다 |
-| ST-FR-66 | 연속 수: 호출이 없거나 모든 호출이 `Exempt` 에 있으면 0 이고 직전 지문을 지운다. 아니면 지문이 직전 지문과 같으면 +1, 다르면 1 이고 직전 지문 = 이번 지문. 결과의 Status 는 보지 않는다 (에러 결과도 센다) |
-| ST-FR-67 | 개입: 연속 수 = `Warn` 이면 아래 층 신호 + `inject_input(지시)`. 연속 수 = `Stop` 이면 `fail(fmt.Errorf("%w: %d turns in a row", ErrRepeat, Stop))` 하나. 그 밖에는 아래 층 신호를 그대로 돌려준다 |
-| ST-FR-68 | 지시 메시지: user 역할, ID = `d.NewID()`, Timestamp = `d.Now()`, text 블록 하나. 본문 = `Repeated tool calls: you made the same tool calls <Warn> turns in a row with identical arguments.\n\n` + 면제가 아닌 호출마다(이번 턴의 호출 순서) `- <이름> <정규화한 인자 요약>\n  last result: <결과 요약>\n` + `\nDo not make these calls again with the same arguments. Use different arguments, choose another tool, or finish with what you have.`. 요약 = 연속 공백을 공백 하나로 바꾸고 앞뒤 공백을 뗀 뒤, 인자는 400자·결과는 200자(rune 기준)를 넘으면 그 길이에서 자르고 `…` 를 붙인다. 결과 = `ctx.Tools().Results()` 중 CallID 가 같은 것의 text 블록들을 `\n` 으로 이은 것. 없거나 비면 `(no text result)` |
+| ST-FR-65 | 턴 지문: 호출마다 `이름 + "\x00" + ToolCall.ArgsDigest()` 를 만들고 정렬한 목록. `ArgsDigest` 는 contract 의 정규화(키 정렬·공백 제거·숫자 원문 유지, CT-FR-36)라서 키 순서·공백만 다른 인자는 같다. 면제 도구의 호출도 지문에 든다 |
+| ST-FR-66 | 연속 수: 호출이 없거나 모든 호출이 `Exempt` 에 있으면 0 이다 (직전 지문은 남아도 결과가 같다 — 0 에서 같으면 +1, 다르면 1). 아니면 지문이 직전 지문과 같으면 +1, 다르면 1 이고 직전 지문 = 이번 지문. 결과의 Status 는 보지 않는다 (에러 결과도 센다) |
+| ST-FR-67 | 개입: 연속 수 = `Warn` 이면 `inject_input(지시)` + 아래 층 신호 (전이 신호가 마지막이어야 하므로 지시를 앞에 둠). 연속 수 = `Stop` 이면 `fail(fmt.Errorf("%w: %d turns in a row", ErrRepeat, Stop))` 하나. 그 밖에는 아래 층 신호를 그대로 돌려준다 |
+| ST-FR-68 | 지시 메시지: user 역할, ID = `d.NewID()`, Timestamp = `d.Now()`, text 블록 하나. 본문 = `Repeated tool calls: you made the same tool calls <Warn> turns in a row with identical arguments.\n\n` + 면제가 아닌 호출마다(이번 턴의 호출 순서) `- <이름> <인자 요약>\n  last result: <결과 요약>\n` + `\nDo not make these calls again with the same arguments. Use different arguments, choose another tool, or finish with what you have.`. 요약 = 인자는 모델이 보낸 Args 원문, 결과는 아래의 텍스트에서 연속 공백을 공백 하나로 바꾸고 앞뒤 공백을 뗀 뒤, 인자는 400자·결과는 200자(rune 기준)를 넘으면 그 길이에서 자르고 `…` 를 붙인다. 결과 = `ctx.Tools().Results()` 중 CallID 가 같은 것의 text 블록들을 `\n` 으로 이은 것. 없거나 비면 `(no text result)` |
 | ST-FR-69 | 상태 (네임스페이스 `repeat`, 키 `progress`): `{run, count, last}`(last = 직전 지문). run 을 넘어 복원되므로 RunID 가 다르면 초기값(0, 빈 지문)으로 본다 (ST-FR-44 와 같은 방식). 상태 쓰기 에러는 그 에러로 돌려준다 |
 
 ### 3.3 도구 레지스트리
@@ -385,7 +385,7 @@ type AuxCaller interface {
 | ST-NFR-02 | 종단 시나리오 4개 |
 | ST-NFR-04 | `go list -deps` 검사 |
 | ST-FR-46~50 | 가짜 ModelCaller·도구로 종단: 변경 도구 없이 끝남 → Check 안 부름, write 성공 뒤 끝남 → Check 1회·OK 면 completed, 실패 → 다음 요청에 보고 메시지(attempt 1 of N)·세션에 저장, 실패 뒤 변경 없이 끝남 → 재검증, MaxAttempts 번째 실패 → failed·`errors.Is(ErrVerifyFailed)`·첫 줄, error 결과의 변경 도구는 세지 않음, Tools 에 없는 도구는 세지 않음, 빈 Tools, 보고 끝 절단·빈 보고, Check error → failed, 아래 층을 바꿔 쌓으면(예: 항상 settle 하는 층) 그 판정을 따름·아래 층 에러 전달, 다른 run 은 상태 초기화, Check nil → 에러 |
-| ST-FR-64~69 | 가짜 ModelCaller·도구로 종단: 같은 호출 4턴 → 지시 없음, 5턴째 → 다음 요청에 지시(호출·인자·결과 요약)·세션에 저장, 8턴째 → failed·`errors.Is(ErrRepeat)`, 6·7턴 → 지시 없음, 인자 키 순서·공백만 다름 → 같은 지문, 인자 값이 다름 → 1 로 되돌림, 한 턴 안 호출 순서만 다름 → 같음, 호출 없는 턴 → 0, 면제 도구만 → 0·면제와 섞이면 셈·지시에 면제 호출 없음, 에러 결과도 셈, JSON 이 아닌 인자, 요약 절단(공백 압축·400자·200자·`…`·rune 경계)·결과 없음 `(no text result)`, 아래 층을 바꿔 쌓으면 그 신호를 유지·아래 층 에러 전달, 다른 run 은 상태 초기화, 기본값 5·8, Warn >= Stop → 에러, 옵션 값 적용 |
+| ST-FR-64~69 | 가짜 ModelCaller·도구로 종단: 같은 호출 4턴 → 지시 없음, 5턴째 → 다음 요청에 지시(호출·인자·결과 요약)·세션에 저장, 8턴째 → failed·`errors.Is(ErrRepeat)`, 6·7턴 → 지시 없음, 인자 키 순서·공백만 다름 → 같은 지문, 인자 값이 다름 → 1 로 되돌림, 한 턴 안 호출 순서만 다름 → 같음, 호출 없는 턴 → 0, 면제 도구만 → 0·면제와 섞이면 셈·지시에 면제 호출 없음, 에러 결과도 셈, 숫자 표기가 다름(`1`·`1.0`) → 다른 지문, 요약 절단(공백 압축·400자·200자·`…`·rune 경계)·결과 없음 `(no text result)`, 아래 층을 바꿔 쌓으면 그 신호를 유지·아래 층 에러 전달, 다른 run 은 상태 초기화, 기본값 5·8, Warn >= Stop → 에러, 옵션 값 적용 |
 | ST-FR-01, 63 | `aux` 는 형식이 틀려도(빈 역할·빈 id·배열) `ParseConfig` 가 통과, 다른 모르는 키는 에러 유지 / `AuxOf(Deps{})` → `Complete` 가 `ErrNoAux`, `AuxOf` 가 nil 이 아닌 `Aux` 를 그대로 돌려줌 |
 | ST-FR-57~59 | `ModesOf(Deps{})` → `Exit` 가 `ErrNoModes`·`Current` 가 기본 모드, `ModesOf` 가 nil 이 아닌 `Modes` 를 그대로 돌려줌 |
 | ST-FR-60~61 | `StableLen` 표: 꼬리 없음·꼬리 1개·2개·중간 Ephemeral(안정 구간)·전부 꼬리(0)·빈 목록·ephemeral 빈 목록. `cache`: Ephemeral 1개가 끝에 있으면 메시지 힌트가 그 앞, 전부 꼬리면 메시지 힌트 없음·system 힌트 있음, Ephemeral 없음 → 마지막 메시지(기존 테스트 유지) |

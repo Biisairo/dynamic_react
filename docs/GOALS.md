@@ -115,7 +115,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | id | 내용 | 상태 | 출처 |
 |---|---|---|---|
 | ST-1 | 예산 가드. 측정 기준(누적 토큰 또는 현재 컨텍스트 크기)부터 정해야 한다 | 결정 대기 | impl-08 |
-| ST-2 | 반복 감지 | 열림 | impl-08 |
+| ST-2 | 반복 감지 | 해소 (R41: sets v0.12 `repeat` 세트 — 턴 단위 지문(이름 + `ArgsDigest`), 5턴 연속이면 지시 한 번, 8턴이면 `ErrRepeat` 로 run 실패, 옵션 `RepeatOptions{Warn, Stop, Exempt}`, run 단위. harness v1.10 `DefaultSets` 끝에 On — 기본 동작 변경. 뮤테이션 36개 중 KILLED 35, 등가 1: 결과 블록 판정 `Kind == Text` 를 `!= Image` 로 바꾼 변이 — contract 상 결과 블록이 text·image 뿐이라(CT-FR-10) 같음, 다른 모듈 규칙에 기대므로 기록만. 처음 살아남은 5개 중 3개는 테스트 보강, 1개(리셋 때 직전 지문 지우기)는 등가 분기라 코드를 줄임) | impl-08 |
 | ST-3 | 모델 라우팅 | 열림 | impl-08 |
 | ST-4 | `dr`에 모드 등록. 지금 `dr`은 `DefaultSets` 프리셋만 등록하고 모드는 없다. 인자가 필요한 세트·모드는 자기 main 에서 등록한다 | 결정 대기 | impl-08, impl-09 |
 
