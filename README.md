@@ -71,7 +71,7 @@ L0·L1 은 사용자 환경(파일)과 무관한 단독 라이브러리이고, L
 | [`L3_ui/cmd/dr-print/`](L3_ui/cmd/dr-print/SPEC.md) | 비대화형 검증용 CLI (입출력만) | 스펙 v0.2, 구현 |
 | [`examples/inject/`](examples/inject/SPEC.md) | 주입 예시: 매 턴 규칙 덧붙이기 + `rm -rf` 차단 | 스펙 v0.2, 구현 |
 | [`examples/verify/`](examples/verify/SPEC.md) | 자기검증 세트 예시: 변경 뒤 끝낼 때 셸 명령으로 검증, 실패하면 출력을 모델에 돌려줌, `-i` 대화형 | 스펙 v0.3, 구현 |
-| [`examples/modes/`](examples/modes/SPEC.md) | 모드 예시: goal(품질 게이트 → 보조 모델 판정 루프)·plan(쓰기 도구 차단) | 스펙 v0.2, 구현 |
+| [`examples/modes/`](examples/modes/SPEC.md) | 모드 예시: goal(품질 게이트 → 보조 모델 판정 루프)·plan(쓰기 도구 차단) | 스펙 v0.3, 구현 |
 | [`docs/`](docs/DECISIONS.md) | 결정 기록, 주입 가이드([`INJECT.md`](docs/INJECT.md)), 22 step 표현 검증, 인계 문서 | — |
 
 ## 실행
