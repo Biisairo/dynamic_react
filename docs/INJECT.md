@@ -8,7 +8,7 @@
 
 | `agent.Options` 필드 | 기본값 | 결과가 nil·빈 값이면 |
 |---|---|---|
-| `Sets func(d sets.Deps) []harness.SetEntry` | `harness.DefaultSets(d)` = base·require·cache·guard·truncate·resilient, 전부 `On: true` | 빈 step 이 생겨 `Bind` 에러 |
+| `Sets func(d sets.Deps) []harness.SetEntry` | `harness.DefaultSets(d)` = base·require·cache·guard·truncate·resilient·repeat, 전부 `On: true` | 빈 step 이 생겨 `Bind` 에러 |
 | `ToolSet func(def []sets.Tool) []sets.Tool` | `tools.All(env)` = read·bash·edit·write·grep·find·ls (+ 모드가 있으면 `mode`, 5장) | 도구 없는 에이전트 |
 | `System func(def []contract.Block) []contract.Block` | 기본 시스템 프롬프트 (preamble·tools·rules·AGENTS.md·skills·cwd) | 시스템 프롬프트 없음 |
 | `Summarizer func(def sets.Summarizer) sets.Summarizer` | pi 요약 프롬프트를 쓰는 요약기 | 자동 압축 끔, `Compact` 는 에러 |
@@ -58,6 +58,7 @@ harness 를 직접 쓸 때는 `harness.Options` 의 같은 이름 필드(ModelCa
 | `guard` | 없는 도구·인자 스키마 검사 | tool.before |
 | `truncate` | 도구 결과 절단 | tool.after |
 | `resilient` | 재시도·overflow 복구·임계치 압축·follow-up | 없음 |
+| `repeat` | 같은 tool call 이 5턴 이어지면 지시, 8턴이면 run 실패 (R41, 값은 `sets.Repeat` 옵션) | turn.finish |
 | `verify` (주입용) | 변경 뒤 끝낼 때 검증 | turn.finish |
 
 목록·순서·기본 켜짐은 L2 `harness.DefaultSets` 한 곳의 프리셋이다 (L0·L1 은 순서를 모른다). 아래 층이 필요한 세트를 같은 step 을 채운 세트보다 아래로 옮기면, 실행할 때 그 step 이 `ErrNoNext` 로 실패한다 (Bind 는 알 수 없음).

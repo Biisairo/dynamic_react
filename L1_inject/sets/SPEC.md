@@ -1,8 +1,8 @@
 # sets — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 0.11 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27, R29, R33, R39)
+- 버전: 0.12 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D6, D9, D11, D15, R2, R3, R7, R9, R13, R24, R26, R27, R29, R33, R39, R41)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`
 - 사용하는 쪽: `L2_harness` (도구·저장소·프롬프트·요약기 구현을 주입)
 
@@ -17,6 +17,7 @@
 - 포함:
   - 부품 세트 (R26 ②): `base`·`require`(둘이 22 step 을 모두 채움), 정책 `cache`·`guard`·`truncate` — 3.0. 순서·기본 켜짐은 갖지 않는다 (R26 ③, 기본 구성은 L2 harness)
   - `resilient` 세트: 에러 재시도, overflow 복구, 임계치 압축 판정, follow-up
+  - `repeat` 세트: 같은 tool call 반복 감지와 개입 (3.2d)
   - 의존 interface: `ModelCaller`, `ToolRegistry`, `Store`, `Summarizer`, `ModeSwitcher`, `AuxCaller` (2.3)
   - 토큰 추정, 압축 절단점, 루프 설정 스키마
 - 제외:
@@ -111,6 +112,7 @@ sets 는 contract, core, inject 와 표준 라이브러리만 import 한다 (ada
 | `truncate` | 18 `Tool.Truncate`, 없으면 2000줄 / 50KB 기본 절단 (아래 층 결과에) | 18 | 정책 |
 | `resilient` | 3.2 그대로 (3·12·13·21) | 없음 | 정책 |
 | `verify` | 3.2a (20) | 20 | 정책 |
+| `repeat` | 3.2d (20) | 20 | 정책 |
 
 | id | 요구사항 |
 |---|---|
@@ -242,6 +244,29 @@ func Verify(d Deps, o VerifyOptions) (inject.FunctionSet, error) // Check nil �
 | ST-FR-61 | `cache` 의 메시지 힌트 Index = `StableLen(req.Messages, ctx.Conv().Ephemeral()) − 1` (req = 아래 층 결과). 결과가 0 보다 작으면 메시지 힌트를 두지 않는다. system 힌트는 그대로다. Ephemeral 이 없으면 v0.8 과 같다 |
 | ST-FR-62 | `cache` 는 `req.Options.CacheKey` 를 `ctx.Flow().SessionID()` 로 채운다 (R33). 아래 층이 이미 채웠어도 덮는다 |
 
+### 3.2d repeat 세트 — 반복 감지 (R41)
+
+`sets.Repeat(deps, opts)` 는 `Name: "repeat"` 이고 **20 turn.finish 만** 채운다. 아래 층의 turn.finish 는 `ctx.Next()` 로 부른다. 같은 tool call 을 턴마다 되풀이하면 지시를 한 번 넣고, 그래도 계속되면 run 을 끝낸다.
+
+```go
+type RepeatOptions struct {
+    Warn   int      // 0 이하 → 5
+    Stop   int      // 0 이하 → 8
+    Exempt []string // nil → 면제 없음
+}
+var ErrRepeat = errors.New("repeat: same tool calls repeated")
+func Repeat(d Deps, o RepeatOptions) (inject.FunctionSet, error) // 기본값을 채운 뒤 Warn >= Stop → 에러 "sets: repeat: Warn must be less than Stop"
+```
+
+| id | 요구사항 |
+|---|---|
+| ST-FR-64 | turn.finish 는 먼저 `ctx.Next()` 를 부른다. 에러면 그 에러를 돌려준다. 그다음 이번 턴의 호출 `ctx.Tools().Calls()` 로 ST-FR-65·66 을 한다. 아래 층 신호의 종류(settle 포함)는 보지 않는다 |
+| ST-FR-65 | 턴 지문: 호출마다 `이름 + "\x00" + 정규화한 인자` 를 만들고 정렬한 목록. 정규화 = 인자를 JSON 으로 읽어(숫자는 원문 유지) 다시 직렬화한 것 — 객체 키가 정렬되고 공백이 사라진다. JSON 으로 읽을 수 없으면 원문 그대로. 면제 도구의 호출도 지문에 든다 |
+| ST-FR-66 | 연속 수: 호출이 없거나 모든 호출이 `Exempt` 에 있으면 0 이고 직전 지문을 지운다. 아니면 지문이 직전 지문과 같으면 +1, 다르면 1 이고 직전 지문 = 이번 지문. 결과의 Status 는 보지 않는다 (에러 결과도 센다) |
+| ST-FR-67 | 개입: 연속 수 = `Warn` 이면 아래 층 신호 + `inject_input(지시)`. 연속 수 = `Stop` 이면 `fail(fmt.Errorf("%w: %d turns in a row", ErrRepeat, Stop))` 하나. 그 밖에는 아래 층 신호를 그대로 돌려준다 |
+| ST-FR-68 | 지시 메시지: user 역할, ID = `d.NewID()`, Timestamp = `d.Now()`, text 블록 하나. 본문 = `Repeated tool calls: you made the same tool calls <Warn> turns in a row with identical arguments.\n\n` + 면제가 아닌 호출마다(이번 턴의 호출 순서) `- <이름> <정규화한 인자 요약>\n  last result: <결과 요약>\n` + `\nDo not make these calls again with the same arguments. Use different arguments, choose another tool, or finish with what you have.`. 요약 = 연속 공백을 공백 하나로 바꾸고 앞뒤 공백을 뗀 뒤, 인자는 400자·결과는 200자(rune 기준)를 넘으면 그 길이에서 자르고 `…` 를 붙인다. 결과 = `ctx.Tools().Results()` 중 CallID 가 같은 것의 text 블록들을 `\n` 으로 이은 것. 없거나 비면 `(no text result)` |
+| ST-FR-69 | 상태 (네임스페이스 `repeat`, 키 `progress`): `{run, count, last}`(last = 직전 지문). run 을 넘어 복원되므로 RunID 가 다르면 초기값(0, 빈 지문)으로 본다 (ST-FR-44 와 같은 방식). 상태 쓰기 에러는 그 에러로 돌려준다 |
+
 ### 3.3 도구 레지스트리
 
 | id | 요구사항 |
@@ -334,8 +359,8 @@ type AuxCaller interface {
 
 | id | 요구사항 |
 |---|---|
-| ST-FR-41 | 공개 함수: `ModesOf(Deps) ModeSwitcher`·`ErrNoModes`, `AuxOf(Deps) AuxCaller`·`ErrNoAux`, `ParseConfig(json.RawMessage) (Config, error)`, `Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`(각 `(Deps) inject.FunctionSet`), `Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식), `Verify`·`VerifyOptions`·`CheckResult`·`ErrVerifyFailed`(3.2a), `StableLen(msgs, ephemeral []contract.Message) int`(3.2c) |
-| ST-FR-42 | 세트 생성자(`Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`·`Verify`)는 Deps 의 nil 을 한 번만 기본값으로 채워 그 세트의 모든 step 이 같은 값을 쓴다 (nil Tools → 도구 없음, nil Store → "없음" Store(ST-FR-34), nil Modes → ST-FR-57, nil Aux → ST-FR-63). 세트끼리는 각자 채우므로, 여러 세트가 같은 Store 를 써야 하면(base 의 저장과 require 의 짝 복구 기록) Deps 에 Store 를 채워 넘긴다. `Resilient<Step>` 생성자를 따로 부르면 각자 채운다 |
+| ST-FR-41 | 공개 함수: `ModesOf(Deps) ModeSwitcher`·`ErrNoModes`, `AuxOf(Deps) AuxCaller`·`ErrNoAux`, `ParseConfig(json.RawMessage) (Config, error)`, `Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`(각 `(Deps) inject.FunctionSet`), `Resilient{ContextMaintain,CallError,ResponseClassify,RunBeforeSettle}(Deps)`, `EstimateText`, `EstimateMessage`, `EstimateContext`, `ApplyEdits(transcript, edits)`, `CheckArgs(schema, args)`, `Compact(ctx, Summarizer, ModelRef, proj, keepRecent, reserve, maxOut, now, editID, summaryID) (ContextEdit, ok, error)`, `ReserveTokens(cfg Config, window int) int`(3.5 의 reserve 식), `Verify`·`VerifyOptions`·`CheckResult`·`ErrVerifyFailed`(3.2a), `Repeat`·`RepeatOptions`·`ErrRepeat`(3.2d), `StableLen(msgs, ephemeral []contract.Message) int`(3.2c) |
+| ST-FR-42 | 세트 생성자(`Base`·`Require`·`Cache`·`Guard`·`Truncate`·`Resilient`·`Verify`·`Repeat`)는 Deps 의 nil 을 한 번만 기본값으로 채워 그 세트의 모든 step 이 같은 값을 쓴다 (nil Tools → 도구 없음, nil Store → "없음" Store(ST-FR-34), nil Modes → ST-FR-57, nil Aux → ST-FR-63). 세트끼리는 각자 채우므로, 여러 세트가 같은 Store 를 써야 하면(base 의 저장과 require 의 짝 복구 기록) Deps 에 Store 를 채워 넘긴다. `Resilient<Step>` 생성자를 따로 부르면 각자 채운다 |
 | ST-FR-43 | base 상태 키: `input`(초기 입력, 2 가 한 번 준 뒤 삭제), `inbox.consumed`(int, publish), `edits.saved`(Store 에 기록한 편집 수). 1 이 run 마다 다시 쓴다 (상태는 Store 로 run 을 넘어 복원되므로) |
 | ST-FR-44 | resilient 상태는 run 을 넘어 복원되므로 RunID 를 함께 저장하고, RunID 가 다르면 초기 상태로 본다: `retry`{run, turn, class 별 횟수}(턴이 바뀌면 리셋), `recovered`{run, turn}(12·13 의 압축 복구), `compaction`{run, pending, invalid}, `compaction.blocked`(publish, `true`, 다른 run 에서는 삭제) |
 | ST-FR-45 | 해석 (스펙 공백): ① `compaction.enabled=false` 는 3·12·13 의 모든 압축 분기를 끈다 (pi `_checkCompaction` 와 같음). ② 무효 압축 판정은 pending 일 때 다음 3 에서 `LastUsage().Prompt() >= W − reserve`. ③ 절단 구간이 이전 요약 메시지 하나뿐이면 압축하지 않는다. ④ 설정 `tools` 의 없는 이름은 무시한다. ⑤ 17 은 결과의 CallID 를 호출 ID 로 맞춘다. ⑥ 18 의 기본 절단은 text 블록마다 적용한다. ⑦ 요약 메시지 = user 역할, 고정 머리말 + 요약 텍스트. ⑧ 1·7 의 aborted 결과는 text 블록 하나("aborted")를 담는다 |
@@ -360,6 +385,7 @@ type AuxCaller interface {
 | ST-NFR-02 | 종단 시나리오 4개 |
 | ST-NFR-04 | `go list -deps` 검사 |
 | ST-FR-46~50 | 가짜 ModelCaller·도구로 종단: 변경 도구 없이 끝남 → Check 안 부름, write 성공 뒤 끝남 → Check 1회·OK 면 completed, 실패 → 다음 요청에 보고 메시지(attempt 1 of N)·세션에 저장, 실패 뒤 변경 없이 끝남 → 재검증, MaxAttempts 번째 실패 → failed·`errors.Is(ErrVerifyFailed)`·첫 줄, error 결과의 변경 도구는 세지 않음, Tools 에 없는 도구는 세지 않음, 빈 Tools, 보고 끝 절단·빈 보고, Check error → failed, 아래 층을 바꿔 쌓으면(예: 항상 settle 하는 층) 그 판정을 따름·아래 층 에러 전달, 다른 run 은 상태 초기화, Check nil → 에러 |
+| ST-FR-64~69 | 가짜 ModelCaller·도구로 종단: 같은 호출 4턴 → 지시 없음, 5턴째 → 다음 요청에 지시(호출·인자·결과 요약)·세션에 저장, 8턴째 → failed·`errors.Is(ErrRepeat)`, 6·7턴 → 지시 없음, 인자 키 순서·공백만 다름 → 같은 지문, 인자 값이 다름 → 1 로 되돌림, 한 턴 안 호출 순서만 다름 → 같음, 호출 없는 턴 → 0, 면제 도구만 → 0·면제와 섞이면 셈·지시에 면제 호출 없음, 에러 결과도 셈, JSON 이 아닌 인자, 요약 절단(공백 압축·400자·200자·`…`·rune 경계)·결과 없음 `(no text result)`, 아래 층을 바꿔 쌓으면 그 신호를 유지·아래 층 에러 전달, 다른 run 은 상태 초기화, 기본값 5·8, Warn >= Stop → 에러, 옵션 값 적용 |
 | ST-FR-01, 63 | `aux` 는 형식이 틀려도(빈 역할·빈 id·배열) `ParseConfig` 가 통과, 다른 모르는 키는 에러 유지 / `AuxOf(Deps{})` → `Complete` 가 `ErrNoAux`, `AuxOf` 가 nil 이 아닌 `Aux` 를 그대로 돌려줌 |
 | ST-FR-57~59 | `ModesOf(Deps{})` → `Exit` 가 `ErrNoModes`·`Current` 가 기본 모드, `ModesOf` 가 nil 이 아닌 `Modes` 를 그대로 돌려줌 |
 | ST-FR-60~61 | `StableLen` 표: 꼬리 없음·꼬리 1개·2개·중간 Ephemeral(안정 구간)·전부 꼬리(0)·빈 목록·ephemeral 빈 목록. `cache`: Ephemeral 1개가 끝에 있으면 메시지 힌트가 그 앞, 전부 꼬리면 메시지 힌트 없음·system 힌트 있음, Ephemeral 없음 → 마지막 메시지(기존 테스트 유지) |
@@ -383,6 +409,7 @@ type AuxCaller interface {
 | R27 | ST-FR-54~59 (2.2, 2.3, 3.2b) |
 | R29 | ST-FR-60~61 (3.2c), 3.0 `cache` 행, 3.1 의 7 행 |
 | R33 | ST-FR-62 |
+| R41 | ST-FR-64~69 (3.2d), 3.0 `repeat` 행 |
 | 자격증명 보호 | ST-C1, ST-FR-02 |
 
 ---
@@ -401,6 +428,7 @@ type AuxCaller interface {
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 0.12 | 반복 감지 세트 없음 | `repeat` 세트 (3.2d, ST-FR-64~69). 기존 세트 동작 변화 없음 | R41 |
 | 0.11 | sets 에 보조 모델 호출(`AuxModel`·`Complete`)·설정 `aux` 검사·`NewRegistry`·`NewMemoryStore`·`StateStoreOf`, nil Store → 메모리 Store | 모두 L2 harness 로 이동, `ParseConfig` 는 `aux` 를 건너뜀, 통로 `Deps.Aux`·`AuxOf`·`ErrNoAux`, nil Store → "없음" Store | R39 (sets 는 자기 루프의 제어만) |
 | 0.10 | 캐시 키 없음 | `cache` 가 `Options.CacheKey` = 세션 ID (ST-FR-62) | R33 |
 | 0.9 | `cache` 의 메시지 힌트 = 요청의 마지막 메시지 (모드 지시 같은 Ephemeral 이면 다음 요청에서 다시 맞지 않음) | 꼬리 앞 마지막 메시지 (ST-FR-61), `StableLen` (ST-FR-60). Ephemeral 이 없으면 같음 | R29 ⓔ |

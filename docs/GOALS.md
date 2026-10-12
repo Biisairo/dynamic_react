@@ -128,6 +128,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | DC-3 | agent 사용자 도구의 패턴 규칙 비교 값 (`Target func(args) string`). 필요해지면 다룬다 | impl-07 |
 | DC-4 | harness 의 접두 기준표(R29)와 사용량 집계(R30)는 세션마다 프로세스 메모리에 쌓이고 지우지 않는다. 대화형 터미널에서는 문제가 없지만, 오래 떠 있는 서버형 surface 에서는 세션 수만큼 늘어난다. 정리 정책(세션 종료 시 삭제, 개수 상한 등)을 정할지 → **해소** (R34: 만들지 않음. 서버형 surface 를 만들 때 다시 검토) | R29, R30 |
 | DC-5 | `PrefixBreak.Kept` 는 Part messages 일 때 항상 `At` 과 같고, 그 밖에는 0 이다. 필드를 남길지 정리할지 → **해소** (R35: 필드 제거. harness v1.8, terminal v0.9 는 유지 수로 `At` 을 씀. 화면 출력 같음) | R29 |
+| DC-6 | 루프 설정의 `compaction`·`retry` 는 resilient 세트만 쓰는 값인데 공용 스키마(sets `ParseConfig`, ST-FR-01)에 있다. resilient 를 빼거나 사용자가 세트를 새로 만들어도 sets 가 그 키를 검사한다. R41 은 세트 전용 값을 생성자 옵션으로 받는다. 설정 파일로 바꿀 수 있는 지금의 장점과 함께 정리할지 정한다 | R41 인터뷰 (사용자 지적) |
 
 ## 9. 보류와 하지 않음
 

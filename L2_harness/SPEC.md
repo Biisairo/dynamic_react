@@ -1,8 +1,8 @@
 # harness — 소프트웨어 요구사항 명세 (SRS)
 
 - 문서 형식: ISO/IEC/IEEE 29148:2018 SRS 구조를 따른다.
-- 버전: 1.9 (초안)
-- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26, R27, R29, R30, R35, R39, R40)
+- 버전: 1.10 (초안)
+- 상위 근거: `docs/DECISIONS.md` (D14, D15, D16, R8, R13, R14, R17, R18, R22, R23, R25, R26, R27, R29, R30, R35, R39, R40, R41)
 - 의존 명세: `L0_core/contract/SPEC.md`, `L0_core/core/SPEC.md`, `L1_inject/inject/SPEC.md`, `L1_inject/sets/SPEC.md`
 - 사용하는 쪽: `L2_harness/agent` (OS Env·ModelCaller·설정을 넣는 완성된 에이전트, `agent/SPEC.md`). Env 의 OS 구현은 `L2_harness/osenv` (`osenv/SPEC.md`)
 
@@ -317,14 +317,14 @@ type Store interface {
 type SetEntry struct { Set inject.FunctionSet; On bool }          // 등록 항목: 세트와 기본 켜짐
 type SetState struct { Name, Description string; On bool }       // 배치의 한 칸
 
-func DefaultSets(d sets.Deps) []SetEntry // base, require, cache, guard, truncate, resilient — 전부 On
+func DefaultSets(d sets.Deps) []SetEntry // base, require, cache, guard, truncate, resilient, repeat — 전부 On
 func (a *Agent) Store() Store
 ```
 
 | id | 요구사항 |
 |---|---|
 | HN-FR-38 | `New` 는 아래 순서로 만든다. ① 도구: def = `tools.All(Env)`. `ToolSet(def)` 의 결과를 순서대로 harness 레지스트리(HN-FR-84)에 넣는다 (같은 이름은 뒤의 것이 앞의 자리를 덮음). 빈 결과는 허용한다 (도구 없는 에이전트) ② 저장소: def = `session.New(Env, SessionDir)` (SessionDir 은 여전히 필수). `Store(def)` 가 nil 이면 에러 `harness: Store returned nil` ③ 시스템 프롬프트: def = 3.4 의 조립(①의 registry 기준). `System(def)` 의 결과를 그대로 쓴다 (nil·빈 결과 = 시스템 프롬프트 없음, HN-C4 는 그대로) ④ 요약기: def = `summary.New(Model, Now)`. `Summarizer(def)` 가 nil 이면 압축을 끈다 (ST-FR-36, 수동 압축은 HN-FR-36 의 에러). `OnEvent` 가 있으면 nil 이 아닐 때만 compaction 이벤트로 감싼다 (3.6a) ⑤ 세트: `sets.Deps{Model, Tools: ①, Store: ②, System: ③, Summarizer: ④, Sleep, Now, NewID, Modes: HN-FR-71, Aux: HN-FR-85}` 로 `Sets(deps)` 를 **한 번** 부르고(nil → `DefaultSets(deps)`) 등록 목록으로 둔다. 이름이 비거나 겹치면 에러. `Layout` 으로 처음 배치를 정하고(HN-FR-52) 켜진 세트를 배치 순서대로 3.6a 래핑(HN-FR-41)한 뒤 `inject.BindWith(StateStore: ②를 감싼 것(HN-FR-84))`. Bind 에러(빈 step 등)는 `harness: sets: …` 에러 |
-| HN-FR-39 | `DefaultSets(d)` = `[Base, Require, Cache, Guard, Truncate, Resilient]`(sets 3.0) 전부 `On: true` — 이 순서·켜짐이 기본 구성(프리셋)이고 harness 가 갖는 유일한 순서 지식이다 (R26 ③). 전부 켜면 v1.2 의 기본 동작과 같다. 사용자는 이것에 덧붙이거나, 원소를 고치거나, 쓰지 않는다(base·require 포함 전부 교체) |
+| HN-FR-39 | `DefaultSets(d)` = `[Base, Require, Cache, Guard, Truncate, Resilient, Repeat(d, RepeatOptions{})]`(sets 3.0·3.2d) 전부 `On: true` — 이 순서·켜짐이 기본 구성(프리셋)이고 harness 가 갖는 유일한 순서 지식이다 (R26 ③). `repeat` 를 끄면 v1.2 의 기본 동작과 같다 (R41). 기본 옵션의 `Repeat` 는 에러를 내지 않는다 (sets ST-FR-64 의 기본값 5 < 8). 사용자는 이것에 덧붙이거나, 원소를 고치거나, 쓰지 않는다(base·require 포함 전부 교체) |
 | HN-FR-40 | `Store` 의 `List` 는 그 저장소에 저장된 세션 ID 를 돌려준다. `Load` 는 저장되지 않은 ID 에 빈 세션을 돌려준다 (`sets.Store` 와 같음). run·수동 압축·state 저장(HN-FR-84)·agent 의 목록과 이력(AG-FR-29·30)이 모두 이 하나의 저장소를 쓴다 |
 | HN-FR-41 | 사용자 세트와 surface 래핑: 3.6a 래핑은 켜진 세트들 중 step 마다 **가장 위 층** 함수를 그 세트 안에서 감싼다 (위 층이 `ctx.Next` 로 아래 층을 부르므로 체인 전체가 감싸진다). 그래서 **승인(Gate)과 이벤트(OnEvent)는 사용자 세트·배치가 무엇이든 유지된다.** 없는 도구·스키마 검사(ST-FR-38)는 `guard` 세트다 — 끄거나 base 위에 `ctx.Next` 를 부르지 않는 `tool.before` 를 쌓으면 검사가 빠지고, Gate 는 검사 없이 그 호출에 불린다. 이것은 사용자의 책임이다. base 공개 상태 `inbox.consumed`(HN-FR-30)를 쓰는 기능(agent 의 Steer, AG-FR-24)은 이름이 `base` 인 세트가 그 상태를 갱신할 때만 맞게 동작한다 |
 | HN-FR-42 | `Agent.Store()` 는 HN-FR-38 ②의 결과다 |
@@ -579,6 +579,7 @@ func (a *Agent) Stats(sessionID string) (Stats, bool) // false = 기록 없음
 
 | 버전 | 이전 | 새 동작 | 이유 |
 |---|---|---|---|
+| 1.10 | `DefaultSets` = base·require·cache·guard·truncate·resilient | 끝에 `repeat`(기본 옵션, On) — 같은 tool call 이 5턴 이어지면 지시, 8턴이면 run 실패 (HN-FR-39) | R41 |
 | 1.9 | 보조 모델 규칙·단발 호출·레지스트리·메모리 Store·StateStore 연결이 sets 에 있음, aux 는 모델만 | sets 에서 옮김(HN-FR-04a·84·87), `ParseAux`(HN-FR-86)·aux 의 `maxOutputTokens`·`thinking`(HN-FR-72), 세트용 통로 `Deps.Aux`(HN-FR-85) | R39, R40 |
 | 1.8 | `PrefixBreak.Kept`(messages 면 At 과 같고 그 밖에는 0) | 필드 없음. 유지된 메시지 수는 `At` 이다 | R35 |
 | 1.7 | `Modes` 가 빈 Agent 의 run 이 모드 상태를 읽는지 정하지 않음 | 읽지 않는다고 명시 (HN-FR-65·66). 코드는 이미 그렇게 동작 — 동작 변경 없음 | GOALS MD-1 뮤테이션 검사 |
