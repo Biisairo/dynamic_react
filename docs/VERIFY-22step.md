@@ -54,3 +54,33 @@
 | #28 류 (16 tool.before 로 호출 차단 + 기본 검사 유지) | `rm -rf` bash 차단, 그 밖의 bash 는 base 검사를 거쳐 실행 |
 
 사용자 세트가 무엇이든 surface 계층의 승인(Gate)·이벤트는 step 마다 실제로 쓰이는 함수를 감싸 유지된다 (HN-FR-41). base 기본 검사(ST-FR-38)는 base `tool.before` 를 부르지 않으면 빠진다 — △ 와 같은 **함수 작성 규약**이다.
+
+## Hermes 의 상황별 루프 (R27)
+
+Hermes 는 하나의 ReAct 턴 엔진(`agent/conversation_loop.py`) 위에, 턴 안의 stop gate 와 턴 밖의 드라이버(`/goal` 판정, `/loop`, heartbeat, cron)를 붙여 "상황마다 다른 루프"를 만든다. 드라이버는 턴이 끝난 뒤 다음 user 메시지를 입력 큐에 넣는 방식으로 엔진을 다시 부른다. R27 은 이것을 **모드**(세션별 배치 변형, 턴 경계에서 교체)로 표현한다. 근거 분석은 `hermes_study` 의 Hermes 소스(`hermes_cli/goals.py`, `agent/turn_stop_gates.py`, `agent/plan_prompt.py`, `hermes_cli/loops.py`)다.
+
+판정: ● 표현 가능 · △ 표현 가능하나 제약 있음 · ✕ 표현 불가 (이 저장소 범위 밖). "확인" 열은 이 저장소의 테스트로 동작을 확인했는지다.
+
+| # | 기능 (Hermes 위치) | dynamic_react 표현 | 판정 | 확인 |
+|---|---|---|---|---|
+| 29 | verify-on-stop: 코드 편집 뒤 증거 없이 끝내면 계속 (`turn_stop_gates.py`) | 20 turn.finish `[inject_input(보고), continue_turn]` — `sets.Verify` | ● | sets 테스트 (R24) |
+| 30 | kanban 종료 도구 가드: 완료 도구 없이 끝내면 nudge | 20 turn.finish, Transcript 에서 완료 도구 호출 여부 확인 | ● | 구현 없음 (#29 와 같은 형태) |
+| 31 | `/goal` 판정 루프: 턴 뒤 judge → done / blocked / continue, 턴 예산 (`goals.py` `evaluate_after_turn`) | 모드 `goal`: Push 세트의 20 turn.finish 가 `ctx.Next()` 의 settle 을 보고 보조 모델(`sets.Complete`, 역할 `goal_judge`)로 판정 → continue 면 settle 을 빼고 `[inject_input(continuation), continue_turn]`, done·blocked·예산이면 `Modes.Exit` | ● | `examples/modes` `TestGoalLoop`·`TestGoalStops` |
+| 32 | `/goal` 품질 게이트: 셸 명령이 실패하면 judge 를 부르지 않음 | 모드 `goal` 의 Push 를 `[verify, goal]` 로 — verify 가 실패하면 settle 을 빼므로 판단기가 판정하지 않음 | ● | `TestGoalCheckFirst` |
+| 33 | `/goal` contract·subgoal: 완료 조건을 judge 프롬프트에 넣음 | #31 의 판정 지시에 조건을 넣음. 모드 인자(`Arg`)나 세트 상태로 보관 | ● | 구현 없음 |
+| 34 | `/goal` 진행 중 사용자 입력 우선 | 실행 중 입력은 Steer → 입력함 → 다음 턴의 2 turn.start 가 가져감. 판정을 미루려면 20 에서 `Conv().Inbox()` 를 확인 | ● | 미룸 규칙은 구현 없음 (입력은 다음 턴에 합쳐짐) |
+| 35 | `/goal` Ctrl+C → 목표 일시 정지 | Abort 로 run 이 aborted. 모드는 예약이 없으면 그대로 남는다. 일시 정지가 필요하면 22 run.settled 에서 `Modes.Exit` | △ | 구현 없음. Hermes 의 pause/resume(턴 예산 초기화)은 모드에 상태가 없어 세트 상태로 따로 둔다 |
+| 36 | `/goal` WAIT: 백그라운드 작업이 끝날 때까지 턴을 쓰지 않고 대기 후 자동 재개 | run 밖에서 다음 run 을 시작하는 주체가 필요 | ✕ | R28 에서 하지 않기로 함 |
+| 37 | `/plan`: 계획 전용 턴 (`plan_prompt.py`, 프롬프트 지시뿐) | 모드 `plan`: 4 context.inject 지시 + 7 request.finalize 에서 write·edit·bash 제거 + 16 tool.before ShortCircuit, 20 에서 settle 이면 `Modes.Exit` | ● | `TestPlanMode`, 대화형 `TestInteractive`. Hermes 와 달리 실제로 막는다 |
+| 38 | 모델이 모드에 들어감 | `mode` 도구 → 예약 → 다음 turn.start 에서 교체 | ● | harness `TestModeToolSwitchesNextTurn` |
+| 39 | 칸반 작업 카드 goal 루프: 카드 상태를 먼저 보고 판정, WAIT 는 continue 로 | #31 과 같은 형태. 판단기가 외부 상태(카드)를 먼저 조회 | ● | 구현 없음 |
+| 40 | `/loop`·heartbeat: 주기적으로 새 입력 주입 | run 밖 타이머 필요 | ✕ | R28 에서 하지 않기로 함 |
+| 41 | cron: 프로세스를 넘는 예약 실행 | 에이전트 밖 스케줄러가 `Agent.Start` 를 부름 | ✕ | 범위 밖 (L3 이상의 일) |
+| 42 | MoA: reference 모델들의 답을 aggregator 에 붙임 | 9 model.call 을 감싸는 세트 (`ctx.Next(req)` 전후로 reference 호출) | ● | 구현 없음 |
+| 43 | codex app-server: 턴 전체를 외부 에이전트 프로세스에 넘김 | 외부 에이전트를 17 tool.execute 나 9 model.call 안에서 부를 수 있다. 외부 에이전트 안의 도구 호출·승인은 이 하네스의 step 을 거치지 않는다 | △ | 구현 없음 |
+
+### 결론 (R27)
+
+- Hermes 의 루프 차이는 **턴 경계의 제어**에서 나온다. dynamic_react 에서는 20 turn.finish(계속할지)와 모드 교체(다음 턴의 세트 묶음)로 표현되고, core 는 바뀌지 않는다.
+- ✕ 는 모두 **run 밖에서 다음 run 을 시작하는 주체**가 필요한 기능이다 (#36, #40, #41). R28 에서 대기 제어를 하지 않기로 했으므로 범위 밖으로 둔다.
+- 판정의 근거: Hermes 의 judge 는 작업 모델의 마지막 답 텍스트(최대 4000자)만 본다. dynamic_react 의 판단기는 20 에서 `Conv().Transcript()`·`Tools()` 로 하네스가 관찰한 도구 결과도 볼 수 있다. 다만 examples/modes 의 goal 세트는 Hermes 와 같이 마지막 답만 쓴다.

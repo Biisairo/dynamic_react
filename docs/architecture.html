@@ -1,0 +1,1856 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dynamic_react 구조 — 22역 선로와 주입 세트</title>
+<style>
+:root{
+  --paper:#EEF2F5; --panel:#F8FAFB; --ink:#1C2733; --ink2:#4A5868; --rail:#8A97A6; --hair:#D3DAE1;
+  --go:#2E8B57; --retry:#C98A12; --loop:#2F6FB5; --end:#5C6F86; --halt:#C2412D; --mode:#7A5CC0;
+  --l0:#5E6B78; --l1:#1F8A8A; --l2:#3B5BA9; --l3:#6E5A8F; --ex:#8A7A52;
+  --run:#1C2733; --turn:#3F6E9E; --call:#1F8A8A; --event:#58A7A7; --tool:#B07A1E;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+body{word-break:keep-all;overflow-wrap:break-word;margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono);font-size:.88em}
+code{background:#E3E9EE;padding:.05em .35em;border-radius:3px}
+a{color:var(--l2)}
+:focus-visible{outline:3px solid var(--l2);outline-offset:2px}
+
+/* 상단 바 */
+.bar{position:sticky;top:0;z-index:20;background:rgba(238,242,245,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--hair)}
+.bar nav{max-width:1440px;margin:0 auto;padding:.55rem 1.25rem;display:flex;gap:1.1rem;align-items:baseline;overflow-x:auto;white-space:nowrap}
+.bar .brand{font-weight:800;letter-spacing:-.01em;margin-right:.4rem}
+.bar a{color:var(--ink2);text-decoration:none;font-size:.92rem}
+.bar a:hover,.bar a.on{color:var(--ink)}
+.bar a.on{box-shadow:inset 0 -2px 0 var(--ink)}
+
+main{max-width:1440px;margin:0 auto;padding:0 1.25rem 5rem}
+section{padding-top:3.2rem}
+h1{font-size:clamp(2rem,4.4vw,3.3rem);line-height:1.08;letter-spacing:-.035em;font-weight:800;margin:2.2rem 0 .7rem;max-width:22ch}
+h2{font-size:1.75rem;letter-spacing:-.02em;line-height:1.2;margin:0 0 .5rem;font-weight:800}
+h3{font-size:1.08rem;margin:1.4rem 0 .35rem}
+.lede{color:var(--ink2);max-width:68ch;margin:0 0 1.2rem}
+p{max-width:72ch}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:1.25rem;align-items:start}
+@media (max-width:920px){.cols{grid-template-columns:minmax(0,1fr)}}
+.cols>*{min-width:0}
+.scrollx{overflow-x:auto}
+.board{background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:.9rem}
+.side{background:#fff;border:1px solid var(--hair);border-radius:10px;padding:1rem 1.1rem;font-size:.94rem}
+.side h3{margin-top:0}
+.muted{color:var(--ink2)}
+.small{font-size:.86rem}
+
+/* 버튼 */
+.ctrl{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;margin:.2rem 0 .8rem}
+button{font:inherit;font-size:.9rem;border:1px solid var(--rail);background:#fff;color:var(--ink);border-radius:6px;padding:.32rem .7rem;cursor:pointer}
+button:hover{border-color:var(--ink)}
+button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.seg{display:inline-flex;border:1px solid var(--rail);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;border-right:1px solid var(--hair)}
+.seg button:last-child{border-right:0}
+label.inline{font-size:.86rem;color:var(--ink2);display:inline-flex;gap:.35rem;align-items:center}
+
+/* core + 세트 */
+.coremat .rowg{transition:transform .7s cubic-bezier(.3,.7,.2,1),opacity .5s}
+@media (prefers-reduced-motion: reduce){.coremat .rowg{transition:none}}
+.coremat .rowlabel{font:700 15px var(--sans)}
+.coremat .rowdesc{font:12.5px var(--sans);fill:var(--ink2)}
+.coremat .cell{transition:fill .4s,opacity .4s,stroke .3s}
+.coremat .slot{fill:#fff;stroke:var(--ink);stroke-width:2}
+.coremat .slot.empty{fill:#FBE3DE;stroke:var(--halt)}
+.coremat .slotnum{font:700 13px var(--sans);text-anchor:middle;dominant-baseline:central}
+.coremat .stepname{font:12px var(--mono);fill:var(--ink2)}
+.coremat .col{cursor:pointer}
+.coremat .colhit{fill:transparent}
+.coremat .col:hover .colhit,.coremat .col.sel .colhit{fill:rgba(28,39,51,.06)}
+.coremat .playhead{fill:#FFE08A;transition:transform .35s ease}
+@media (prefers-reduced-motion: reduce){.coremat .playhead{transition:none}}
+.coremat .wrapcell{fill:var(--l3);transition:opacity .4s}
+.coremat .pulse{stroke:var(--ink);stroke-width:3}
+.stages{display:flex;flex-wrap:wrap;gap:.35rem}
+.stages button,.stepbar button{display:inline-flex;gap:.4rem;align-items:baseline}
+.stages button b,.stepbar button b{font-family:var(--mono);font-size:.8rem;opacity:.7}
+.legend{display:flex;flex-wrap:wrap;gap:.9rem;font-size:.84rem;color:var(--ink2);margin:.6rem 0 0}
+.legend span{display:inline-flex;gap:.35rem;align-items:center}
+.legend i{display:inline-block;width:18px;height:14px;border-radius:3px}
+.narr{background:#fff;border:1px solid var(--hair);border-left:5px solid var(--mode);border-radius:8px;padding:.6rem .9rem;min-height:3.2rem;margin-top:.7rem}
+.narr b{font-weight:800}
+.colcap{font-size:.92rem;margin-top:.5rem;min-height:1.5rem}
+
+pre.code{font-family:var(--mono);font-size:.8rem;background:#1C2733;color:#E6EDF3;border-radius:8px;padding:.7rem .8rem;overflow-x:auto;line-height:1.5;margin:.4rem 0}
+pre.code .add{background:rgba(122,92,192,.45);border-radius:3px}
+pre.code .err{color:#FF9B8A}
+pre.code .cm{color:#8FA3B8}
+.coremat .card{transition:fill .4s,stroke .4s}
+.coremat .shelflab{font:700 14px var(--sans);fill:var(--rail)}
+.coremat .divlab{font:700 14px var(--sans);fill:var(--l2)}
+/* 레이어 타일 */
+.tile{cursor:pointer}
+.tile rect.box{fill:#fff;stroke-width:2;rx:10;transition:stroke-width .2s,filter .2s}
+.tile:hover rect.box,.tile.sel rect.box{stroke-width:3.6}
+.tile.sel rect.box{filter:drop-shadow(0 3px 6px rgba(28,39,51,.18))}
+.tile text.tt{font:800 17px var(--sans);fill:var(--ink)}
+.tile text.tq{font:13px var(--sans);fill:var(--ink2)}
+.tile text.mini{font:11.5px var(--mono);fill:var(--ink2)}
+.band{transition:opacity .45s}
+.band.faded{opacity:.12}
+.band text.bl{font:800 18px var(--sans)}
+.band text.bq{font:13px var(--sans);fill:var(--ink2)}
+.flow{fill:none;stroke:var(--rail);stroke-width:1.8;marker-end:url(#arrL);transition:stroke .2s,stroke-width .2s}
+.flow.hl{stroke:var(--ink);stroke-width:2.8}
+.flowlab{font:12px var(--sans);fill:var(--ink2)}
+.maptable button{all:unset;cursor:pointer;display:block;width:100%;padding:.32rem .1rem;border-bottom:1px dashed var(--hair);font-size:.86rem}
+.maptable button:hover,.maptable button:focus-visible{background:#EEF2F5}
+.maptable b{font-family:var(--mono);font-weight:700}
+.focusbox{fill:rgba(255,224,138,.22);stroke:#C98A12;stroke-width:3;stroke-dasharray:8 5}
+.focuslab{font:800 15px var(--sans);fill:#7A4F00;paint-order:stroke;stroke:#fff;stroke-width:5px}
+.hl-outline{outline:3px dashed #C98A12;outline-offset:4px;border-radius:8px}
+/* 공통: 차례로 보기 */
+.stepbar{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;margin:.2rem 0 .7rem}
+.part{transition:opacity .4s}
+.dimparts .part{opacity:.14}
+.dimparts .part.on{opacity:1}
+.st.dimmed{opacity:.18}
+.phaseband{transition:fill-opacity .4s}
+.phaselab{font:800 14px var(--sans);paint-order:stroke;stroke:#F8FAFB;stroke-width:5px}
+.phaseq{font:13px var(--sans);fill:var(--ink2)}
+.twocol{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:1rem;align-items:start}
+@media (max-width:920px){.twocol{grid-template-columns:minmax(0,1fr)}}
+.jsonl div.flash{background:#FFF3CC}
+.jsonl div.hide{display:none}
+.boxg{cursor:pointer}
+.boxg rect{fill:#fff;stroke:var(--rail);stroke-width:1.8;rx:9;transition:stroke .2s,stroke-width .2s,fill .2s}
+.boxg.on rect{stroke:var(--ink);stroke-width:3;fill:#FFF8E1}
+.boxg text{font:600 15px var(--sans);text-anchor:middle;dominant-baseline:central;fill:var(--ink)}
+.boxg text.sub{font:12.5px var(--sans);fill:var(--ink2)}
+.sigpick{display:flex;flex-wrap:wrap;gap:.6rem 1.2rem;margin:.4rem 0 .6rem}
+.sigpick .grp{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
+.sigpick .grp span.gl{font-size:.82rem;color:var(--ink2);margin-right:.2rem}
+.sigpick button{font-family:var(--mono);font-size:.8rem;padding:.2rem .55rem}
+details.full{margin-top:1rem}
+details.full summary{cursor:pointer;font-weight:700;margin-bottom:.5rem}
+/* 선로도 */
+svg{display:block;width:100%;height:auto}
+.track-main{fill:none;stroke:var(--rail);stroke-width:5;stroke-linecap:round}
+.track-tie{fill:none;stroke:var(--paper);stroke-width:1.4;stroke-dasharray:2 9}
+.branch{fill:none;stroke-width:2.6;stroke-dasharray:7 6;opacity:.85}
+.branch.faint{opacity:.28}
+.st circle.ring{fill:#fff;stroke-width:3}
+.st text.num{font:700 12px var(--sans);text-anchor:middle;dominant-baseline:central;fill:var(--ink)}
+.st text.lab{font:13.5px var(--mono);text-anchor:middle;fill:var(--ink2)}
+.st{cursor:pointer}
+.st:hover circle.ring,.st.sel circle.ring{stroke:var(--ink)!important;stroke-width:4}
+.st.sel text.lab{fill:var(--ink);font-weight:700}
+.st .modeDot{fill:var(--mode);opacity:0;transition:opacity .4s}
+.st.moded .modeDot{opacity:1}
+.st.lit circle.ring{fill:#FFF6D9}
+.rowlab{font:600 13.5px var(--sans);fill:var(--rail)}
+.train circle{fill:var(--ink)}
+.train .glow{fill:var(--ink);opacity:.15}
+.lamp rect{rx:5}
+.lamp text{font:700 12px var(--mono);dominant-baseline:central}
+.crew{font:700 13px var(--sans)}
+.log{list-style:none;margin:.6rem 0 0;padding:0;max-height:250px;overflow:auto;font-size:.88rem;border-top:1px solid var(--hair)}
+.log li{padding:.32rem 0;border-bottom:1px dashed var(--hair);display:grid;grid-template-columns:2.2rem 1fr;gap:.4rem}
+.log li .k{font-family:var(--mono);color:var(--rail);text-align:right}
+.log li.now{background:#FFF6D9}
+
+/* 신호 칩 */
+.sig{display:inline-flex;align-items:center;gap:.3rem;font-family:var(--mono);font-size:.8rem;padding:.05rem .45rem;border-radius:999px;border:1.5px solid currentColor;margin:.1rem .15rem .1rem 0;white-space:nowrap}
+.sig::before{content:"";width:.55rem;height:.55rem;border-radius:50%;background:currentColor}
+.sig.effect::before{background:transparent;border:1.5px solid currentColor}
+.c-go{color:var(--go)}.c-retry{color:var(--retry)}.c-loop{color:var(--loop)}.c-end{color:var(--end)}.c-halt{color:var(--halt)}.c-effect{color:var(--mode)}
+
+/* 레이어 지도 */
+.layer-band rect{rx:10}
+.mod{cursor:pointer}
+.mod rect{fill:#fff;stroke-width:2;rx:7}
+.mod text{font:600 16px var(--sans);text-anchor:middle;dominant-baseline:central;fill:var(--ink)}
+.mod text.sub{font:400 12.5px var(--sans);fill:var(--ink2)}
+.mod:hover rect,.mod.sel rect{stroke-width:3.4}
+.dep{fill:none;stroke:var(--rail);stroke-width:1.5;marker-end:url(#arr)}
+.dep.hl{stroke:var(--ink);stroke-width:2.4}
+.bandlab{font:800 17px var(--sans)}
+.bandsub{font:13px var(--sans);fill:var(--ink2)}
+
+/* 세트 층 */
+.stepchips{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.8rem}
+.stepchips button{font-family:var(--mono);font-size:.78rem;padding:.2rem .45rem}
+.stack{display:flex;flex-direction:column;gap:0;max-width:520px}
+.wrapframe{border:2px dashed var(--l3);border-radius:12px;padding:.6rem .7rem .7rem;position:relative}
+.wrapframe .wl{font-size:.8rem;color:var(--l3);font-weight:700;margin-bottom:.4rem}
+.layer{border-radius:8px;padding:.55rem .8rem;color:#fff;font-weight:700;display:flex;justify-content:space-between;gap:.6rem;align-items:baseline;transition:opacity .25s}
+.layer .what{font-weight:400;font-size:.86rem;opacity:.95;text-align:right}
+.layer.shadow{opacity:.32;filter:grayscale(.6)}
+.nextarrow{font-family:var(--mono);font-size:.78rem;color:var(--ink2);padding:.1rem 0 .1rem 1rem}
+.nextarrow.cut{color:var(--halt)}
+.core-line{margin-top:.5rem;font-size:.82rem;color:var(--ink2);border-top:3px solid var(--rail);padding-top:.35rem}
+
+/* 모드 시뮬레이터 */
+.actors{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin:.6rem 0}
+@media (max-width:700px){.actors{grid-template-columns:1fr}}
+.actor{background:#fff;border:1px solid var(--hair);border-radius:8px;padding:.6rem .7rem}
+.actor h4{margin:0 0 .4rem;font-size:.92rem}
+.actor button{margin:.15rem .2rem .15rem 0}
+.verdict{list-style:none;margin:.5rem 0 0;padding:0;font-size:.88rem;max-height:220px;overflow:auto}
+.verdict li{padding:.3rem 0;border-bottom:1px dashed var(--hair)}
+.ok{color:var(--go);font-weight:700}.no{color:var(--halt);font-weight:700}
+.statebox{font-family:var(--mono);font-size:.86rem;background:#fff;border:1px solid var(--hair);border-radius:8px;padding:.5rem .7rem;margin-top:.6rem}
+.mnode rect{rx:22;stroke-width:2.5;fill:#fff;transition:fill .3s,stroke .3s}
+.mnode.on rect{fill:var(--mode);stroke:var(--mode)}
+.mnode text{font:700 15px var(--sans);text-anchor:middle;dominant-baseline:central}
+.mnode.on text{fill:#fff}
+.pend{fill:none;stroke:var(--mode);stroke-width:2.5;stroke-dasharray:6 6;marker-end:url(#arrm)}
+
+/* 표 */
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:#fff;border:1px solid var(--hair);border-radius:8px;overflow:hidden}
+th,td{text-align:left;word-break:keep-all;padding:.42rem .6rem;border-bottom:1px solid var(--hair);vertical-align:top}
+th{background:#E6ECF1;font-weight:700}
+tr:last-child td{border-bottom:0}
+
+/* 저장 */
+.jsonl{font-family:var(--mono);font-size:.8rem;background:#fff;border:1px solid var(--hair);border-radius:8px;padding:.5rem 0;overflow-x:auto}
+.jsonl div{padding:.12rem .8rem;white-space:pre;border-left:4px solid transparent}
+.jsonl div.t-message{border-left-color:var(--l2)}
+.jsonl div.t-edit{border-left-color:var(--retry)}
+.jsonl div.t-state{border-left-color:var(--mode)}
+.jsonl div.dim{opacity:.25}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem;margin:.4rem 0}
+.evchip{font-family:var(--mono);font-size:.8rem}
+.flowarrow{fill:none;stroke:var(--ink2);stroke-width:1.8;marker-end:url(#arr2)}
+.flowbox rect{fill:#fff;stroke:var(--rail);stroke-width:1.6;rx:8}
+.flowbox text{font:600 17px var(--sans);text-anchor:middle;dominant-baseline:central;fill:var(--ink)}
+.flowbox text.sub{font:400 13.5px var(--sans);fill:var(--ink2)}
+.flowbox.hl rect{stroke:var(--ink);stroke-width:2.6}
+.flowbox{cursor:pointer}
+.timeline text{font:14px var(--sans)}
+.timeline text:not([fill]){fill:var(--ink2)}
+.tl-part{transition:opacity .3s}
+.tl-dim .tl-part{opacity:.18}
+.tl-dim .tl-part.on{opacity:1}
+footer{border-top:1px solid var(--hair);margin-top:4rem;padding-top:1rem;color:var(--ink2);font-size:.86rem}
+.kbd{font-family:var(--mono);font-size:.8rem;border:1px solid var(--rail);border-bottom-width:2px;border-radius:4px;padding:0 .3rem;background:#fff}
+</style>
+</head>
+<body>
+<header class="bar">
+  <nav aria-label="문서 목차">
+    <span class="brand">dynamic_react</span>
+    <a href="#core">core + 세트</a>
+    <a href="#layers">레이어</a>
+    <a href="#track">선로도</a>
+    <a href="#modes">모드</a>
+    <a href="#run">run 제어·이벤트</a>
+    <a href="#store">저장</a>
+    <a href="#model">모델 호출</a>
+    <a href="#signals">신호표</a>
+  </nav>
+</header>
+
+<main>
+<!-- ───────────────────────── 선로도 ───────────────────────── -->
+<section id="core" style="padding-top:0">
+  <h1>core 는 빈 칸 22개짜리 틀이다. 세트를 끼워야 돈다</h1>
+  <p class="lede">core 는 step 의 순서와 신호 규칙만 가진다. 칸 안에서 할 일은 하나도 모른다. 일은 세트(<code>inject.FunctionSet</code>)가 한다. 세트는 22칸 중 자기가 맡을 칸에만 함수가 있는 카드이고, <code>inject.Bind</code> 가 카드를 겹쳐 core 에 끼운다. 단계를 눌러 카드를 하나씩 끼워 보고, "모드 전환 재생"으로 실행 중에 카드 묶음이 바뀌는 순간을 보라.</p>
+  <div class="cols">
+    <div class="board">
+      <div class="ctrl"><div class="stages" id="coreStages" role="group" aria-label="주입 단계"></div></div>
+      <div class="ctrl"><button class="primary" id="coreSwitchBtn">모드 전환 재생</button><button id="coreSweepBtn">한 턴 훑기 (core 가 칸마다 Dispatch)</button></div>
+      <svg id="coreSvg" class="coremat" viewBox="0 0 1060 790" role="img" aria-label="세트 카드를 core 에 주입하는 그림"></svg>
+      <div class="legend">
+        <span><i style="background:var(--l2)"></i>core 가 부르는 함수 (맨 위)</span>
+        <span><i style="background:var(--l2);opacity:.55"></i>ctx.Next() 로 이어서 불림</span>
+        <span><i style="background:repeating-linear-gradient(45deg,#C9D1D9 0 3px,#EEF2F5 3px 6px)"></i>가려짐</span>
+        <span><i style="background:#fff;border:2px dashed var(--l2)"></i>빈 동작 (칸만 채움)</span>
+        <span><i style="background:#fff;border:2px dashed #8A97A6"></i>등록만 됨 (끼우지 않음)</span>
+        <span><i style="background:#FBE3DE;border:2px solid var(--halt)"></i>빈 칸 → Bind 거부</span>
+      </div>
+      <div class="colcap" id="coreCap"></div>
+      <div class="narr" id="coreNarr" aria-live="polite"></div>
+    </div>
+    <aside class="side">
+      <h3>카드 한 장 = FunctionSet 하나</h3>
+<pre class="code small">inject.FunctionSet{
+  Name: "guard",
+  ToolBefore: func(ctx, call) {
+    if bad(call) { return 차단 }
+    return ctx.Next(call) // 아래 카드로
+  },
+  // 나머지 21개 칸은 nil
+}</pre>
+      <p class="small">카드의 이빨은 nil 이 아닌 칸이다. guard 는 16번 칸에만 이빨이 있다.</p>
+      <h3>지금 코드</h3>
+      <pre class="code small" id="coreCode"></pre>
+      <h3>이 그림의 부분 = 모듈</h3>
+      <div class="maptable" id="coreMap"></div>
+      <p class="small muted">core 는 세트를 직접 보지 않는다. <code>core.Dispatcher</code> 인터페이스 하나(<code>Dispatch(step, input, view)</code>)만 부르고, Bind 결과가 그 인터페이스를 구현한다. 이것이 주입 지점이다.</p>
+    </aside>
+  </div>
+</section>
+
+<section id="layers">
+  <h2>모듈은 네 층이고, 층마다 답하는 질문이 하나다</h2>
+  <p class="lede">맨 위 그림을 그대로 층으로 나눈 것이다. 아래 층은 위 층을 모르고, 의존은 위에서 아래로만 흐른다. 아래부터 하나씩 쌓아 보면 왜 이렇게 나눴는지가 보인다. 모듈을 누르면 자세한 설명이 나오고, "맨 위 그림에서 보기"를 누르면 그 모듈이 맡은 부분을 그림에서 짚어 준다.</p>
+  <div class="cols">
+    <div class="board">
+      <div class="ctrl"><span class="muted small">아래부터 쌓기</span><div class="stages" id="layerSteps" role="group" aria-label="층 쌓기"></div></div>
+      <svg id="layerSvg" viewBox="0 0 1060 830" role="img" aria-label="네 층과 모듈"></svg>
+      <div class="narr" id="layerNarr" aria-live="polite"></div>
+    </div>
+    <aside class="side" id="modDetail"></aside>
+  </div>
+</section>
+
+<section id="track">
+  <h2>run 한 번은 22칸을 어떤 순서로 지나나</h2>
+  <p class="lede">22칸은 네 묶음이고, 묶음마다 답하는 질문이 하나다. 무엇을 보여 줄까, 어떻게 물을까, 답을 어떻게 다룰까, 계속할까 끝낼까. "차례로 보기"로 묶음을 하나씩 짚고, "열차 달려 보기"로 실제 run 이 신호를 따라 경로를 바꾸는 모습을 보라. 역을 누르면 오른쪽에 그 칸의 일과 허용 신호가 나온다.</p>
+  <div class="cols">
+    <div class="board">
+      <div class="stepbar"><span class="muted small">차례로 보기</span><span class="stages" id="trackPhases"></span></div>
+      <div class="narr" id="trackNarr" style="margin:0 0 .7rem"></div>
+      <div class="ctrl" role="group" aria-label="시나리오"><span class="muted small">열차 달려 보기</span>
+        <div class="seg" id="scenarioSeg"></div>
+      </div>
+      <div class="ctrl">
+        <button id="playBtn" class="primary">재생</button>
+        <button id="stepBtn">한 역씩</button>
+        <button id="resetBtn">처음으로</button>
+        <label class="inline">속도 <input id="speed" type="range" min="250" max="1400" value="700" step="50" aria-label="역 사이 이동 시간"></label>
+      </div>
+      <svg id="trackSvg" viewBox="0 0 1060 590" role="img" aria-label="22개 step 선로도"></svg>
+      <ol class="log" id="log" aria-live="polite"></ol>
+    </div>
+    <aside class="side" id="stepDetail" aria-live="polite"></aside>
+  </div>
+</section>
+
+<!-- ───────────────────────── 레이어 ───────────────────────── -->
+<!-- ───────────────────────── 모드 ───────────────────────── -->
+<section id="modes">
+  <h2>실행 중에 카드 묶음을 누가, 언제 바꾸나</h2>
+  <p class="lede">모드는 맨 위 그림의 카드 묶음을 바꾸는 장치다. 질문 네 개로 나누면 단순하다. 누가 바꾸나, 언제 바뀌나, 어떻게 끝나나, 어디에 남나. 아래 시간축은 run 두 번 동안 카드 묶음이 어떻게 바뀌는지 보여 준다.</p>
+  <div class="cols">
+    <div class="board">
+      <div class="stepbar"><span class="muted small">차례로 보기</span><span class="stages" id="modeSteps"></span></div>
+      <svg id="modeTl" viewBox="0 0 1000 330" role="img" aria-label="모드가 바뀌는 시간축"></svg>
+      <div class="narr" id="modeNarr"></div>
+      <div class="ctrl" style="margin-top:.7rem"><button class="primary" id="modeToCore">맨 위 그림에서 모드 전환 재생</button></div>
+      <h3>직접 해 보기 — 권한 규칙</h3>
+      <p class="small muted">버튼은 harness 의 <code>RequestMode</code> 와 같은 규칙으로 판정한다.</p>
+      <svg id="modeSvg" style="max-width:560px;margin:0 auto" viewBox="0 0 640 245" role="img" aria-label="모드 상태도"></svg>
+      <div class="actors">
+        <div class="actor"><h4>사용자 (<code>/mode</code>)</h4>
+          <button data-req="user:goal">goal 진입</button><button data-req="user:plan">plan 진입</button><button data-req="user:">강제 이탈</button></div>
+        <div class="actor"><h4>모델 (<code>mode</code> 도구)</h4>
+          <button data-req="model:goal">goal 진입</button><button data-req="model:plan">plan 진입</button><button data-req="model:">이탈 시도</button></div>
+        <div class="actor"><h4>판단기 세트 (<code>Exit</code>)</h4>
+          <button data-req="set:">이탈</button><button data-req="set:goal">진입 시도</button></div>
+      </div>
+      <div class="ctrl"><button class="primary" id="applyBtn">다음 turn.start 도착 (예약 적용)</button><button id="modeReset">초기화</button></div>
+      <div class="statebox" id="modeState"></div>
+      <ul class="verdict" id="modeLog" aria-live="polite"></ul>
+    
+    </div>
+    <aside class="side">
+      <h3>권한 표 (HN-FR-62)</h3>
+      <table>
+        <tr><th>누가</th><th>진입</th><th>이탈</th></tr>
+        <tr><td>사용자</td><td>항상</td><td>항상</td></tr>
+        <tr><td>모델</td><td>기본 모드이고 예약이 없을 때</td><td class="no">불가</td></tr>
+        <tr><td>판단기 세트</td><td class="no">불가</td><td>활성 모드가 있을 때. 사용자 예약이 있으면 사용자가 이긴다</td></tr>
+      </table>
+      <h3>왜 이렇게 나눴나</h3>
+      <p class="small">goal 모드에서 작업 모델이 "다 했다"고 말하고 루프를 끝내면, 판정이 의미가 없다. 그래서 이탈은 판정을 맡은 세트와 사람만 한다. 모델에게 진입을 허락한 것은 모델이 "이 일은 계획부터 세우자" 같은 판단을 할 수 있게 하기 위해서다.</p>
+      <h3>저장</h3>
+      <p class="small">활성 모드·인자·예약은 세션 상태 <code>harness.mode</code> 에 저장된다. 이탈하기 전까지 run, <code>/resume</code>, 프로세스 재시작을 넘어 유지된다.</p>
+    </aside>
+  </div>
+</section>
+
+<!-- ───────────────────────── run 제어·이벤트 ───────────────────────── -->
+<section id="run">
+  <h2>사람은 run 에 어떻게 끼어들고, 화면은 무엇을 받나</h2>
+  <p class="lede">화면(L3)은 agent 에 run 을 맡긴 뒤 네 가지로 끼어든다. 끼어들기마다 작용하는 곳이 다르다. 반대 방향으로, 화면이 그리는 것은 모두 이벤트라는 통로 하나로 온다. 이벤트는 맨 위 그림의 보라색 래핑 막대가 만든다.</p>
+  <div class="cols">
+    <div class="board">
+      <h3 style="margin-top:0">끼어들기 — 무엇이 어디에 작용하나</h3>
+      <div class="stepbar"><span class="muted small">차례로 보기</span><span class="stages" id="tlSeg"></span></div>
+      <svg id="tlSvg" viewBox="0 0 1000 300" role="img" aria-label="run 연쇄 시간축"></svg>
+      <div class="narr" id="tlNarr"></div>
+      <h3>이벤트 — 어디서 나와 어디로 가나</h3>
+      <svg id="evSvg" viewBox="0 0 1000 260" role="img" aria-label="이벤트가 화면까지 가는 길"></svg>
+      <div class="chips" id="evChips"></div>
+      <div class="narr" id="evNarr"></div>
+      <div class="ctrl" style="margin-top:.7rem"><button id="evToCore">맨 위 그림에서 래핑 막대 보기</button></div>
+    </div>
+    <aside class="side" id="tlNote"></aside>
+  </div>
+</section>
+
+<!-- ───────────────────────── 저장 ───────────────────────── -->
+<section id="store">
+  <h2>run 이 끝나면 무엇이 남고, 다음 run 은 어떻게 이어받나</h2>
+  <p class="lede">남는 것은 세션 파일 하나다. run 동안 한 줄씩 덧붙이고, 다음 run 의 1번 칸(<code>run.start</code>)이 처음부터 다시 읽어 대화와 카드 상태를 되살린다. 카드마다 자기 상태 공간이 있고, 그 이름이 카드 이름이다.</p>
+  <div class="cols">
+    <div class="board">
+      <div class="stepbar"><span class="muted small">차례로 보기</span><span class="stages" id="storeSteps"></span></div>
+      <div class="twocol">
+        <div><div class="chips" id="lineFilter"></div><div class="jsonl" id="jsonl"></div></div>
+        <svg id="storeSvg" viewBox="0 0 520 450" role="img" aria-label="세션 파일을 재생해 이어받는 그림"></svg>
+      </div>
+      <div class="narr" id="storeNarr"></div>
+      <div class="ctrl" style="margin-top:.7rem"><button id="storeToCore">맨 위 그림에서 카드 보기</button></div>
+    </div>
+    <aside class="side">
+      <h3>세트 상태 네임스페이스</h3>
+      <p class="small">세트 이름이 곧 상태의 이름공간이다. 세트는 자기 공간에만 쓰고, 공개(publish)한 키만 다른 세트가 읽는다.</p>
+      <table class="small">
+        <tr><th>공간</th><th>쓰는 것</th></tr>
+        <tr><td><code>base</code></td><td><code>inbox.consumed</code>(공개, Steer 판단), <code>edits.saved</code></td></tr>
+        <tr><td><code>resilient</code></td><td>재시도·압축 진행 (run 단위)</td></tr>
+        <tr><td><code>verify</code></td><td><code>progress</code> 검증 횟수·마지막 결과</td></tr>
+        <tr><td><code>goal</code></td><td><code>progress</code> 목표·판정 턴 수 (예시)</td></tr>
+        <tr><td><code>harness.mode</code></td><td><code>active</code>·<code>arg</code>·<code>pending</code> (harness 가 씀, 세트 이름으로 쓸 수 없음)</td></tr>
+      </table>
+      <h3>사용자 파일</h3>
+      <table class="small">
+        <tr><td><code>~/.dynamic_react/config.json</code><br>모델, thinking, 도구, 압축, 재시도, <code>aux</code>, provider, 승인 규칙, 세트 배치</td></tr>
+        <tr><td><code>~/.dynamic_react/auth.json</code><br>API 키 (0600). 키는 여기에만 둔다</td></tr>
+        <tr><td><code>&lt;cwd&gt;/.dynamic_react/config.json</code><br>프로젝트 승인 규칙만</td></tr>
+      </table>
+    </aside>
+  </div>
+</section>
+
+<!-- ───────────────────────── 모델 호출 ───────────────────────── -->
+<section id="model">
+  <h2>카드는 모델을 어떻게 부르나</h2>
+  <p class="lede">모델을 부르는 일도 칸 몇 개에 나뉘어 있다. 6·7번에서 요청을 만들고, 8번에서 모델을 고르고, 9번에서 보낸다. 답은 10·11·12번으로 돌아온다. 판단기 같은 단발 호출은 칸을 거치지 않고 같은 통로를 쓴다. 상자를 누르면 설명이 나온다.</p>
+  <div class="cols">
+    <div class="board">
+      <div class="stepbar"><span class="muted small">차례로 보기</span><span class="stages" id="modelSteps"></span></div>
+      <svg id="modelSvg" viewBox="0 0 1000 470" role="img" aria-label="모델 호출 경로"></svg>
+      <div class="narr" id="modelNarr"></div>
+      <div class="ctrl" style="margin-top:.7rem"><button id="modelToCore">맨 위 그림에서 9번 칸 보기</button></div>
+    </div>
+    <aside class="side" id="modelNote"></aside>
+  </div>
+</section>
+
+<!-- ───────────────────────── 신호표 ───────────────────────── -->
+<section id="signals">
+  <h2>카드 함수는 core 에 어떻게 지시하나</h2>
+  <p class="lede">카드 함수는 결과와 함께 신호 배열을 돌려준다. core 는 그 신호만 보고 다음 칸을 정한다. 신호는 13종이고, 칸마다 쓸 수 있는 신호가 정해져 있다. 허용되지 않은 신호는 그 칸의 ctx 에 메서드가 없어서 컴파일되지 않는다. 신호를 골라 보라.</p>
+  <div class="cols">
+    <div class="board">
+      <div class="sigpick" id="sigPick"></div>
+      <svg id="sigSvg" viewBox="0 0 1000 300" role="img" aria-label="신호가 core 에 전달되는 그림"></svg>
+      <div class="narr" id="sigNarr"></div>
+      <details class="full"><summary>전체 신호표 펼치기</summary><div class="scrollx"><table id="sigTable"></table></div></details>
+    </div>
+    <aside class="side">
+      <h3>배열 규칙</h3>
+      <pre class="code small">return []Signal{
+  ctx.Rewrite(edit),   // 효과: 0개 이상
+  ctx.InjectInput(msg),
+  ctx.ContinueTurn(),  // 전이: 최대 1개, 맨 뒤
+}</pre>
+      <p class="small">전이 신호가 없으면 <code>next</code> 다. 단 12번 <code>call.error</code> 와 20번 <code>turn.finish</code> 는 <code>next</code> 를 허용하지 않는다. 다음에 할 일을 함수가 꼭 밝혀야 하는 갈림길이기 때문이다.</p>
+      <h3>효과와 전이</h3>
+      <p class="small"><b>효과 신호</b>는 상태에 작용하고 칸을 옮기지 않는다(편집 추가, 입력 넣기, 도구 선행 실행). <b>전이 신호</b>는 다음 칸을 정한다. core 는 효과를 배열 순서대로 적용한 뒤 전이한다.</p>
+    </aside>
+  </div>
+</section>
+
+<footer>
+  기준: 저장소 <code>dynamic_react</code> 커밋 <code>9177f68</code>(R27) 이후, 스펙 core v0.2 · inject v0.5 · sets v0.8 · harness v1.4 · agent v0.9 · terminal v0.6. 결정 기록 <code>docs/DECISIONS.md</code> (D1~D16, R1~R28), 사용법 <code>docs/INJECT.md</code>. 작성 2026-10-12.
+</footer>
+</main>
+
+<script>
+"use strict";
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const NS = "http://www.w3.org/2000/svg";
+const $ = s => document.querySelector(s);
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function h(tag, attrs = {}, html = "") {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  e.innerHTML = html;
+  return e;
+}
+
+function stepper(wrapSel, narrSel, steps, onStep) {
+  const wrap = $(wrapSel);
+  const go = i => {
+    [...wrap.children].forEach((b, j) => b.setAttribute("aria-pressed", j === i));
+    if (narrSel) $(narrSel).innerHTML = steps[i].say;
+    if (onStep) onStep(i, steps[i]);
+  };
+  steps.forEach((st, i) => { const b = h("button", {}, `<b>${i + 1}</b>${st.label}`); b.addEventListener("click", () => go(i)); wrap.appendChild(b); });
+  return go;
+}
+function markParts(svgEl, keys) {
+  svgEl.classList.toggle("dimparts", !!keys);
+  svgEl.querySelectorAll(".part").forEach(p => p.classList.toggle("on", !!keys && keys.some(k => p.classList.contains("p-" + k))));
+}
+
+/* ───────────── 데이터: 신호 ───────────── */
+const SIG = {
+  N:  {name:"next",          cls:"go",     dest:"다음 역",                 eff:false, what:"기본 진행"},
+  RC: {name:"recall",        cls:"retry",  dest:9,  eff:false, what:"같은 요청을 다시 호출"},
+  RS: {name:"reselect",      cls:"retry",  dest:8,  eff:false, what:"모델·provider 를 다시 고름"},
+  RB: {name:"rebuild",       cls:"retry",  dest:5,  eff:false, what:"투영부터 다시 (편집 반영)"},
+  RT: {name:"restart_turn",  cls:"retry",  dest:2,  eff:false, what:"이번 응답을 버리고 턴을 다시"},
+  CT: {name:"continue_turn", cls:"loop",   dest:2,  eff:false, what:"응답을 유지한 채 다음 턴"},
+  ST: {name:"skip_tools",    cls:"loop",   dest:19, eff:false, what:"도구를 실행하지 않고 주어진 결과 사용"},
+  SE: {name:"settle",        cls:"end",    dest:21, eff:false, what:"종료 절차로"},
+  SP: {name:"stop",          cls:"halt",   dest:22, eff:false, what:"즉시 정상 종료"},
+  F:  {name:"fail",          cls:"halt",   dest:22, eff:false, what:"에러 종료"},
+  W:  {name:"rewrite",       cls:"effect", dest:null, eff:true, what:"편집 로그에 편집 추가 (압축 등)"},
+  II: {name:"inject_input",  cls:"effect", dest:null, eff:true, what:"메시지를 모델에 넣음 (스트림 중이면 live, 아니면 입력함)"},
+  SO: {name:"start_tool",    cls:"effect", dest:null, eff:true, what:"스트림 도중 도구 선행 실행"},
+};
+const sigChip = k => `<span class="sig c-${SIG[k].cls}${SIG[k].eff ? " effect" : ""}" title="${SIG[k].what}">${SIG[k].name}</span>`;
+
+/* ───────────── 데이터: 22 step ───────────── */
+const UNIT = {run:"run 단위", turn:"턴 단위", call:"호출 단위", event:"스트림 이벤트마다", tool:"도구 호출마다"};
+const STEPS = [
+ null,
+ {id:"run.start",        unit:"run",   io:"RunInput → History",           sig:"N SP F W",            does:"세션을 불러와 이전 대화와 편집을 되살린다. 결과가 없는 도구 호출을 aborted 결과로 복구한다."},
+ {id:"turn.start",       unit:"turn",  io:"→ 이번 턴에 추가할 메시지",   sig:"N SE SP F",           does:"첫 턴은 사용자 입력, 이후 턴은 입력함(Steer, inject_input)에서 아직 쓰지 않은 메시지를 가져와 저장한다. 모드 예약이 여기 직전에 적용된다."},
+ {id:"context.maintain", unit:"turn",  io:"효과 신호로만 작용",           sig:"N SP F W",            does:"문맥이 임계치를 넘으면 오래된 구간을 요약으로 바꾸는 편집(rewrite)을 낸다."},
+ {id:"context.inject",   unit:"turn",  io:"→ 이번 요청에만 붙는 메시지", sig:"N F",                 does:"저장되지 않는 임시 메시지를 붙인다. 모드 세트가 지시(목표, 계획 규칙)를 넣는 곳이다."},
+ {id:"context.project",  unit:"turn",  io:"→ 모델이 볼 대화(투영)",       sig:"N F",                 does:"기록에 편집(요약·숨김·잘라내기)을 적용하고 임시 메시지를 끝에 붙인다."},
+ {id:"request.build",    unit:"call",  io:"→ Request",                    sig:"N F",                 does:"시스템 프롬프트, 도구 목록, 투영, 출력 한도, thinking 으로 요청을 만든다."},
+ {id:"request.finalize", unit:"call",  io:"Request → Request",            sig:"N F",                 does:"짝 없는 도구 호출 뒤에 aborted 결과를 끼우고, 캐시 힌트를 붙인다. plan 모드는 여기서 쓰기 도구를 뺀다."},
+ {id:"model.select",     unit:"call",  io:"Request → ModelInfo",          sig:"N RB SP F",           does:"설정의 모델을 카탈로그에서 찾아 문맥 크기·출력 한도를 알아낸다."},
+ {id:"model.call",       unit:"call",  io:"Request → 이벤트 스트림",      sig:"N F",                 does:"ModelCaller 로 provider 를 부른다. 스트림을 돌려주면 core 가 이벤트마다 10번 역을 부른다."},
+ {id:"stream.event",     unit:"event", io:"StreamEvent →",                sig:"N RC RS RT SP F II SO", does:"스트림 조각마다 불린다. 화면에 글자가 흐르는 곳이다. 여기서 신호를 내면 스트림을 끊고 경로를 바꾼다."},
+ {id:"stream.end",       unit:"call",  io:"응답 → 확정 응답",             sig:"N RC RT F",           does:"응답을 확정하고 선행 실행 중 버릴 것을 정한다."},
+ {id:"call.error",       unit:"call",  io:"CallError →",                  sig:"RC RS RB RT SP F W",  does:"호출이 실패했을 때만 온다. 재시도(recall), 압축 후 재구성(rewrite + rebuild), 실패 중에서 고른다. next 는 쓸 수 없다."},
+ {id:"response.classify",unit:"turn",  io:"—",                            sig:"N RC RS RB RT SP F W",does:"잘린 응답·조용한 문맥 초과를 감지해 재호출하거나 재구성한다."},
+ {id:"response.commit",  unit:"turn",  io:"—",                            sig:"N F",                 does:"응답을 세션에 저장한다. 이후로는 이 응답을 버릴 수 없다(restart_turn 불가)."},
+ {id:"tools.plan",       unit:"turn",  io:"도구 호출들 → 실행 계획",      sig:"N ST F",              does:"도구 호출을 그룹으로 나눈다. 기본은 하나씩 순서대로. 호출이 없으면 19번으로 바로 간다."},
+ {id:"tool.before",      unit:"tool",  io:"호출 → 호출 또는 차단 결과",   sig:"N F",                 does:"없는 도구·인자 스키마를 검사하고 승인(Gate)을 받는다. 막으면 실행 없이 결과를 정한다(ShortCircuit)."},
+ {id:"tool.execute",     unit:"tool",  io:"호출 → 결과",                  sig:"N F",                 does:"도구를 실행한다 (read, bash, edit, write, grep, find, ls, mode …)."},
+ {id:"tool.after",       unit:"tool",  io:"결과 → 결과",                  sig:"N F",                 does:"결과를 자른다 (기본 2000줄 / 50KB)."},
+ {id:"tools.commit",     unit:"turn",  io:"결과들 → 결과 메시지",         sig:"N F",                 does:"결과마다 tool_result 메시지를 만들어 저장한다."},
+ {id:"turn.finish",      unit:"turn",  io:"—",                            sig:"CT SE SP F W II",     does:"다음 턴으로 갈지 끝낼지 정한다. 도구를 썼으면 continue_turn, 아니면 settle. 검증(verify)과 모드 판정이 여기 끼어든다. next 는 쓸 수 없다."},
+ {id:"run.beforeSettle", unit:"run",   io:"—",                            sig:"N CT SP F II",        does:"끝나기 직전. 처리하지 않은 입력이 입력함에 남았으면 continue_turn 으로 한 턴 더 돈다."},
+ {id:"run.settled",      unit:"run",   io:"Settle →",                     sig:"",                    does:"run 의 끝. 어떤 경로로 끝나든 정확히 한 번 불린다. 신호는 무시된다."},
+];
+
+/* 기본 배치에서 step 마다 쌓이는 세트 (아래 → 위). next: ctx.Next 로 아래 층을 부르는지 */
+const SETCOL = {base:"#5E6B78", require:"#3B5BA9", cache:"#1F8A8A", guard:"#B07A1E", truncate:"#8A7A52", resilient:"#C2412D", verify:"#2E8B57", goal:"#7A5CC0", plan:"#9B4F9B"};
+const SETWHAT = {
+  base:"세션 저장·입력함·도구 실행", require:"요청 조립·모델 호출·턴 루프", cache:"캐시 힌트", guard:"없는 도구·스키마 검사",
+  truncate:"결과 절단", resilient:"재시도·문맥 초과 복구·압축", verify:"셸 명령 검증", goal:"목표 주입·판정", plan:"계획 지시·쓰기 차단"};
+const DEF = {
+  1:[["base",0],["require",1]], 2:[["base",0]], 3:[["require",0],["resilient",0]], 4:[["require",0]], 5:[["base",0]],
+  6:[["require",0]], 7:[["require",0],["cache",1]], 8:[["require",0]], 9:[["require",0]], 10:[["require",0]], 11:[["require",0]],
+  12:[["require",0],["resilient",0]], 13:[["require",0],["resilient",0]], 14:[["base",0]], 15:[["require",0]],
+  16:[["base",0],["guard",1]], 17:[["base",0]], 18:[["base",0],["truncate",1]], 19:[["base",0]], 20:[["require",0]],
+  21:[["require",0],["resilient",0]], 22:[["require",0]],
+};
+const MODEADD = {
+  goal:{4:[["goal",1]], 20:[["goal",1]]},
+  goalcheck:{4:[["goal",1]], 20:[["verify",1],["goal",1]]},
+  plan:{4:[["plan",1]], 7:[["plan",1]], 16:[["plan",1]], 20:[["plan",1]]},
+};
+const WRAP = {1:"이벤트: run ID 기록", 2:"이벤트: input", 10:"이벤트: message_start·update", 11:"이벤트: message_end", 12:"이벤트: retry", 16:"승인(Gate) + 이벤트: tool_start", 18:"이벤트: tool_end", 20:"이벤트: turn_end", 22:"이벤트: run_end"};
+function stackFor(n, mode) {
+  const s = DEF[n].map(x => x.slice());
+  const add = (MODEADD[mode] || {})[n] || [];
+  return s.concat(add.map(x => x.slice()));
+}
+
+/* ───────────── 선로도 ───────────── */
+const P = {
+ 1:[80,80],2:[270,80],3:[460,80],4:[650,80],5:[840,80],
+ 6:[960,215],7:[800,215],8:[640,215],9:[480,215],10:[320,215],11:[160,215],
+ 12:[480,290],
+ 13:[120,365],14:[290,365],15:[460,365],16:[630,365],17:[800,365],18:[970,365],
+ 19:[970,490],20:[720,490],21:[470,490],22:[220,490],
+};
+const MAIN = [1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22];
+const UNITCOL = {run:"var(--run)", turn:"var(--turn)", call:"var(--call)", event:"var(--event)", tool:"var(--tool)"};
+const nextOnMain = n => (n === 12 ? null : MAIN[MAIN.indexOf(n) + 1]);
+
+function segPath(a, b) {
+  const [x1,y1] = P[a], [x2,y2] = P[b];
+  if (y1 === y2) return `M${x1},${y1} L${x2},${y2}`;
+  return `M${x1},${y1} C${x2},${y1} ${x2},${y1+(y2-y1)*.5} ${x2},${y2}`;
+}
+function branchPath(a, b) {
+  const [x1,y1] = P[a], [x2,y2] = P[b];
+  if (b === 2 || (b < a && y2 < y1 && x2 < 300)) {          // 왼쪽 가장자리를 돌아 위로
+    return `M${x1},${y1} C${x1},${y1+70} 40,${y1+70} 22,${(y1+y2)/2} S${x2-60},${y2-48} ${x2},${y2}`;
+  }
+  if (b === 5) {                                            // 오른쪽 가장자리를 돌아 위로
+    return `M${x1},${y1} C${x1+120},${y1+30} 1045,${y1} 1045,${(y1+y2)/2} S${x2+40},${y2-50} ${x2},${y2}`;
+  }
+  if (a === 9 && b === 12) return `M${x1},${y1} L${x2},${y2}`;
+  const mx = (x1+x2)/2, my = (y1+y2)/2, dx = x2-x1, dy = y2-y1, len = Math.hypot(dx,dy) || 1;
+  const k = Math.min(90, 30 + len*.18);
+  const cx = mx - dy/len*k, cy = my + dx/len*k;
+  return `M${x1},${y1} Q${cx},${cy} ${x2},${y2}`;
+}
+
+const svg = $("#trackSvg");
+const gTrack = el("g", {}, svg), gBranch = el("g", {}, svg), gSt = el("g", {}, svg), gTop = el("g", {}, svg);
+const PHASES = [
+  {from:1,  to:5,  y:26,  h:118, col:"#3F6E9E", name:"턴 준비",        q:"무엇을 보여 줄까",
+   say:"<b>무엇을 보여 줄까</b> (1–5): 1 세션을 불러오고, 2 이번 턴의 입력을 받고, 3 길면 압축하고, 4 이번 요청에만 붙일 지시를 넣고, 5 모델이 볼 대화(투영)를 만든다. 모드 카드가 지시를 넣는 곳이 4번이다."},
+  {from:6,  to:12, y:150, h:158, col:"#1F8A8A", name:"요청과 호출",    q:"어떻게 물을까",
+   say:"<b>어떻게 물을까</b> (6–12): 6 요청을 조립하고, 7 짝 검증·캐시 힌트를 붙이고(plan 모드는 여기서 쓰기 도구를 뺀다), 8 모델을 고르고, 9 보낸다. 10 은 스트림 조각마다, 11 은 끝났을 때, 12 는 실패했을 때만 온다."},
+  {from:13, to:18, y:314, h:110, col:"#B07A1E", name:"응답과 도구",    q:"답을 어떻게 다룰까",
+   say:"<b>답을 어떻게 다룰까</b> (13–18): 13 잘림·초과를 보고, 14 답을 저장하고(이후로는 버릴 수 없다), 15 도구 호출을 계획하고, 호출마다 16 검사·승인 → 17 실행 → 18 자르기."},
+  {from:19, to:22, y:430, h:124, col:"#5C6F86", name:"결과와 갈림길",  q:"계속할까, 끝낼까",
+   say:"<b>계속할까, 끝낼까</b> (19–22): 19 도구 결과를 저장하고, 20 갈림길에서 다음 턴(continue_turn)인지 끝(settle)인지 정한다. 검증과 모드 판정이 끼어드는 곳이다. 21 끝나기 직전, 22 끝. 22 는 어떤 경로로 끝나든 정확히 한 번 불린다."},
+];
+const phaseBands = PHASES.map(ph => {
+  const r = el("rect", {x:8, y:ph.y, width:1044, height:ph.h, rx:12, fill:ph.col, "fill-opacity":.05, class:"phaseband"}, gTrack);
+  const t = el("text", {x:22, y:ph.y + 18, class:"phaselab", fill:ph.col}, gTrack); t.textContent = `${ph.name} — ${ph.q}`;
+  return r;
+});
+let mainD = "";
+for (let i = 0; i < MAIN.length - 1; i++) mainD += segPath(MAIN[i], MAIN[i+1]) + " ";
+mainD += segPath(9, 12);
+el("path", {d: mainD, class: "track-main"}, gTrack);
+el("path", {d: mainD, class: "track-tie"}, gTrack);
+
+const stNodes = {};
+for (let n = 1; n <= 22; n++) {
+  const [x, y] = P[n], s = STEPS[n];
+  const g = el("g", {class:"st", tabindex:"0", role:"button", "aria-label": `${n} ${s.id}`, "data-n": n}, gSt);
+  el("circle", {cx:x, cy:y, r:16, class:"ring", stroke: UNITCOL[s.unit]}, g);
+  el("circle", {cx:x+13, cy:y-13, r:5, class:"modeDot"}, g);
+  const t = el("text", {x, y, class:"num"}, g); t.textContent = n;
+  const above = n === 9 || n === 11 || n === 18;
+  const l = el("text", {x, y: above ? y - 26 : y + (n === 12 ? 32 : 36), class:"lab"}, g); l.textContent = s.id;
+  g.addEventListener("click", () => selectStep(n));
+  g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectStep(n); } });
+  stNodes[n] = g;
+}
+const train = el("g", {class:"train"}, gTop);
+el("circle", {r:24, class:"glow"}, train);
+el("circle", {r:9}, train);
+const lamp = el("g", {class:"lamp", opacity:0}, gTop);
+const lampRect = el("rect", {x:0, y:-13, height:26, width:100}, lamp);
+const lampText = el("text", {x:10, y:0}, lamp);
+const crew = el("text", {x:530, y:28, class:"crew", "text-anchor":"middle", fill:"var(--mode)", opacity:0}, gTop);
+let trainAt = 1;
+function placeTrain(n) { const [x,y] = P[n]; train.setAttribute("transform", `translate(${x},${y})`); trainAt = n; }
+placeTrain(1);
+
+const CLSCOL = {go:"#2E8B57", retry:"#C98A12", loop:"#2F6FB5", end:"#5C6F86", halt:"#C2412D", effect:"#7A5CC0"};
+function showLamp(n, keys) {
+  if (!keys || !keys.length) { lamp.setAttribute("opacity", 0); return; }
+  const last = keys[keys.length - 1], col = CLSCOL[SIG[last].cls];
+  const label = keys.map(k => SIG[k].name).join(" + ");
+  lampText.textContent = label;
+  lampText.setAttribute("fill", col);
+  const w = 20 + label.length * 7.6;
+  lampRect.setAttribute("width", w);
+  lampRect.setAttribute("fill", "#fff");
+  lampRect.setAttribute("stroke", col);
+  lampRect.setAttribute("stroke-width", 2);
+  const [x,y] = P[n];
+  let lx = x + 24; if (lx + w > 1050) lx = x - 24 - w;
+  lamp.setAttribute("transform", `translate(${lx},${y - 34})`);
+  lamp.setAttribute("opacity", 1);
+}
+
+function moveAlong(d, ms, token) {
+  return new Promise(res => {
+    if (REDUCED || ms <= 0) { res(); return; }
+    const p = el("path", {d, fill:"none", stroke:"none"}, gTop);
+    const L = p.getTotalLength();
+    const t0 = performance.now();
+    function tick(t) {
+      if (token !== runToken) { p.remove(); res(); return; }
+      const k = Math.min(1, (t - t0) / ms), e = k < .5 ? 2*k*k : 1 - Math.pow(-2*k + 2, 2)/2;
+      const pt = p.getPointAtLength(L * e);
+      train.setAttribute("transform", `translate(${pt.x},${pt.y})`);
+      if (k < 1) requestAnimationFrame(tick); else { p.remove(); res(); }
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+/* 시나리오: [step, 신호(공백 구분, 없으면 next), 설명, 옵션] */
+const SCEN = {
+  text: {name:"텍스트 답", steps:[
+    [1,"","세션을 불러온다. 이전 대화가 History 가 된다."],
+    [2,"","사용자 입력을 이번 턴 메시지로 저장한다."],
+    [3,"","문맥이 작아 압축하지 않는다."],[4,"","붙일 임시 메시지가 없다."],[5,"","모델이 볼 대화를 만든다."],
+    [6,"","요청을 조립한다."],[7,"","짝 검증, 캐시 힌트."],[8,"","모델 정보를 찾는다."],
+    [9,"","provider 를 부른다. 스트림이 열린다."],
+    [10,"","조각 1: 화면에 글자가 흐른다."],[10,"","조각 2."],[10,"","조각 3 (done)."],
+    [11,"","응답을 확정한다."],[13,"","잘림·초과 없음."],[14,"","응답을 세션에 저장한다."],
+    [15,"","도구 호출이 없다. 실행 계획이 비어 19번으로 바로 간다."],[19,"","저장할 결과가 없다."],
+    [20,"SE","도구를 쓰지 않았으므로 settle."],[21,"","남은 입력이 없다."],[22,"","run 이 completed 로 끝난다."],
+  ]},
+  tool: {name:"도구 쓰는 턴", steps:[
+    [1,"","세션을 불러온다."],[2,"","입력: \"테스트를 고쳐 줘\"."],[3,""],[4,""],[5,""],[6,"","도구 목록(read, edit, bash …)이 요청에 들어간다."],[7,""],[8,""],
+    [9,"","모델이 read 도구 호출을 담은 응답을 스트리밍한다."],[10,"","도구 호출 조각."],[11,"","응답 확정."],[13,""],[14,"","도구 호출이 든 응답을 저장한다."],
+    [15,"","호출 하나를 그룹 하나로."],[16,"","guard 가 스키마를 검사하고 Gate 가 승인을 받는다."],[17,"","read 를 실행한다."],[18,"","결과를 자른다."],
+    [19,"","tool_result 메시지를 저장한다."],
+    [20,"CT","도구를 썼으므로 continue_turn. 2번 역으로 돌아간다."],
+    [2,"","입력함이 비어 새 메시지가 없다."],[3,""],[4,""],[5,"","방금 저장한 결과까지 투영에 들어간다."],[6,""],[7,""],[8,""],
+    [9,"","모델이 결과를 읽고 답을 쓴다."],[10,"","답 조각."],[11,""],[13,""],[14,""],[15,"","도구 호출이 없다."],[19,""],
+    [20,"SE","settle."],[21,""],[22,"","completed."],
+  ]},
+  retry: {name:"재시도와 압축", steps:[
+    [1,""],[2,""],[3,""],[4,""],[5,""],[6,""],[7,""],[8,""],
+    [9,"","provider 를 부른다."],
+    [12,"RC","429 rate_limit. resilient 가 기다린 뒤 recall: 같은 요청을 다시 보낸다."],
+    [9,"","다시 호출한다."],
+    [12,"W RB","이번엔 문맥 초과. resilient 가 요약 편집(rewrite)을 내고 rebuild: 투영부터 다시 만든다."],
+    [5,"","편집이 적용된 짧은 투영."],[6,""],[7,""],[8,""],[9,"","줄어든 요청으로 호출한다."],
+    [10,"","답 조각."],[11,""],[13,""],[14,""],[15,""],[19,""],[20,"SE","settle."],[21,""],[22,"","completed."],
+  ]},
+  mode: {name:"모델이 goal 모드로", steps:[
+    [1,""],[2,"","입력: \"테스트가 통과할 때까지 계속해\"."],[3,""],[4,""],[5,""],[6,"","도구 목록에 mode 도구가 있다."],[7,""],[8,""],
+    [9,"","모델이 mode 도구를 부른다: {name: goal, arg: 테스트 통과}."],[10,""],[11,""],[13,""],[14,""],[15,""],[16,"","mode 도구도 승인 규칙을 거친다."],
+    [17,"","harness 가 예약을 기록한다: 기본 → goal (origin model). 아직 적용되지 않는다."],[18,""],[19,""],
+    [20,"CT","도구를 썼으므로 continue_turn."],
+    [2,"","run 스위처가 turn.start 직전에 예약을 적용한다. 이 턴부터 goal 세트가 쌓인 묶음으로 달린다.",{mode:"goal"}],
+    [3,""],[4,"","goal 세트가 \"[goal mode] Goal: 테스트 통과\" 지시를 붙인다."],[5,""],[6,""],[7,""],[8,""],
+    [9,"","모델이 작업한다."],[10,""],[11,""],[13,""],[14,""],[15,""],[19,""],
+    [20,"II CT","require 는 settle 을 냈다. goal 판단기가 보조 모델로 판정: continue. settle 을 빼고 이어서 할 지시를 넣고 continue_turn."],
+    [2,"","방금 넣은 지시를 입력함에서 가져온다."],[3,""],[4,"","목표 지시."],[5,""],[6,""],[7,""],[8,""],[9,""],[10,""],[11,""],[13,""],[14,""],[15,""],[19,""],
+    [20,"SE","판정: done. 판단기가 Exit 를 예약하고 settle 을 그대로 둔다."],
+    [21,""],[22,"","completed. 다음 run 의 시작에서 이탈 예약이 적용되어 기본 묶음으로 돌아간다.",{mode:""}],
+  ]},
+};
+let scen = "text", pos = -1, playing = false, curMode = "", runToken = 0;
+const scenSeg = $("#scenarioSeg");
+for (const [k, v] of Object.entries(SCEN)) {
+  const b = h("button", {"aria-pressed": k === scen}, v.name);
+  b.addEventListener("click", () => { scen = k; [...scenSeg.children].forEach(c => c.setAttribute("aria-pressed", c === b)); reset(); });
+  scenSeg.appendChild(b);
+}
+function setMode(m) {
+  curMode = m;
+  for (let n = 1; n <= 22; n++) stNodes[n].classList.toggle("moded", !!m && !!(MODEADD[m] || {})[n]);
+  crew.textContent = m ? `모드: ${m} — 판정 세트가 4·20번 역에 붙었다` : "";
+  crew.setAttribute("opacity", m ? 1 : 0);
+}
+function reset() {
+  runToken++; playing = false; $("#playBtn").textContent = "재생";
+  pos = -1; placeTrain(1); showLamp(1, null); setMode("");
+  gBranch.innerHTML = ""; $("#log").innerHTML = "";
+  Object.values(stNodes).forEach(g => g.classList.remove("lit"));
+}
+async function advance() {
+  const list = SCEN[scen].steps, token = runToken;
+  if (pos >= list.length - 1) return false;
+  const prev = pos >= 0 ? list[pos] : null;
+  pos++;
+  const [n, sigs, note, opt] = list[pos];
+  const from = trainAt, ms = +$("#speed").value;
+  const prevSig = prev && prev[1] ? prev[1].split(" ").filter(k => !SIG[k].eff) : [];
+  let d;
+  if (from === n) d = `M${P[n][0]},${P[n][1]} L${P[n][0]},${P[n][1]}`;
+  else if (nextOnMain(from) === n || (from === 9 && n === 12)) d = segPath(from, n);
+  else if (from === 15 && n === 19 && !prevSig.length) d = branchPath(15, 19);
+  else {
+    d = branchPath(from, n);
+    const col = prevSig.length ? CLSCOL[SIG[prevSig[0]].cls] : "#8A97A6";
+    gBranch.querySelectorAll("path").forEach(p => p.classList.add("faint"));
+    el("path", {d, class:"branch", stroke: col}, gBranch);
+  }
+  if (from !== n) await moveAlong(d, ms, token);
+  if (token !== runToken) return false;
+  placeTrain(n);
+  Object.values(stNodes).forEach(g => g.classList.remove("lit"));
+  stNodes[n].classList.add("lit");
+  if (opt && "mode" in opt) setMode(opt.mode);
+  const keys = sigs ? sigs.split(" ") : [];
+  showLamp(n, keys.length ? keys : (n === 22 ? null : ["N"]));
+  const log = $("#log");
+  log.querySelectorAll("li.now").forEach(li => li.classList.remove("now"));
+  const li = h("li", {class:"now"}, `<span class="k">${n}</span><span><b class="mono">${STEPS[n].id}</b>${keys.length ? " " + keys.map(sigChip).join("") : ""}${note ? " — " + note : ""}</span>`);
+  log.appendChild(li); log.scrollTop = log.scrollHeight;
+  if (playing) selectStep(n, true);
+  return true;
+}
+async function play() {
+  if (playing) { runToken++; playing = false; $("#playBtn").textContent = "재생"; return; }
+  if (pos >= SCEN[scen].steps.length - 1) reset();
+  const my = ++runToken;
+  playing = true; $("#playBtn").textContent = "멈춤";
+  while (playing && my === runToken) {
+    const more = await advance();
+    if (!more || my !== runToken) break;
+    await new Promise(r => setTimeout(r, REDUCED ? 350 : +$("#speed").value * .45));
+  }
+  if (my === runToken) { playing = false; $("#playBtn").textContent = "재생"; }
+}
+$("#playBtn").addEventListener("click", play);
+let stepping = false;
+$("#stepBtn").addEventListener("click", async () => { if (playing || stepping) return; stepping = true; await advance(); stepping = false; });
+$("#resetBtn").addEventListener("click", reset);
+
+const goPhase = stepper("#trackPhases", "#trackNarr", PHASES.map(ph => ({label: ph.q, say: ph.say})), i => {
+  const ph = PHASES[i];
+  for (let n = 1; n <= 22; n++) stNodes[n].classList.toggle("dimmed", n < ph.from || n > ph.to);
+  phaseBands.forEach((r, j) => r.setAttribute("fill-opacity", j === i ? .16 : .03));
+});
+$("#trackNarr").innerHTML = "묶음을 누르면 그 묶음의 칸만 남기고 하나씩 설명한다. 열차를 달리면 묶음 표시는 지워진다.";
+$("#playBtn").addEventListener("click", () => { for (let n = 1; n <= 22; n++) stNodes[n].classList.remove("dimmed"); phaseBands.forEach(r => r.setAttribute("fill-opacity", .05)); [...$("#trackPhases").children].forEach(b => b.setAttribute("aria-pressed", false)); });
+
+function selectStep(n, quiet) {
+  Object.values(stNodes).forEach(g => g.classList.remove("sel"));
+  stNodes[n].classList.add("sel");
+  const s = STEPS[n];
+  const sigs = s.sig ? s.sig.split(" ").map(sigChip).join("") : '<span class="muted">없음 (신호를 무시한다)</span>';
+  const stack = stackFor(n, curMode);
+  const layers = stack.slice().reverse().map(([nm, nx], i, arr) => {
+    const below = arr[i+1];
+    return `<div class="layer" style="background:${SETCOL[nm]};padding:.3rem .6rem;font-size:.85rem"><span>${nm}</span><span class="what">${SETWHAT[nm]}</span></div>` +
+      (below ? `<div class="nextarrow${nx ? "" : " cut"}">${nx ? "ctx.Next() ↓" : "Next 안 부름 — 아래 층 가려짐"}</div>` : "");
+  }).join("");
+  $("#stepDetail").innerHTML = `
+    <h3><span class="mono">${n}. ${s.id}</span></h3>
+    <p class="small muted">${UNIT[s.unit]} · 입출력 ${s.io}</p>
+    <button class="primary" id="sdToCore">맨 위 그림에서 이 칸 보기</button>
+    <p>${s.does}</p>
+    <h3>허용 신호</h3><div>${sigs}</div>
+    <h3>이 역을 맡는 세트${curMode ? ` (모드 ${curMode})` : " (기본 배치)"}</h3>
+    ${WRAP[n] ? `<p class="small" style="color:var(--l3)">바깥 틀: ${WRAP[n]}</p>` : ""}
+    <div>${layers}</div>
+    <p class="small muted" style="margin-top:.8rem">카드가 어떻게 겹쳐 이 칸을 채우는지는 위 버튼으로 맨 위 그림에서 볼 수 있다.</p>`;
+  $("#sdToCore").addEventListener("click", () => coreShowCol(n));
+}
+selectStep(1, true);
+
+/* ───────────── core + 세트 (첫 화면): 세트 카드를 core 에 주입 ───────────── */
+const FILLS = {
+  base:{1:0,2:0,5:0,14:0,16:0,17:0,18:0,19:0},
+  require:{1:1,3:0,4:0,6:0,7:0,8:0,9:0,10:0,11:0,12:0,13:0,15:0,20:0,21:0,22:0},
+  cache:{7:1}, guard:{16:1}, truncate:{18:1}, resilient:{3:0,12:0,13:0,21:0},
+  verify:{20:1}, goal:{4:1,20:1}, plan:{4:1,7:1,16:1,20:1},
+};
+const NOOP = {require:[3,4,10,13,21,22]};
+const MODESETS = new Set(["verify","goal","plan"]);
+const ALLSETS = ["base","require","cache","guard","truncate","resilient","verify","goal","plan"];
+const CTOR = {base:"sets.Base(deps)", require:"sets.Require(deps)", cache:"sets.Cache(deps)", guard:"sets.Guard(deps)",
+  truncate:"sets.Truncate(deps)", resilient:"sets.Resilient(deps)", verify:"sets.Verify(deps, check)", goal:"GoalSet(deps, 20)", plan:"PlanSet(deps)"};
+const DEFAULTL = ["base","require","cache","guard","truncate","resilient"];
+const STAGES = [
+  {k:"core",  label:"core 만",       sets:[],
+   say:"<b>core 만</b>: 22칸이 모두 비어 있다. core 는 칸의 순서와 신호 규칙만 알고 칸 안의 일은 모른다 (D1). 이대로는 Bind 도, run 도 할 수 없다. 위 선반의 카드들은 등록만 된 세트다."},
+  {k:"base",  label:"base 끼우기",   sets:["base"],
+   say:"<b>base 카드를 끼운다</b>: 세션 저장·입력함·도구 실행 칸에 이빨이 있다. 요청 조립·모델 호출 칸은 여전히 비어 있어 Bind 가 거부한다 (빨간 칸)."},
+  {k:"req",   label:"require 끼우기", sets:["base","require"],
+   say:"<b>require 카드를 위에 끼운다</b>: 22칸이 모두 찼다. 이제 Bind 가 Dispatcher 를 돌려주고 core 가 run 을 시작할 수 있다. require 의 1번 이빨은 <code>ctx.Next()</code> 로 아래 base 를 부른다. 할 일이 없는 칸(3·4·10·13·21·22)은 빈 동작으로 채운다."},
+  {k:"def",   label:"정책 카드 끼우기", sets:DEFAULTL,
+   say:"<b>기본 배치</b> (harness <code>DefaultSets</code>): cache·guard·truncate·resilient 카드가 차례로 끼워진다. 앞의 셋은 <code>ctx.Next()</code> 로 아래 카드를 감싸고, resilient 는 Next 없이 require 의 이빨을 가린다. 카드 순서를 아는 곳은 이 프리셋 하나뿐이다."},
+  {k:"goal",  label:"goal 모드",     sets:DEFAULTL.concat(["goal"]),
+   say:"<b>goal 모드</b>: 선반의 goal 카드가 맨 위에 끼워진다. 4번 칸에서 목표 지시를 붙이고, 20번 칸에서 아래 카드(require)의 판단을 받아 보조 모델로 판정한다. harness 는 이 묶음을 미리 Bind 해 둔다."},
+  {k:"goalc", label:"goal + -check", sets:DEFAULTL.concat(["verify","goal"]),
+   say:"<b>goal + -check</b>: verify 와 goal 카드가 함께 끼워진다. 20번 칸은 goal → verify → require 순으로 이어진다. 검증이 실패하면 verify 가 settle 을 빼므로 goal 은 판정하지 않는다."},
+  {k:"plan",  label:"plan 모드",     sets:DEFAULTL.concat(["plan"]),
+   say:"<b>plan 모드</b>: plan 카드가 4번(계획 지시)·7번(쓰기 도구 제거)·16번(쓰기 호출 차단)·20번(끝나면 이탈 예약) 칸의 맨 위에 끼워진다. 프롬프트 부탁이 아니라 실제로 막는다."},
+];
+const cs = $("#coreSvg");
+const C = {x0:200, w:34.5, gap:2.5, rail:628, rowH:40, pitch:46};
+const colX = n => C.x0 + (n-1)*(C.w+C.gap);
+const cardW = 22*(C.w+C.gap) + 16;
+const cdefs = el("defs", {}, cs);
+const pat = el("pattern", {id:"hatch", width:6, height:6, patternUnits:"userSpaceOnUse", patternTransform:"rotate(45)"}, cdefs);
+el("rect", {width:6, height:6, fill:"#EEF2F5"}, pat);
+el("rect", {width:3, height:6, fill:"#C9D1D9"}, pat);
+const am = el("marker", {id:"arrd", viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"7", markerHeight:"7", orient:"auto-start-reverse"}, cdefs);
+el("path", {d:"M0,0 L10,5 L0,10 z", fill:"#1C2733"}, am);
+const gCols = el("g", {}, cs), gDiv = el("g", {}, cs), gRows = el("g", {}, cs), gWrap = el("g", {}, cs), gRail = el("g", {}, cs), gHead = el("g", {}, cs);
+const gFocus = el("g", {}, cs);
+
+// 선반 표지와 주입 구분선
+const shelfLab = txt(C.x0 - 8, 70, "등록된 세트 — 선반 (harness 에 등록됐지만 아직 끼우지 않은 카드)", gDiv, {class:"shelflab"});
+const divLine = el("line", {x1:C.x0 - 10, x2:C.x0 + cardW, y1:0, y2:0, stroke:"var(--l2)", "stroke-width":2, "stroke-dasharray":"8 6"}, gDiv);
+const divLab = txt(C.x0 + 4, 0, "", gDiv, {class:"divlab", "dominant-baseline":"central"});
+const divArrows = [];
+for (const k of [4, 11, 18]) divArrows.push(el("path", {d:"", fill:"none", stroke:"var(--l2)", "stroke-width":2.5, "marker-end":"url(#arrd)"}, gDiv));
+
+// core 레일
+el("rect", {x:C.x0 - 14, y:C.rail, width:cardW + 8, height:48, rx:10, fill:"var(--l0)"}, gRail);
+txt(C.x0 - 26, C.rail + 24, "core", gRail, {"text-anchor":"end", style:"font:800 22px var(--sans)", fill:"var(--l0)", "dominant-baseline":"central"});
+txt(C.x0 - 26, C.rail + 46, "칸 22개 · 신호 규칙", gRail, {"text-anchor":"end", class:"rowdesc"});
+const slots = {};
+for (let n = 1; n <= 22; n++) {
+  const x = colX(n);
+  slots[n] = el("rect", {x:x+3, y:C.rail+8, width:C.w-6, height:32, rx:5, class:"slot"}, gRail);
+  txt(x + C.w/2, C.rail + 24, n, gRail, {class:"slotnum"});
+  const tx = x + C.w/2 - 2, ty = C.rail + 60;
+  txt(tx, ty, STEPS[n].id, gRail, {class:"stepname", transform:`rotate(52 ${tx} ${ty})`});
+  const col = el("g", {class:"col", tabindex:"0", role:"button", "aria-label": `${n} ${STEPS[n].id}`}, gCols);
+  el("rect", {class:"colhit", x, y:60, width:C.w, height:C.rail + 100 - 60, rx:5}, col);
+  col.addEventListener("mouseenter", () => coreCaption(n));
+  col.addEventListener("click", () => { coreSel = n; coreCaption(n); selectStep(n, true); highlightCol(n); });
+  col.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); col.dispatchEvent(new Event("click")); } });
+  slots[n].col = col;
+}
+
+// 카드 (등록된 9개를 모두 만들어 두고 선반과 core 사이를 옮긴다)
+const rows = {};
+for (const nm of ALLSETS) {
+  const g = el("g", {class:"rowg"}, gRows);
+  const isMode = MODESETS.has(nm), col = isMode ? "#7A5CC0" : SETCOL[nm];
+  const card = el("rect", {x:C.x0 - 8, y:-2, width:cardW, height:C.rowH + 4, rx:9, class:"card", "stroke-width":2}, g);
+  const lab = txt(C.x0 - 26, C.rowH/2 - 7, nm, g, {class:"rowlabel", "text-anchor":"end", "dominant-baseline":"central", fill: col});
+  txt(C.x0 - 26, C.rowH/2 + 11, SETWHAT[nm], g, {class:"rowdesc", "text-anchor":"end", "dominant-baseline":"central"});
+  const cells = {};
+  for (const [n, nx] of Object.entries(FILLS[nm])) {
+    const x = colX(+n);
+    const c = el("rect", {x:x+2, y:2, width:C.w-4, height:C.rowH-4, rx:6, class:"cell"}, g);
+    let arrow = null;
+    if (nx) arrow = el("path", {d:`M${x + C.w/2 - 6},${C.rowH - 11} L${x + C.w/2 + 6},${C.rowH - 11} L${x + C.w/2},${C.rowH - 4} z`, fill:"#fff"}, g);
+    cells[n] = {rect:c, next:!!nx, arrow, noop:(NOOP[nm] || []).includes(+n)};
+  }
+  rows[nm] = {g, card, cells, isMode, col, active:false};
+  g.style.transform = `translate(0px, ${-80}px)`; g.style.opacity = 0;
+}
+const wrapCells = {};
+for (const n of Object.keys(WRAP).map(Number)) { wrapCells[n] = el("rect", {x:colX(n)+6, y:0, width:C.w-12, height:8, rx:4, class:"wrapcell"}, gWrap); wrapCells[n].style.opacity = 0; }
+const wrapLabel = txt(C.x0 - 26, 0, "harness 래핑", gWrap, {class:"rowdesc", "text-anchor":"end", "dominant-baseline":"central"});
+wrapLabel.style.opacity = 0;
+
+// 상태 표시
+const badge = el("g", {}, cs);
+const badgeRect = el("rect", {x:C.x0 - 8, y:14, height:34, rx:17, width:300, fill:"#fff", stroke:"var(--l2)", "stroke-width":2}, badge);
+const badgeText = txt(C.x0 + 8, 31, "", badge, {"dominant-baseline":"central", style:"font:700 15px var(--sans)"});
+const pendText = txt(C.x0 + 330, 31, "", badge, {"dominant-baseline":"central", fill:"var(--mode)", style:"font:700 14px var(--sans)"});
+function setBadge(label, isMode) {
+  badgeText.textContent = `core 에 끼운 묶음: ${label}`;
+  badgeText.setAttribute("fill", isMode ? "#7A5CC0" : "#1C2733");
+  badgeRect.setAttribute("stroke", isMode ? "#7A5CC0" : "#3B5BA9");
+  const w = Math.max(220, 26 + badgeText.getComputedTextLength());
+  badgeRect.setAttribute("width", w);
+  pendText.setAttribute("x", C.x0 + 12 + w);
+}
+function setPending(t) { pendText.textContent = t; }
+
+// Dispatch 화살표 (core 칸 → 맨 위 함수)
+const playhead = el("rect", {class:"playhead", x:0, y:0, width:C.w, height:10, rx:5}, gHead);
+playhead.style.opacity = 0;
+const dispLine = el("line", {x1:0, y1:0, x2:0, y2:0, stroke:"#1C2733", "stroke-width":3, "marker-end":"url(#arrd)"}, gHead);
+const dispLab = txt(0, 0, "Dispatch(step)", gHead, {style:"font:700 13px var(--mono)", fill:"#1C2733"});
+dispLine.style.opacity = 0; dispLab.style.opacity = 0;
+
+let coreLayout = [], coreSel = 20, coreStage = 0, coreBusy = 0;
+const rowTop = i => C.rail - 14 - (i+1)*C.pitch;
+function chainOf(n, layout) {
+  const filled = layout.filter(nm => FILLS[nm][n] !== undefined);
+  const out = [];
+  for (let i = filled.length - 1; i >= 0; i--) { out.push(filled[i]); if (!FILLS[filled[i]][n]) break; }
+  return {filled, called: out};
+}
+function applyLayout(layout) {
+  const before = new Set(coreLayout);
+  coreLayout = layout;
+  const shelf = ALLSETS.filter(nm => !layout.includes(nm));
+  let added = 0;
+  ALLSETS.forEach(nm => {
+    const r = rows[nm], i = layout.indexOf(nm);
+    let y, delay = 0;
+    if (i < 0) { y = 84 + shelf.indexOf(nm)*C.pitch; r.active = false; }
+    else { y = rowTop(i); r.active = true; if (!before.has(nm)) delay = 140 * added++; }
+    r.g.style.transitionDelay = REDUCED ? "0ms" : `${delay}ms`;
+    r.g.style.transform = `translate(0px, ${y}px)`;
+    r.g.style.opacity = r.active ? 1 : .55;
+    r.card.setAttribute("fill", r.active ? r.col : "#fff");
+    r.card.setAttribute("fill-opacity", r.active ? .1 : 1);
+    r.card.setAttribute("stroke", r.active ? r.col : "#8A97A6");
+    r.card.setAttribute("stroke-dasharray", r.active ? "" : "6 5");
+    if (!r.active) Object.values(r.cells).forEach(c => {
+      c.rect.setAttribute("fill", r.col); c.rect.setAttribute("stroke", "none"); c.rect.setAttribute("stroke-dasharray", ""); c.rect.style.opacity = .45;
+      if (c.arrow) c.arrow.setAttribute("opacity", 0);
+    });
+  });
+  for (let n = 1; n <= 22; n++) {
+    const {filled, called} = chainOf(n, layout);
+    slots[n].classList.toggle("empty", filled.length === 0 && layout.length > 0);
+    slots[n].style.fill = called.length ? (rows[called[0]].isMode ? "#E7E0F6" : "#DCE7F7") : "";
+    filled.forEach(nm => {
+      const c = rows[nm].cells[n], col = rows[nm].col;
+      const top = called[0] === nm, reached = called.includes(nm);
+      if (!reached) { c.rect.setAttribute("fill", "url(#hatch)"); c.rect.setAttribute("stroke", "#C9D1D9"); c.rect.setAttribute("stroke-dasharray", ""); c.rect.style.opacity = 1; }
+      else if (c.noop) { c.rect.setAttribute("fill", "#fff"); c.rect.setAttribute("stroke", col); c.rect.setAttribute("stroke-width", 2); c.rect.setAttribute("stroke-dasharray", "4 3"); c.rect.style.opacity = 1; }
+      else { c.rect.setAttribute("fill", col); c.rect.setAttribute("stroke", "none"); c.rect.setAttribute("stroke-dasharray", ""); c.rect.style.opacity = top ? 1 : .55; }
+      if (c.arrow) c.arrow.setAttribute("opacity", reached && !c.noop ? 1 : 0);
+    });
+  }
+  // 선반과 core 사이의 주입 선
+  const shelfBottom = 84 + shelf.length*C.pitch, stackTop = layout.length ? rowTop(layout.length - 1) : C.rail - 14;
+  const dy = shelf.length ? shelfBottom + 8 : 84;
+  divLine.setAttribute("y1", dy); divLine.setAttribute("y2", dy);
+  divLab.setAttribute("y", dy + 18);
+  divLab.textContent = layout.length ? `inject.Bind(${layout.join(", ")}) — 켠 카드만 아래에서부터 겹쳐 core 에 끼운다` : "inject.Bind() — 끼운 카드가 없다";
+  divArrows.forEach((p, k) => { const x = C.x0 + 120 + k*290; p.setAttribute("d", `M${x},${dy + 34} L${x},${Math.max(dy + 56, stackTop - 26)}`); });
+  const showWrap = layout.length >= 2;
+  Object.values(wrapCells).forEach(w => { w.setAttribute("y", stackTop - 16); w.style.opacity = showWrap ? .85 : 0; });
+  wrapLabel.setAttribute("y", stackTop - 12); wrapLabel.style.opacity = showWrap ? 1 : 0;
+  renderCode(layout, before);
+  coreCaption(coreSel);
+}
+function missingSteps(layout) {
+  const out = [];
+  for (let n = 1; n <= 22; n++) if (!layout.some(nm => FILLS[nm][n] !== undefined)) out.push(STEPS[n].id);
+  return out;
+}
+function renderCode(layout, before) {
+  const miss = missingSteps(layout);
+  const esc = t => t.replace(/</g, "&lt;");
+  let lines = [];
+  if (coreStage >= 4) lines.push(`<span class="cm">// harness 가 모드마다 미리 Bind 해 둔다 (RunTable 공유)</span>`);
+  lines.push(`d, err := inject.Bind(`);
+  layout.forEach((nm, i) => {
+    const line = `    ${CTOR[nm]},${i === 0 ? "  <span class=\"cm\">// 맨 아래</span>" : i === layout.length - 1 ? "  <span class=\"cm\">// 맨 위</span>" : ""}`;
+    lines.push(before.has(nm) ? line : `<span class="add">${line}</span>`);
+  });
+  lines.push(`)`);
+  if (miss.length) {
+    const shown = miss.length > 4 ? miss.slice(0, 4).join(", ") + ` … (${miss.length}개)` : miss.join(", ");
+    lines.push(`<span class="err">// err: inject: missing steps: ${esc(shown)}</span>`);
+    lines.push(`<span class="cm">// → core 를 시작할 수 없다</span>`);
+  } else {
+    lines.push(`k := core.New(d, core.Options{})`);
+    lines.push(`<span class="cm">// core 는 칸마다 d.Dispatch(step, …) 만 부른다</span>`);
+    lines.push(`run := k.Start(ctx, core.RunInput{…})`);
+  }
+  $("#coreCode").innerHTML = lines.join("\n");
+}
+function coreCaption(n) {
+  const {filled, called} = chainOf(n, coreLayout);
+  let html = `<b class="mono">${n}. ${STEPS[n].id}</b> — `;
+  if (!coreLayout.length) html += "비어 있다. 끼운 카드가 없다.";
+  else if (!filled.length) html += `<span class="no">이 칸에 이빨이 있는 카드가 없다. Bind 가 거부한다.</span>`;
+  else {
+    html += `core 가 <code>Dispatch(${n})</code> → <b>${called[0]}</b>`;
+    if (called.length > 1) html += ` → ${called.slice(1).map(c => `ctx.Next() → <b>${c}</b>`).join(" → ")}`;
+    const hidden = filled.filter(f => !called.includes(f));
+    if (hidden.length) html += `. 가려짐: ${hidden.join(", ")}`;
+    if (WRAP[n] && coreLayout.length >= 2) html += `. 바깥: ${WRAP[n]}`;
+  }
+  $("#coreCap").innerHTML = html;
+}
+function highlightCol(n) { Object.entries(slots).forEach(([k, s]) => s.col.classList.toggle("sel", +k === n)); }
+function setStage(i, say = true) {
+  clearFocus();
+  coreStage = i;
+  [...$("#coreStages").children].forEach((b, j) => b.setAttribute("aria-pressed", j === i));
+  applyLayout(STAGES[i].sets);
+  setBadge(i < 2 ? `${STAGES[i].label.replace(" 끼우기", "")} (Bind 불가)` : i === 2 ? "base + require" : i === 3 ? "기본 배치" : STAGES[i].label, i >= 4);
+  setPending("");
+  if (say) $("#coreNarr").innerHTML = STAGES[i].say;
+}
+STAGES.forEach((st, i) => {
+  const b = h("button", {}, `<b>${i + 1}</b>${st.label}`);
+  b.addEventListener("click", () => { coreBusy++; hideDispatch(); setStage(i); });
+  $("#coreStages").appendChild(b);
+});
+const wait = ms => new Promise(r => setTimeout(r, REDUCED ? Math.min(ms, 250) : ms));
+function hideDispatch() { playhead.style.opacity = 0; dispLine.style.opacity = 0; dispLab.style.opacity = 0; }
+function dispatchTo(n) {
+  const {called} = chainOf(n, coreLayout);
+  const x = colX(n) + C.w/2;
+  if (!called.length) { hideDispatch(); return; }
+  const i = coreLayout.indexOf(called[0]);
+  const yTop = rowTop(i) + C.rowH + 4;
+  dispLine.setAttribute("x1", x); dispLine.setAttribute("x2", x);
+  dispLine.setAttribute("y1", C.rail + 4); dispLine.setAttribute("y2", yTop);
+  dispLine.style.opacity = 1;
+  dispLab.setAttribute("x", x + 10); dispLab.setAttribute("y", Math.min(C.rail - 6, yTop + 40));
+  dispLab.textContent = `Dispatch(${n})`;
+  dispLab.style.opacity = 1;
+  playhead.setAttribute("x", colX(n)); playhead.setAttribute("y", rowTop(coreLayout.length - 1) - 6);
+  playhead.setAttribute("height", C.rail + 52 - (rowTop(coreLayout.length - 1) - 6));
+  playhead.style.opacity = .45;
+  called.forEach(nm => { const c = rows[nm].cells[n]; c.rect.classList.add("pulse"); setTimeout(() => c.rect.classList.remove("pulse"), 420); });
+}
+async function sweep(token, from = 1, to = 22, ms = 150, stopAt) {
+  for (let n = from; n <= to; n++) {
+    if (token !== coreBusy) return false;
+    if (n === 12) continue;
+    dispatchTo(n); coreCaption(n);
+    const st = stopAt && stopAt[n];
+    if (st === "__pend_goal") { setPending("예약: → goal (model)"); await wait(ms); }
+    else if (st) { $("#coreNarr").innerHTML = st; await wait(1800); }
+    else await wait(ms);
+  }
+  return token === coreBusy;
+}
+$("#coreSweepBtn").addEventListener("click", async () => {
+  const token = ++coreBusy;
+  if (coreLayout.length < 2 || missingSteps(coreLayout).length) setStage(3, false);
+  $("#coreNarr").innerHTML = "<b>한 턴</b>: core 는 칸을 차례로 <code>Dispatch(step)</code> 한다. 화살표가 닿는 맨 위 카드의 함수가 불리고, ▼ 가 있으면 <code>ctx.Next()</code> 로 아래 카드까지 이어진다. core 는 어느 카드가 끼워졌는지 모른다.";
+  await sweep(token, 1, 22, 300);
+  if (token === coreBusy) hideDispatch();
+});
+$("#coreSwitchBtn").addEventListener("click", async () => {
+  const token = ++coreBusy;
+  setStage(3, false);
+  $("#coreNarr").innerHTML = "<b>턴 1 · 기본 묶음</b>: 사용자가 \"테스트가 통과할 때까지 계속해\" 라고 보냈다. goal 카드는 아직 선반에 있다.";
+  await wait(1100);
+  if (!await sweep(token, 1, 20, 150, {
+    17:"<b>17. tool.execute</b>: 모델이 <code>mode</code> 도구를 불렀다 {name: goal}. harness 는 <b>예약</b>만 기록한다. 이 턴에 끼워진 카드는 그대로다.",
+    18:"__pend_goal",
+    20:"<b>20. turn.finish</b>: 도구를 썼으므로 require 가 <code>continue_turn</code>. core 는 2번 칸으로 돌아간다."})) return;
+  hideDispatch(); await wait(400); if (token !== coreBusy) return;
+  $("#coreNarr").innerHTML = "<b>2번 칸 직전 · run 스위처</b>: 예약을 적용해 goal 카드가 끼워진 묶음(미리 Bind 해 둔 Dispatcher)으로 바꾼다. 다른 카드들의 상태는 공유 RunTable 에 있어 그대로 이어진다.";
+  setStage(4, false);
+  await wait(2200); if (token !== coreBusy) return;
+  if (!await sweep(token, 2, 20, 150, {
+    4:"<b>4. context.inject</b>: Dispatch 가 이제 goal 카드에 닿는다. 목표 지시를 붙이고 <code>ctx.Next()</code> 로 아래 카드를 부른다.",
+    20:"<b>20. turn.finish</b>: goal 이 <code>ctx.Next()</code> 로 require 의 판단(settle)을 받고, 보조 모델로 판정한다 → <b>done</b>. goal 이 <code>Exit</code> 를 예약한다."})) return;
+  setPending("예약: → 기본 (set: goal achieved)");
+  if (!await sweep(token, 21, 22, 280)) return;
+  hideDispatch();
+  $("#coreNarr").innerHTML = "<b>다음 run 시작</b>: 이탈 예약이 적용되어 goal 카드가 선반으로 돌아간다. 모델은 이 카드를 뺄 수 없었다. 뺀 것은 goal 카드 자신의 판정이다.";
+  await wait(1200); if (token !== coreBusy) return;
+  setStage(3, false);
+});
+setStage(0);
+highlightCol(coreSel);
+setTimeout(() => { if (coreStage === 0 && coreBusy === 0) { const t = ++coreBusy; (async () => { for (const i of [1, 2, 3]) { await wait(1100); if (t !== coreBusy) return; setStage(i); } })(); } }, REDUCED ? 0 : 700);
+
+
+/* 맨 위 그림에서 모듈이 맡은 부분 짚기 */
+cs.appendChild(gFocus);
+const FOCUSNOTE = {
+  core:"<b>core (L0)</b>: 맨 아래 22칸 레일이다. 칸의 순서와 신호 규칙만 가지고, 칸마다 <code>Dispatch(step)</code> 를 부른다.",
+  contract:"<b>contract (L0)</b>: 칸 사이로 오가는 값(Message, Request, ToolCall, StreamEvent …)의 모양이다. 카드 함수의 입력과 출력이 모두 이 타입이다.",
+  inject:"<b>inject (L1)</b>: 카드 규격(FunctionSet)과 끼우는 장치다. 이 주입선(<code>inject.Bind</code>)이 켠 카드를 겹쳐 Dispatcher 하나로 만들고, 칸마다 봉인된 ctx 와 <code>ctx.Next()</code> 를 준다.",
+  sets:"<b>sets (L1)</b>: 끼워진 카드들과 선반의 카드들이다. 카드는 미리 만들어 두지만 순서는 모른다.",
+  adapters:"<b>adapters (L1)</b>: require 카드의 9번 이빨(<code>model.call</code>)이 부르는 모델 연결 장치다. 요청을 provider 의 방언으로 바꿔 보낸다.",
+  harness:"<b>harness (L2)</b>: 선반에 카드를 등록하고, 어떤 카드를 어떤 순서로 끼울지 정하고(기본 배치), 모든 카드 바깥을 보라색 래핑(승인·이벤트)으로 감싼다. 모드마다 묶음을 미리 Bind 하고 위의 '끼운 묶음' 을 바꾸는 것도 harness 다. 카드가 쓰는 도구·저장소·프롬프트·요약기도 harness 가 만들어 준다.",
+  osenv:"<b>osenv (L2)</b>: base 카드의 17번 이빨(<code>tool.execute</code>)이 도구를 실행하면, 그 도구가 실제 파일·셸을 만지는 곳이 osenv 다.",
+  agent:"<b>agent (L2)</b>: 설정·키 파일을 읽어 osenv·adapters·harness 로 이 그림 전체를 조립하고, run 을 시작·제어한다 (Start, Steer, FollowUp, Abort, 모드 API).",
+  terminal:"<b>terminal·dr (L3)</b>: 그림 밖의 버튼과 화면이 하는 일이다. 사람의 입력을 agent 에 넘기고, 이벤트를 받아 그린다.",
+};
+function clearFocus() { gFocus.innerHTML = ""; document.querySelectorAll(".hl-outline").forEach(e => e.classList.remove("hl-outline")); }
+function focusRect(x, y, w, hh, label, lx, ly) {
+  el("rect", {x, y, width:w, height:hh, rx:12, class:"focusbox"}, gFocus);
+  if (label) txt(lx ?? x + 10, ly ?? y - 10, label, gFocus, {class:"focuslab"});
+}
+function coreFocus(key, scroll = true) {
+  coreBusy++; hideDispatch();
+  if (coreStage < 3 || missingSteps(coreLayout).length) setStage(3, false);
+  clearFocus();
+  const nA = coreLayout.length, shelfN = ALLSETS.length - nA;
+  const shelfBottom = 84 + shelfN*C.pitch, stackTop = rowTop(nA - 1), dy = shelfN ? shelfBottom + 8 : 84;
+  const W = cardW + 24, X = C.x0 - 16;
+  switch (key) {
+    case "core": case "contract":
+      focusRect(X, C.rail - 8, W, 62, key === "core" ? "L0 core — 22칸 틀" : "L0 contract — 칸 사이로 오가는 값의 모양", X + 10, C.rail - 16); break;
+    case "inject":
+      focusRect(X, dy - 8, W, Math.max(40, stackTop - dy - 18), "L1 inject — 카드 규격 · Bind · ctx", X + 10, dy + 60); break;
+    case "sets":
+      focusRect(X, stackTop - 6, W, C.rail - stackTop, "L1 sets — 끼운 카드", X + W - 200, stackTop - 14);
+      if (shelfN) focusRect(X, 76, W, shelfBottom - 72, "등록된 카드 (선반)", X + W - 200, 72); break;
+    case "adapters": {
+      const x = colX(9) - 6, y = rowTop(coreLayout.indexOf("require")) - 6;
+      focusRect(x, y, C.w + 12, C.rail + 48 - y, "L1 adapters — 9번 이빨이 모델을 부른다", x - 120, stackTop - 30); break; }
+    case "osenv": {
+      const x = colX(17) - 6, y = rowTop(coreLayout.indexOf("base")) - 6;
+      focusRect(x, y, C.w + 12, C.rail + 48 - y, "L2 osenv — 17번 이빨의 도구가 실제 파일·셸을 만진다", x - 330, stackTop - 30); break; }
+    case "harness":
+      if (shelfN) focusRect(X, 76, W, shelfBottom - 72, "L2 harness — 등록·순서·래핑·모드 묶음", X + 10, 70);
+      focusRect(X, stackTop - 26, W, 18);
+      focusRect(C.x0 - 14, 8, 440, 46); break;
+    case "wrap":
+      focusRect(X, stackTop - 28, W, 22, "harness 래핑 — 이 막대가 승인을 받고 이벤트를 만든다", X + 10, stackTop - 36); break;
+    case "agent":
+      focusRect(6, 6, 1048, 778, "L2 agent — 이 그림 전체를 조립하고 run 을 건다", 20, 40);
+      $("#coreStages").parentElement.classList.add("hl-outline"); break;
+    default:
+      $("#coreStages").parentElement.classList.add("hl-outline");
+      $("#coreSwitchBtn").parentElement.classList.add("hl-outline");
+  }
+  $("#coreNarr").innerHTML = FOCUSNOTE[key] || FOCUSNOTE.terminal;
+  if (scroll) document.getElementById("core").scrollIntoView({behavior: REDUCED ? "auto" : "smooth"});
+}
+FOCUSNOTE.wrap = "<b>harness 래핑</b>: 보라색 막대가 있는 칸은 harness 가 맨 위 카드 함수를 감싼 칸이다. 16번에서는 승인(Gate)을 받고, 1·2·10·11·12·16·18·20·22번에서는 이벤트를 만든다. 어떤 카드를 끼워도 이 막대는 유지된다.";
+function coreShowCol(n) {
+  coreBusy++; hideDispatch(); clearFocus();
+  if (coreStage < 3 || missingSteps(coreLayout).length) setStage(3, false);
+  coreSel = n; highlightCol(n); coreCaption(n); dispatchTo(n);
+  $("#coreNarr").innerHTML = `<b>${n}. ${STEPS[n].id}</b>: core 가 이 칸을 <code>Dispatch(${n})</code> 하면 화살표가 닿는 맨 위 카드의 함수가 불린다. ▼ 가 있으면 <code>ctx.Next()</code> 로 아래 카드까지 이어진다. 단계 버튼으로 모드를 바꾸면 이 칸을 맡는 카드가 바뀐다.`;
+  document.getElementById("core").scrollIntoView({behavior: REDUCED ? "auto" : "smooth"});
+}
+const COREMAP = [
+  ["core","맨 아래 22칸 레일","L0"],["contract","칸 사이로 오가는 값","L0"],["inject","inject.Bind 주입선","L1"],["sets","카드 (끼운 것·선반)","L1"],
+  ["adapters","9번 이빨이 부르는 모델","L1"],["harness","선반·순서·래핑·묶음 표시","L2"],["osenv","17번 이빨의 파일·셸","L2"],["agent","이 전부를 조립해 run 시작","L2"],["terminal","버튼·화면","L3"],
+];
+for (const [k, part, L] of COREMAP) {
+  const b = h("button", {}, `${part} → <b>${k}</b> <span class="muted">(${L})</span>`);
+  b.addEventListener("click", () => coreFocus(k, false));
+  $("#coreMap").appendChild(b);
+}
+
+/* ───────────── 레이어 지도: 네 층, 층마다 질문 하나 ───────────── */
+const LBAND = [
+  {L:3, y:12,  h:150, col:"#6E5A8F", t:"L3 화면",   q:"사람이 어떻게 보고 누르나"},
+  {L:2, y:174, h:228, col:"#3B5BA9", t:"L2 하네스", q:"어떤 카드를 어떤 순서로, 어떤 부품과 끼우나"},
+  {L:1, y:414, h:212, col:"#1F8A8A", t:"L1 주입",   q:"칸에 무엇을 어떻게 끼우나"},
+  {L:0, y:638, h:180, col:"#5E6B78", t:"L0 코어",   q:"무엇을 어떤 순서로 부르나"},
+];
+const LCOL = {3:"#6E5A8F", 2:"#3B5BA9", 1:"#1F8A8A", 0:"#5E6B78"};
+const TILES = {
+  terminal:{L:3, x:200, y:30,  w:300, h:118, t:"surfaces/terminal", q:"입력·승인·이벤트 그리기", v:"v0.6"},
+  dr:      {L:3, x:515, y:30,  w:165, h:118, t:"cmd/dr", q:"대화형 진입점", v:"v0.3"},
+  drprint: {L:3, x:695, y:30,  w:165, h:118, t:"cmd/dr-print", q:"한 번 실행 CLI", v:"v0.2"},
+  examples:{L:3, x:875, y:30,  w:175, h:118, t:"examples/*", q:"주입 예시 셋", v:"inject·verify·modes"},
+  agent:   {L:2, x:200, y:190, w:270, h:198, t:"agent", q:"설정·키로 조립, run 제어", v:"v0.9"},
+  harness: {L:2, x:485, y:190, w:400, h:198, t:"harness", q:"카드 고르기·순서·래핑·모드·부품", v:"v1.4"},
+  osenv:   {L:2, x:900, y:190, w:150, h:198, t:"osenv", q:"실제 파일·셸", v:"v0.3"},
+  inject:  {L:1, x:200, y:430, w:300, h:182, t:"inject", q:"카드 규격과 끼우는 장치", v:"v0.5"},
+  sets:    {L:1, x:515, y:430, w:330, h:182, t:"sets", q:"미리 만든 카드들", v:"v0.8"},
+  adapters:{L:1, x:860, y:430, w:190, h:182, t:"adapters", q:"모델과 말하기", v:"v0.6"},
+  core:    {L:0, x:200, y:654, w:610, h:152, t:"core", q:"22칸 틀과 신호 규칙", v:"v0.2"},
+  contract:{L:0, x:825, y:654, w:225, h:152, t:"contract", q:"오가는 값의 모양", v:"v0.4"},
+};
+const MODINFO = {
+  core:{does:["22칸의 순서와 신호 13종의 규칙을 가진다.","칸마다 <code>Dispatcher.Dispatch(step)</code> 를 부른다. 칸 안에서 무엇을 하는지는 모른다.","run 기록, 스트림 소비, 도구 동시 실행, 전이 수 상한 같은 기계적인 일만 한다.","정책은 하나도 없다 (D1). contract 와 표준 라이브러리만 쓴다."],
+    card:"카드를 끼우는 틀. 맨 위 그림의 맨 아래 레일.", api:"k := core.New(d, core.Options{})\nrun := k.Start(ctx, core.RunInput{…})\nres := run.Wait()", deps:["contract"]},
+  contract:{does:["Message, Block, ToolCall, ToolResult, Request, StreamEvent, CallError, ModelInfo 같은 데이터 타입과 검증.","모든 층이 같은 모양을 쓰므로, 카드를 바꿔 끼워도 값은 그대로 흐른다."],
+    card:"카드 함수가 주고받는 값의 모양.", api:"contract.Message{Role, Content []Block, …}\ncontract.Request{Model, System, Messages, Tools}", deps:[]},
+  inject:{does:["<b>카드 규격</b>: <code>FunctionSet</code> 은 22칸 필드를 가진 구조체이고, 맡을 칸만 채운다.","<b>끼우기</b>: <code>Bind</code> 가 카드를 순서대로 겹쳐 Dispatcher 하나로 만든다. 빈 칸이 있으면 거부한다.","<b>손잡이</b>: 칸마다 봉인된 ctx 를 준다. 그 칸에 허용된 조회·신호만 보이고, <code>ctx.Next()</code> 로 아래 카드를 부른다.","카드별 상태 이름공간, run 상태 공유 표(RunTable)."],
+    card:"맨 위 그림의 'inject.Bind(…)' 주입선.", api:"d, err := inject.Bind(base, require, …)\n// 뒤의 카드가 위 층\n// d 가 core.Dispatcher 를 구현한다", deps:["core","contract"]},
+  sets:{does:["기본 카드: <code>base</code>(저장·입력함·도구 실행), <code>require</code>(요청·모델 호출·턴 루프), <code>cache</code>, <code>guard</code>, <code>truncate</code>, <code>resilient</code>.","끼워 쓰는 카드: <code>verify</code>(셸 명령 검증).","판단기 도구: <code>AuxModel</code>·<code>Complete</code>(보조 모델 호출), <code>ModesOf</code>(모드 통로).","카드의 <b>순서는 모른다</b>. 순서는 L2 가 정한다."],
+    card:"맨 위 그림의 카드들.", api:"base := sets.Base(deps)   // inject.FunctionSet\nguard := sets.Guard(deps)", deps:["inject","core","contract"]},
+  adapters:{does:["세 방언: <code>anthropic-messages</code>, <code>openai-chat</code>, <code>openai-responses</code>.","provider 프로필 24개와 모델 카탈로그.","contract 에만 의존하는 단독 LLM 클라이언트라서 루프 없이도 쓸 수 있다."],
+    card:"require 카드의 9번 이빨(model.call)이 부르는 장치.", api:"c := adapters.New(adapters.Options{…})\nfor ev := range c.Call(ctx, req) { … }", deps:["contract"]},
+  harness:{does:["<b>부품을 만든다</b>: 도구 7종, 세션 저장소(JSONL), 시스템 프롬프트, 요약기. 카드는 이것을 <code>Deps</code> 로 받는다.","<b>카드를 고르고 순서를 정한다</b>: <code>DefaultSets</code>, 배치(<code>/set</code>).","<b>바깥을 감싼다</b>: 어떤 카드를 끼워도 승인과 이벤트가 유지된다.","<b>모드</b>: 모드마다 묶음을 미리 Bind 하고, run 스위처가 turn.start 에서 고른다.","실제 파일·네트워크는 만지지 않는다. Env 와 ModelCaller 로 받는다."],
+    card:"맨 위 그림의 선반, 카드 순서, 보라색 래핑, '끼운 묶음' 표시.", api:"h, _ := harness.New(ctx, harness.Options{\n  Env, Model, SessionDir,\n  Sets, Modes, OnEvent, Gate })", deps:["sets","inject","core"]},
+  osenv:{does:["harness 의 Env(파일 읽기·쓰기·목록, 셸 실행)를 실제 OS 로 구현한다."],
+    card:"base 카드의 17번 이빨(tool.execute)이 실행한 도구가 실제로 만지는 곳.", api:"env, _ := osenv.New(cwd, shellPath)", deps:["harness"]},
+  agent:{does:["설정(<code>config.json</code>)과 키(<code>auth.json</code>)를 읽는다.","osenv·adapters·harness 를 조립해 완성된 에이전트를 만든다.","승인 규칙, run 제어(Start·Steer·FollowUp·Abort), 세션 잠금.","모델·키 선택, 세트 배치 저장, 모드 API(EnterMode·ExitMode), 보조 호출(Complete)."],
+    card:"맨 위 그림 전체를 조립하고 run 을 거는 쪽.", api:"a, _ := agent.New(ctx, agent.Options{Sets, Modes, …})\nrun, _ := a.Start(ctx, sid, input)", deps:["harness","osenv","adapters"]},
+  terminal:{does:["줄 단위 대화 화면: 입력, 승인 묻기, 이벤트 그리기.","명령: /model /login /sets /set /modes /mode /sessions /resume /compact.","설정 파일을 직접 읽지 않는다. 모든 것은 agent 를 통한다 (R17)."],
+    card:"맨 위 그림 밖의 버튼과 화면이 하는 일.", api:"t := terminal.New(terminal.Options{In, Out, Width})\nt.Run(ctx, a, terminal.Start{})", deps:["agent"]},
+  dr:{does:["터미널을 열고 agent 를 만들어 terminal 에 넘긴다.","주입 통로가 없어 기본 카드만 쓴다 (D12). 모드도 등록하지 않는다."], card:"기본 카드 묶음 그대로 쓰는 진입점.", api:"cd L3_ui/cmd/dr && go run .", deps:["terminal","agent"]},
+  drprint:{does:["질문 하나를 실행하고 결과를 출력한다. 검증용.","종료 코드 0 / 1 / 2 / 130."], card:"버튼 없이 한 번 실행.", api:'cd L3_ui/cmd/dr-print && go run . "질문"', deps:["agent"]},
+  examples:{does:["inject: 매 턴 규칙 주입 + rm -rf 차단 카드.","verify: 셸 명령 자기검증 카드.","modes: goal·plan 모드 카드."], card:"자기 카드를 만들어 끼우는 법의 예시.", api:'agent.New(ctx, agent.Options{\n  Sets: func(d sets.Deps) []harness.SetEntry {…},\n  Modes: …})', deps:["agent","terminal"]},
+};
+const FLOWS = [
+  ["terminal","agent","run 맡기기 · 이벤트 받기"],["dr","terminal",""],["drprint","agent",""],["examples","agent",""],
+  ["agent","harness",""],["agent","osenv",""],["agent","adapters",""],["osenv","harness",""],
+  ["harness","sets",""],["harness","inject","Bind"],["sets","inject",""],["inject","core","Dispatcher"],
+  ["core","contract",""],["adapters","contract",""],
+];
+const lsvg = $("#layerSvg");
+const ldefs = el("defs", {}, lsvg);
+for (const [id, fill] of [["arr","#8A97A6"],["arrL","#8A97A6"]]) {
+  const m = el("marker", {id, viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"7", markerHeight:"7", orient:"auto-start-reverse"}, ldefs);
+  el("path", {d:"M0,0 L10,5 L0,10 z", fill}, m);
+}
+const bandEls = {};
+for (const b of LBAND) {
+  const g = el("g", {class:"band"}, lsvg);
+  el("rect", {x:4, y:b.y, width:1052, height:b.h, rx:12, fill:b.col, "fill-opacity":.07, stroke:b.col, "stroke-opacity":.35}, g);
+  txt(18, b.y + 30, b.t, g, {class:"bl", fill:b.col});
+  const words = b.q.split(" "); let line = "", ly = b.y + 54;
+  for (const w of words) { if ((line + " " + w).length > 11) { txt(18, ly, line.trim(), g, {class:"bq"}); ly += 18; line = w; } else line += " " + w; }
+  if (line.trim()) txt(18, ly, line.trim(), g, {class:"bq"});
+  bandEls[b.L] = g;
+}
+const gFlow = el("g", {}, lsvg), gTile = el("g", {}, lsvg);
+function anchor(t, toward) {
+  const cx = t.x + t.w/2, cy = t.y + t.h/2;
+  if (Math.abs(toward.y + toward.h/2 - cy) < 5) return toward.x > t.x ? [t.x + t.w, cy] : [t.x, cy];
+  return toward.y > t.y ? [cx, t.y + t.h] : [cx, t.y];
+}
+const flowEls = [];
+for (const [a, b, label] of FLOWS) {
+  const A = TILES[a], B = TILES[b];
+  const [x1, y1] = anchor(A, B), [x2, y2] = anchor(B, A);
+  const d = y1 === y2 ? `M${x1},${y1} L${x2 + (x2 > x1 ? -3 : 3)},${y2}` : `M${x1},${y1} C${x1},${(y1+y2)/2} ${x2},${(y1+y2)/2} ${x2},${y2 + (y2 > y1 ? -3 : 3)}`;
+  const p = el("path", {d, class:"flow"}, gFlow);
+  let lab = null;
+  if (label) lab = txt(x2 + 10, y2 - 8, label, gFlow, {class:"flowlab", style:"font:700 12.5px var(--sans)", fill:"#1C2733"});
+  flowEls.push({a, b, p, lab});
+}
+function chip(g, x, y, text, fill, color = "#fff", w) {
+  const ww = w || 10 + text.length * 7.2;
+  el("rect", {x, y, width:ww, height:20, rx:5, fill}, g);
+  txt(x + ww/2, y + 10.5, text, g, {"text-anchor":"middle", "dominant-baseline":"central", style:"font:600 11.5px var(--mono)", fill:color});
+  return ww;
+}
+function miniCard(g, x, y, w, col, teeth, dashed) {
+  el("rect", {x, y, width:w, height:16, rx:4, fill: dashed ? "#fff" : col, "fill-opacity": dashed ? 1 : .14, stroke: dashed ? "#8A97A6" : col, "stroke-dasharray": dashed ? "4 3" : "", "stroke-width":1.5}, g);
+  teeth.forEach(t => el("rect", {x: x + 4 + t*(w-12)/21, y: y + 3, width:Math.max(4, (w-12)/21 - 1), height:10, rx:2, fill:col, opacity: dashed ? .4 : 1}, g));
+}
+const tileEls = {};
+for (const [k, t] of Object.entries(TILES)) {
+  const g = el("g", {class:"tile", tabindex:"0", role:"button", "aria-label": t.t}, gTile);
+  el("rect", {x:t.x, y:t.y, width:t.w, height:t.h, class:"box", stroke:LCOL[t.L]}, g);
+  txt(t.x + 14, t.y + 26, t.t, g, {class:"tt"});
+  txt(t.x + 14, t.y + 46, t.q, g, {class:"tq"});
+  const mx = t.x + 14, my = t.y + 60, mw = t.w - 28;
+  const teeth = nm => Object.keys(FILLS[nm]).map(n => +n - 1);
+  switch (k) {
+    case "core": {
+      el("rect", {x:mx, y:my + 18, width:mw, height:38, rx:8, fill:"#5E6B78"}, g);
+      for (let n = 1; n <= 22; n++) { const sx = mx + 8 + (n-1)*(mw-16)/22; el("rect", {x:sx, y:my + 25, width:(mw-16)/22 - 4, height:24, rx:3, fill:"#fff"}, g); txt(sx + ((mw-16)/22 - 4)/2, my + 37, n, g, {"text-anchor":"middle", "dominant-baseline":"central", style:"font:700 10px var(--sans)"}); }
+      txt(mx, my + 76, "Dispatch(step) 만 부른다 · 칸 안의 일은 모른다", g, {class:"mini"}); break; }
+    case "contract": {
+      let cx = mx; [["Message",0],["Request",0],["ToolCall",1],["StreamEvent",1]].forEach(([w, row], i) => {
+        if (i === 2) cx = mx; cx += chip(g, cx, my + 6 + row*28, w, "#E3E9EE", "#1C2733") + 6; }); break; }
+    case "inject": {
+      miniCard(g, mx, my + 4, mw * .62, "#3B5BA9", [0, 2, 5, 7, 8, 14, 19]);
+      txt(mx + mw*.62 + 8, my + 16, "FunctionSet", g, {class:"mini"});
+      el("path", {d:`M${mx + 40},${my + 26} L${mx + 40},${my + 52}`, stroke:"#1F8A8A", "stroke-width":2.5, "marker-end":"url(#arrL)"}, g);
+      txt(mx + 52, my + 44, "Bind: 겹쳐서 Dispatcher 로", g, {class:"mini"});
+      el("rect", {x:mx, y:my + 58, width:mw * .62, height:14, rx:4, fill:"#5E6B78"}, g);
+      txt(mx, my + 96, "ctx: 허용 신호만 · ctx.Next()", g, {class:"mini"}); break; }
+    case "sets": {
+      ["base","require","cache","guard","truncate","resilient"].forEach((nm, i) => miniCard(g, mx, my + i*15 - 2, mw * .74, SETCOL[nm], teeth(nm)));
+      ["verify","goal","plan"].forEach((nm, i) => { txt(mx + mw*.78, my + 10 + i*22, nm, g, {class:"mini", fill:"#7A5CC0"}); });
+      txt(mx + mw*.78, my + 82, "(모드용)", g, {class:"mini"}); break; }
+    case "adapters": {
+      ["anthropic-messages","openai-chat","openai-responses"].forEach((nm, i) => chip(g, mx, my + 6 + i*26, nm, "#E3E9EE", "#1C2733", mw));
+      txt(mx, my + 100, "provider 24개", g, {class:"mini"}); break; }
+    case "harness": {
+      const colw = (mw - 16) / 2;
+      txt(mx, my + 10, "선반·순서", g, {class:"mini", style:"font:700 11.5px var(--sans)"});
+      ["base","require","cache","guard"].forEach((nm, i) => miniCard(g, mx, my + 18 + i*13, colw, SETCOL[nm], teeth(nm)));
+      txt(mx + colw + 16, my + 10, "래핑 (승인·이벤트)", g, {class:"mini", style:"font:700 11.5px var(--sans)"});
+      for (let i = 0; i < 9; i++) el("rect", {x:mx + colw + 16 + i*(colw/9), y:my + 18, width:colw/9 - 4, height:6, rx:3, fill:"#6E5A8F"}, g);
+      txt(mx + colw + 16, my + 44, "모드 스위처", g, {class:"mini", style:"font:700 11.5px var(--sans)"});
+      chip(g, mx + colw + 16, my + 52, "기본", "#3B5BA9"); chip(g, mx + colw + 70, my + 52, "goal", "#7A5CC0"); chip(g, mx + colw + 124, my + 52, "plan", "#9B4F9B");
+      txt(mx, my + 92, "부품 → Deps:", g, {class:"mini", style:"font:700 11.5px var(--sans)"});
+      let px = mx + 86; ["도구 7종","세션 JSONL","프롬프트","요약기"].forEach(w => { px += chip(g, px, my + 81, w, "#E3E9EE", "#1C2733", 10 + w.length*11) + 5; });
+      txt(mx, my + 122, "실제 I/O 는 Env·ModelCaller 로 받는다", g, {class:"mini"}); break; }
+    case "osenv": {
+      chip(g, mx, my + 6, "파일", "#E3E9EE", "#1C2733", mw); chip(g, mx, my + 32, "셸", "#E3E9EE", "#1C2733", mw);
+      txt(mx, my + 72, "Env 의 OS 구현", g, {class:"mini"}); break; }
+    case "agent": {
+      chip(g, mx, my + 4, "config.json", "#E3E9EE", "#1C2733"); chip(g, mx + 104, my + 4, "auth.json", "#E3E9EE", "#1C2733");
+      txt(mx, my + 44, "osenv + adapters + harness 조립", g, {class:"mini"});
+      let ax = mx; ["Start","Steer","FollowUp","Abort"].forEach(w => { ax += chip(g, ax, my + 54, w, "#3B5BA9") + 4; });
+      txt(mx, my + 96, "승인 규칙 · 세션 잠금", g, {class:"mini"});
+      txt(mx, my + 114, "모델·키 · 배치 저장 · 모드 API", g, {class:"mini"}); break; }
+    case "terminal": {
+      el("rect", {x:mx, y:my - 2, width:mw, height:48, rx:6, fill:"#1C2733"}, g);
+      txt(mx + 8, my + 12, "> 테스트를 고쳐 줘", g, {style:"font:11.5px var(--mono)", fill:"#E6EDF3"});
+      txt(mx + 8, my + 28, "── 모드 기본 → goal (user)", g, {style:"font:11.5px var(--mono)", fill:"#B9A6E8"});
+      txt(mx + 8, my + 42, "● 실행 중", g, {style:"font:11.5px var(--mono)", fill:"#8FA3B8"}); break; }
+    default:
+      txt(mx, my + 16, t.v, g, {class:"mini"});
+  }
+  const pick = () => selectMod(k);
+  g.addEventListener("click", pick);
+  g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+  tileEls[k] = g;
+}
+function selectMod(k) {
+  const t = TILES[k], m = MODINFO[k];
+  Object.entries(tileEls).forEach(([kk, g]) => g.classList.toggle("sel", kk === k));
+  flowEls.forEach(f => f.p.classList.toggle("hl", f.a === k || f.b === k));
+  const users = FLOWS.filter(f => f[1] === k).map(f => TILES[f[0]].t);
+  const focusKey = ["dr","drprint","examples"].includes(k) ? "terminal" : k;
+  $("#modDetail").innerHTML = `<h3>${t.t} <span class="muted small">스펙 ${t.v}</span></h3>
+    <p class="small" style="color:${LCOL[t.L]};font-weight:800">L${t.L} — ${LBAND.find(b => b.L === t.L).q}</p>
+    <ul class="small" style="padding-left:1.1rem;margin:.4rem 0">${m.does.map(d => `<li>${d}</li>`).join("")}</ul>
+    <p class="small"><b>맨 위 그림에서는</b>: ${m.card}</p>
+    <button class="primary" id="toCore">맨 위 그림에서 보기</button>
+    <pre class="code small">${m.api.replace(/</g, "&lt;")}</pre>
+    <p class="small"><b>의존</b>: ${m.deps.length ? m.deps.map(d => `<code>${TILES[d].t}</code>`).join(" ") : "없음 (표준 라이브러리만)"}<br><b>쓰는 쪽</b>: ${users.length ? users.map(u => `<code>${u}</code>`).join(" ") : "—"}</p>`;
+  $("#toCore").addEventListener("click", () => coreFocus(focusKey));
+}
+const LSTEPS = [
+  {L:0, label:"L0 틀", say:"<b>먼저 틀</b>: core 는 22칸과 신호 규칙만 가진다. contract 는 칸 사이로 오가는 값의 모양이다. 이것만으로는 아무 일도 하지 않는다 — 맨 위 그림의 '1 core 만' 상태다."},
+  {L:1, label:"L1 끼우는 법과 카드", say:"<b>칸을 채울 수단</b>: inject 는 카드 규격과 끼우는 장치(Bind), sets 는 미리 만든 카드, adapters 는 카드가 모델을 부를 때 쓰는 연결이다. 여기까지는 파일도 환경변수도 모르는 순수 라이브러리다. 직접 쓰면 <code>inject.Bind(sets.Base(d), sets.Require(d))</code> 로 core 를 돌릴 수 있다."},
+  {L:2, label:"L2 실제 환경에서 조립", say:"<b>실제 환경 위의 조립</b>: harness 는 카드가 쓸 부품(도구·저장소·프롬프트·요약기)을 만들고, 어떤 카드를 어떤 순서로 끼울지 정하고, 바깥을 승인·이벤트로 감싸고, 모드 묶음을 바꾼다. osenv 는 실제 OS, agent 는 설정·키를 읽어 이 전부를 조립하고 run 을 맡는다."},
+  {L:3, label:"L3 사람에게 보여 주기", say:"<b>사람 쪽</b>: 터미널과 CLI 는 agent 에 run 을 맡기고 이벤트를 받아 그린다. 입력과 출력만 하고, 설정 파일도 직접 읽지 않는다. 자기 카드를 끼우고 싶으면 examples 처럼 <code>agent.New</code> 를 직접 부른다."},
+];
+function showLayers(upto) {
+  [...$("#layerSteps").children].forEach((b, i) => b.setAttribute("aria-pressed", i === upto));
+  for (const b of LBAND) bandEls[b.L].classList.toggle("faded", b.L > upto);
+  Object.entries(tileEls).forEach(([k, g]) => { g.classList.add("band"); g.classList.toggle("faded", TILES[k].L > upto); });
+  flowEls.forEach(f => f.p.style.opacity = (TILES[f.a].L > upto || TILES[f.b].L > upto) ? .1 : 1);
+  flowEls.forEach(f => f.lab && (f.lab.style.opacity = (TILES[f.a].L > upto || TILES[f.b].L > upto) ? .1 : 1));
+  $("#layerNarr").innerHTML = LSTEPS[upto].say;
+}
+LSTEPS.forEach((st, i) => { const b = h("button", {}, `<b>${i + 1}</b>${st.label}`); b.addEventListener("click", () => showLayers(i)); $("#layerSteps").appendChild(b); });
+showLayers(3);
+selectMod("harness");
+
+/* ───────────── 모드: 시간축 그림 ───────────── */
+const mt = $("#modeTl");
+const mtd = el("defs", {}, mt);
+const mtm = el("marker", {id:"arrMT", viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"7", markerHeight:"7", orient:"auto-start-reverse"}, mtd);
+el("path", {d:"M0,0 L10,5 L0,10 z", fill:"#7A5CC0"}, mtm);
+function mstack(cx, goal, parent) {
+  [["#5E6B78",142],["#3B5BA9",130],["#1F8A8A",118]].forEach(([c, y]) => el("rect", {x:cx - 60, y, width:120, height:10, rx:3, fill:c}, parent));
+  if (goal) el("rect", {x:cx - 60, y:104, width:120, height:12, rx:3, fill:"#7A5CC0"}, parent);
+}
+el("rect", {x:60, y:170, width:590, height:46, rx:9, fill:"#3B5BA9"}, mt);
+txt(64, 160, "run 1", mt, {style:"font:700 14px var(--sans)", fill:"#3B5BA9"});
+[[70,"턴 1",160,false],[262,"턴 2",352,true],[454,"턴 3",547,true]].forEach(([x, t, cx, g]) => {
+  el("rect", {x, y:176, width:x === 454 ? 186 : 180, height:34, rx:6, fill:"#fff"}, mt);
+  txt(x + 10, 197, t, mt, {style:"font:600 13px var(--sans)", fill:"#3B5BA9"});
+  mstack(cx, g, mt);
+});
+el("rect", {x:690, y:170, width:270, height:46, rx:9, fill:"#3B5BA9"}, mt);
+txt(694, 160, "run 2", mt, {style:"font:700 14px var(--sans)", fill:"#3B5BA9"});
+el("rect", {x:700, y:176, width:250, height:34, rx:6, fill:"#fff"}, mt);
+txt(710, 197, "턴 1", mt, {style:"font:600 13px var(--sans)", fill:"#3B5BA9"});
+mstack(825, false, mt);
+txt(416, 112, "← goal 카드", mt, {style:"font:700 12px var(--sans)", fill:"#7A5CC0"});
+const pWho = el("g", {class:"part p-who"}, mt), pWhen = el("g", {class:"part p-when"}, mt), pEnd = el("g", {class:"part p-end"}, mt), pStore = el("g", {class:"part p-store"}, mt);
+[[60,"사용자 /mode","진입·이탈 언제나","#1C2733"],[350,"모델 mode 도구","기본 모드에서 진입만","#3B5BA9"],[640,"판단기 Exit","이탈만","#7A5CC0"]].forEach(([x, a, b, c]) => {
+  el("rect", {x, y:262, width:270, height:52, rx:9, fill:"#fff", stroke:c, "stroke-width":2}, pWho);
+  txt(x + 14, 283, a, pWho, {style:"font:700 14px var(--sans)", fill:c});
+  txt(x + 14, 302, b, pWho, {style:"font:13px var(--sans)", fill:"#4A5868"});
+});
+el("line", {x1:256, y1:58, x2:256, y2:226, stroke:"#7A5CC0", "stroke-width":2.5, "stroke-dasharray":"6 5"}, pWhen);
+txt(262, 54, "턴 2 의 turn.start 직전에 적용", pWhen, {style:"font:700 13px var(--sans)", fill:"#7A5CC0"});
+el("circle", {cx:215, cy:193, r:8, fill:"#7A5CC0"}, pWhen);
+txt(120, 240, "모델이 mode 도구 → 예약", pWhen, {style:"font:700 13px var(--sans)", fill:"#7A5CC0"});
+el("circle", {cx:610, cy:193, r:8, fill:"#7A5CC0"}, pEnd);
+txt(470, 240, "판정 done → Exit 예약", pEnd, {style:"font:700 13px var(--sans)", fill:"#7A5CC0"});
+el("line", {x1:675, y1:84, x2:675, y2:226, stroke:"#7A5CC0", "stroke-width":2.5, "stroke-dasharray":"6 5"}, pEnd);
+txt(682, 88, "다음 run 시작에 적용 → 기본", pEnd, {style:"font:700 13px var(--sans)", fill:"#7A5CC0"});
+el("rect", {x:780, y:12, width:200, height:58, rx:9, fill:"#fff", stroke:"#5C6F86", "stroke-width":2}, pStore);
+txt(794, 34, "세션 상태 harness.mode", pStore, {style:"font:700 13px var(--sans)", fill:"#1C2733"});
+txt(794, 54, "active · arg · pending", pStore, {style:"font:12.5px var(--mono)", fill:"#4A5868"});
+el("path", {d:"M880,70 L880,100", stroke:"#5C6F86", "stroke-width":2, "stroke-dasharray":"4 4", "marker-end":"url(#arrMT)"}, pStore);
+txt(30, 30, "재시작·/resume 에도 이탈 전까지 유지된다 →", pStore, {style:"font:12.5px var(--sans)", fill:"#5C6F86"});
+const MODESTEPS = [
+  {label:"누가 바꾸나", keys:["who"], say:"<b>누가 바꾸나</b>: 사용자는 언제나 진입·이탈한다. 모델은 기본 모드이고 예약이 없을 때 진입만 한다. 판단기 카드는 이탈만 한다. 작업 모델이 \"다 했다\" 고 말하고 스스로 루프를 끝낼 수 없게 한 것이 핵심이다."},
+  {label:"언제 바뀌나", keys:["when"], say:"<b>언제 바뀌나</b>: 요청은 바로 적용되지 않고 예약된다. run 안에서는 다음 <code>turn.start</code> 직전, run 밖이면 다음 run 시작에 적용된다. 턴 1 에서 모델이 mode 도구를 불렀으므로 턴 2 부터 goal 카드가 맨 위에 있다."},
+  {label:"어떻게 끝나나", keys:["end"], say:"<b>어떻게 끝나나</b>: goal 카드의 판단기가 판정(done)하고 <code>Exit</code> 를 예약한다. 예약은 다음 run 시작에 적용되어 기본 묶음으로 돌아간다. 사용자는 <code>/mode off</code> 로 언제든 끝낼 수 있다."},
+  {label:"어디에 남나", keys:["store"], say:"<b>어디에 남나</b>: 활성 모드·인자·예약은 세션 상태 <code>harness.mode</code> 에 저장된다. run 이 끝나도, <code>/resume</code> 해도, 프로세스를 다시 켜도 이탈 전까지 유지된다. 다른 세션에는 영향이 없다."},
+];
+stepper("#modeSteps", "#modeNarr", MODESTEPS, (i, st) => markParts(mt, st.keys));
+$("#modeNarr").innerHTML = "질문을 차례로 누르면 시간축에서 해당 부분만 남는다.";
+$("#modeToCore").addEventListener("click", () => {
+  document.getElementById("core").scrollIntoView({behavior: REDUCED ? "auto" : "smooth"});
+  setTimeout(() => $("#coreSwitchBtn").click(), REDUCED ? 0 : 600);
+});
+
+/* ───────────── 모드 시뮬레이터 (harness decide 와 같은 규칙) ───────────── */
+let ms = {active:"", arg:"", pending:null};
+const msvg = $("#modeSvg");
+const mdefs = el("defs", {}, msvg);
+const mk2 = el("marker", {id:"arrm", viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"7", markerHeight:"7", orient:"auto-start-reverse"}, mdefs);
+el("path", {d:"M0,0 L10,5 L0,10 z", fill:"#7A5CC0"}, mk2);
+const MPOS = {"":[320,60], goal:[150,175], plan:[490,175]};
+const MLABEL = {"":"기본", goal:"goal", plan:"plan"};
+const gEdge = el("g", {}, msvg);
+[["","goal"],["","plan"],["goal","plan"]].forEach(([a,b]) => {
+  const [x1,y1] = MPOS[a], [x2,y2] = MPOS[b];
+  el("line", {x1, y1, x2, y2, stroke:"#D3DAE1", "stroke-width":2}, gEdge);
+});
+const gPend = el("g", {}, msvg);
+const mNodes = {};
+for (const k of ["", "goal", "plan"]) {
+  const [x,y] = MPOS[k];
+  const g = el("g", {class:"mnode"}, msvg);
+  el("rect", {x:x-62, y:y-22, width:124, height:44, stroke:"#7A5CC0"}, g);
+  const t = el("text", {x, y}, g); t.textContent = MLABEL[k];
+  mNodes[k] = g;
+}
+function renderMode() {
+  for (const k in mNodes) mNodes[k].classList.toggle("on", k === ms.active);
+  gPend.innerHTML = "";
+  if (ms.pending) {
+    const [x1,y1] = MPOS[ms.active], [x2,y2] = MPOS[ms.pending.to];
+    const same = ms.pending.to === ms.active;
+    const cx = (x1+x2)/2, cy = same ? y1 - 70 : Math.min(y1,y2) + (y1 === y2 ? 40 : 10);
+    const sy1 = y1 + (y2 > y1 ? 24 : y2 < y1 ? -24 : 22), sy2 = y2 + (y2 > y1 ? -24 : y2 < y1 ? 24 : 22);
+    if (!same) el("path", {d:`M${x1},${sy1} Q${cx},${cy + (y1 === y2 ? 30 : 0)} ${x2},${sy2}`, class:"pend"}, gPend);
+    const ly = same ? y1 - 34 : y1 === y2 ? y1 + 48 : (y1+y2)/2;
+    const lx = same ? x1 : y1 === y2 ? cx : cx + (x2 > x1 ? 70 : -70);
+    const t = el("text", {x:lx, y:ly, "text-anchor":"middle", fill:"#7A5CC0", style:"font:700 13px var(--sans)"}, gPend);
+    t.textContent = `예약: ${MLABEL[ms.pending.to]} (${ms.pending.origin})`;
+  }
+  $("#modeState").innerHTML = `Active = <b>${ms.active ? JSON.stringify(ms.active) : '"" (기본)'}</b>, Arg = ${JSON.stringify(ms.arg)}, Pending = ${ms.pending ? `{To: ${JSON.stringify(ms.pending.to)}, Origin: ${ms.pending.origin}}` : "nil"}`;
+}
+function decide(origin, to) {
+  const arg = to === "goal" ? "테스트 통과" : to === "plan" ? "로그인 기능" : "";
+  if (origin === "model" && to === "") return [false, "모델은 모드에서 나갈 수 없다"];
+  if (origin === "model" && (ms.active || ms.pending)) return [false, "이미 활성 모드나 예약이 있어 모델은 진입할 수 없다"];
+  if (origin === "set" && to !== "") return [false, "세트는 모드에 들어갈 수 없다"];
+  if (origin === "set" && !ms.active) return [false, "나갈 활성 모드가 없다"];
+  if (origin === "set" && ms.pending && ms.pending.origin === "user") return [true, "사용자 예약이 있어 세트의 이탈은 무시된다 (사용자 우선)"];
+  if (origin === "user" && to === "" && !ms.active) { const had = !!ms.pending; ms.pending = null; return [true, had ? "기본 모드라 예약만 취소했다" : "이미 기본 모드다"]; }
+  if (!ms.pending && to === ms.active && arg === ms.arg) return [true, "이미 그 상태라 아무것도 하지 않는다"];
+  ms.pending = {to, arg, origin};
+  return [true, `예약했다: ${MLABEL[to]}${arg ? ` (arg "${arg}")` : ""}. 다음 turn.start 에 적용된다`];
+}
+function logMode(html) { const li = h("li", {}, html); const ul = $("#modeLog"); ul.prepend(li); }
+const WHO = {user:"사용자", model:"모델", set:"판단기 세트"};
+document.querySelectorAll("[data-req]").forEach(b => b.addEventListener("click", () => {
+  const [origin, to] = b.dataset.req.split(":");
+  const [ok, why] = decide(origin, to);
+  logMode(`<span class="${ok ? "ok" : "no"}">${ok ? "허용" : "거부"}</span> ${WHO[origin]} → ${to ? MLABEL[to] + " 진입" : "이탈"}: ${why}`);
+  renderMode();
+}));
+$("#applyBtn").addEventListener("click", () => {
+  if (!ms.pending) { logMode(`<span class="muted">turn.start: 예약이 없어 그대로 달린다</span>`); return; }
+  const from = ms.active;
+  ms = {active: ms.pending.to, arg: ms.pending.arg, pending: null};
+  logMode(`<span class="ok">적용</span> turn.start 직전: ${MLABEL[from]} → ${MLABEL[ms.active]}. mode 이벤트가 나간다`);
+  renderMode();
+});
+$("#modeReset").addEventListener("click", () => { ms = {active:"", arg:"", pending:null}; $("#modeLog").innerHTML = ""; renderMode(); });
+renderMode();
+
+/* ───────────── run 제어 시간축 ───────────── */
+const tl = $("#tlSvg");
+function rect(x, y, w, hh, fill, cls, parent) { return el("rect", {x, y, width:w, height:hh, rx:6, fill, class:cls}, parent); }
+function txt(x, y, s, parent, attrs = {}) { const t = el("text", {x, y, ...attrs}, parent); t.textContent = s; return t; }
+const gtl = el("g", {class:"timeline"}, tl);
+txt(20, 26, "시간 →", gtl);
+el("line", {x1:20, y1:280, x2:980, y2:280, stroke:"#8A97A6", "stroke-width":1.5}, gtl);
+const parts = {};
+function part(k) { return parts[k] || (parts[k] = el("g", {class:"tl-part"}, gtl)); }
+// 세션 잠금
+rect(40, 48, 900, 18, "#5C6F86", "", part("lock")); txt(48, 61, "세션 잠금 — agent.Start 부터 연쇄가 끝날 때까지 (같은 세션의 다른 Start 는 ErrSessionBusy)", part("lock"), {fill:"#fff", style:"font:600 15px var(--sans)"});
+// run 1
+rect(40, 90, 470, 44, "#3B5BA9", "", part("run")); txt(52, 117, "run 1", part("run"), {fill:"#fff", style:"font:700 16px var(--sans)"});
+[[120,"턴 1"],[260,"턴 2"],[390,"턴 3"]].forEach(([x,s]) => { rect(x, 96, 110, 32, "#fff", "", part("run")); txt(x+10, 117, s, part("run"), {fill:"#3B5BA9", style:"font:600 15px var(--sans)"}); });
+// run 2
+rect(560, 90, 300, 44, "#3B5BA9", "", part("follow")); txt(572, 117, "run 2 (FollowUp 입력으로)", part("follow"), {fill:"#fff", style:"font:700 16px var(--sans)"});
+// steer
+el("path", {d:"M200,170 C200,150 250,150 262,132", fill:"none", stroke:"#2F6FB5", "stroke-width":2.4, "marker-end":"url(#arr)"}, part("steer"));
+txt(150, 188, "Steer: 입력함에 넣는다 → 다음 turn.start 가 가져간다", part("steer"), {fill:"#2F6FB5", style:"font:600 15px var(--sans)"});
+txt(150, 204, "아직 시작하지 않은 도구 호출은 skipped", part("steer"), {fill:"#2F6FB5"});
+// followup
+el("path", {d:"M440,236 C500,230 530,190 560,134", fill:"none", stroke:"#2E8B57", "stroke-width":2.4, "marker-end":"url(#arr)"}, part("follow"));
+txt(150, 252, "FollowUp: 대기열 → run 1 이 completed 면 같은 세션으로 새 run", part("follow"), {fill:"#2E8B57", style:"font:600 15px var(--sans)"});
+// abort
+el("line", {x1:860, y1:80, x2:860, y2:150, stroke:"#C2412D", "stroke-width":3}, part("abort"));
+txt(760, 170, "Abort: ctx 취소 → aborted", part("abort"), {fill:"#C2412D", style:"font:600 15px var(--sans)"});
+txt(760, 186, "대기 중인 FollowUp 은 버린다", part("abort"), {fill:"#C2412D"});
+// mode
+el("circle", {cx:262, cy:112, r:9, fill:"none", stroke:"#7A5CC0", "stroke-width":3}, part("mode"));
+el("circle", {cx:572, cy:112, r:9, fill:"none", stroke:"#7A5CC0", "stroke-width":3}, part("mode"));
+txt(620, 222, "모드 예약은 실행 중에도 받는다", part("mode"), {fill:"#7A5CC0", style:"font:600 15px var(--sans)"});
+txt(620, 238, "적용은 다음 turn.start (○) 또는 다음 run 시작", part("mode"), {fill:"#7A5CC0"});
+const TLNOTE = {
+  all:"<b>네 가지 끼어들기</b>: Steer 는 지금 run 에, FollowUp 은 다음 run 에, Abort 는 연쇄 전체에, 모드 예약은 다음 턴 경계에 작용한다. 세션 잠금은 같은 세션의 run 이 겹치지 않게 한다 (프로세스 안에서만).",
+  steer:"<b>Steer</b>: 실행 중 Enter. <code>core.Run.Input</code> 으로 입력함에 넣는다. 다음 <code>turn.start</code> 에서 base 가 가져가 대화에 넣는다. 그 사이에 아직 시작하지 않은 도구 호출은 승인 전에 <code>skipped: the user sent a new message</code> 로 건너뛴다 (base 공개 상태 <code>inbox.consumed</code> 로 판단).",
+  follow:"<b>FollowUp</b>: 실행 중 Alt+Enter. 대기열에 넣는다. run 이 completed·stopped 로 끝나면 대기열 전부를 입력으로 같은 세션에서 새 run 을 시작한다. 실패·중단이면 버린다. <code>Run.Wait</code> 는 연쇄 전체가 끝난 뒤 마지막 결과를 돌려준다.",
+  abort:"<b>Abort</b>: 실행 중 Esc 또는 Ctrl+C. run ctx 를 취소한다. 진행 중인 모델 호출·도구가 취소되고, 짝 없는 도구 호출은 aborted 결과가 된다. run 은 aborted 로 끝나고 run.settled 는 그래도 한 번 불린다.",
+  mode:"<b>모드 예약</b>: <code>EnterMode</code>·<code>ExitMode</code> 는 세션 잠금을 잡지 않으므로 실행 중에도 부를 수 있다. 터미널의 <code>/mode</code> 는 대기 중에만 받는다. 적용 시점은 run 스위처가 정한다.",
+};
+const TLKEYS = [["all","전체"],["steer","Steer"],["follow","FollowUp"],["abort","Abort"],["mode","모드 예약"]];
+const tlSeg = $("#tlSeg");
+function tlPick(k) {
+  [...tlSeg.children].forEach((b, i) => b.setAttribute("aria-pressed", TLKEYS[i][0] === k));
+  gtl.classList.toggle("tl-dim", k !== "all");
+  Object.entries(parts).forEach(([pk, g]) => g.classList.toggle("on", pk === k || pk === "run" || (k === "follow" && pk === "lock")));
+  $("#tlNarr").innerHTML = TLNOTE[k];
+}
+TLKEYS.forEach(([k, label], i) => { const b = h("button", {}, `<b>${i + 1}</b>${label}`); b.addEventListener("click", () => tlPick(k)); tlSeg.appendChild(b); });
+tlPick("all");
+$("#tlNote").innerHTML = `<h3>화면이 쓰는 agent API</h3>
+<pre class="code small">run, _ := a.Start(ctx, sid, input)
+run.Steer(msg)    // 지금 run, 다음 턴에 반영
+run.FollowUp(msg) // 이 run 이 끝난 뒤 새 run
+run.Abort()       // 연쇄 전체 취소
+a.EnterMode(ctx, sid, "goal", arg)
+a.ExitMode(ctx, sid)
+
+agent.Options{OnEvent: func(ev harness.Event) {
+  // 화면은 이것 하나로 그린다
+}}</pre>
+<p class="small">화면(L3)은 이 함수들만 쓴다. 설정 파일·세션 파일을 직접 만지지 않는다.</p>`;
+
+const EVENTS = [
+  ["message_start",[10],"스트림 시작","(답을 쓰기 시작)"],["message_update",[10],"글자 조각과 누적 메시지","고쳤습니다. 테스트를 다시…"],["message_end",[11],"확정 메시지(usage 포함)","(줄을 닫고 토큰 합계 갱신)"],
+  ["tool_start",[16],"도구 호출 시작 (승인 전)","· bash  go test ./..."],["tool_update",[17],"bash 실시간 출력","  │ ok  example  0.21s"],["tool_end",[18],"절단 뒤 결과 또는 차단 결과","  ✓ bash"],
+  ["approval",[16],"승인 결과 (agent 가 만든다)","? bash rm -rf x  허용? [y/a/n]"],["retry",[12],"재시도 결정 (횟수, 대기 시간)","↻ 재시도 1회째 — 2.0s 후"],["compaction",[3],"요약 시작·끝","── 압축 중 …"],
+  ["input",[2],"턴에 들어간 메시지 (카드가 넣은 것 포함)","» [Continuing toward your goal]"],["turn_end",[20],"턴의 응답과 결과들","(턴 끝, 상태 줄 갱신)"],["run_end",[22],"run 의 끝, 마지막 이벤트","── completed  (in 1.2k · out 340)"],["mode",[2],"모드 적용 (턴 경계 또는 run 시작 전)","── 모드 기본 → goal (model)"],
+];
+const ev = $("#evSvg");
+const evd = el("defs", {}, ev);
+const evm = el("marker", {id:"arrEV", viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"7", markerHeight:"7", orient:"auto-start-reverse"}, evd);
+el("path", {d:"M0,0 L10,5 L0,10 z", fill:"#4A5868"}, evm);
+const EVX = n => 30 + (n - 1)*22;
+el("rect", {x:20, y:200, width:22*22 + 2, height:36, rx:8, fill:"#5E6B78"}, ev);
+txt(20, 254, "core 22칸 — 칸마다 맨 위 카드 함수를 부른다", ev, {style:"font:12.5px var(--sans)", fill:"#4A5868"});
+const evSlots = {};
+for (let n = 1; n <= 22; n++) {
+  evSlots[n] = el("rect", {x:EVX(n), y:206, width:18, height:24, rx:3, fill:"#fff"}, ev);
+  txt(EVX(n) + 9, 218, n, ev, {"text-anchor":"middle", "dominant-baseline":"central", style:"font:700 10px var(--sans)"});
+  if (WRAP[n]) el("rect", {x:EVX(n) + 1, y:186, width:16, height:7, rx:3, fill:"#6E5A8F"}, ev);
+}
+txt(20, 176, "보라 막대 = harness 래핑 (카드 함수를 감싸 이벤트를 만든다)", ev, {style:"font:700 12.5px var(--sans)", fill:"#6E5A8F"});
+const EB = {x:560, y:24, w:190, h:60};
+el("rect", {x:EB.x, y:EB.y, width:EB.w, height:EB.h, rx:9, fill:"#fff", stroke:"#6E5A8F", "stroke-width":2}, ev);
+const evKind = txt(EB.x + 12, EB.y + 24, "Event{Kind: …}", ev, {style:"font:700 13px var(--mono)", fill:"#1C2733"});
+txt(EB.x + 12, EB.y + 44, "RunID · SessionID · …", ev, {style:"font:12px var(--mono)", fill:"#4A5868"});
+el("rect", {x:EB.x, y:120, width:EB.w, height:60, rx:9, fill:"#fff", stroke:"#3B5BA9", "stroke-width":2}, ev);
+txt(EB.x + 12, 144, "OnEvent(ev)", ev, {style:"font:700 13px var(--mono)", fill:"#1C2733"});
+txt(EB.x + 12, 164, "한 번에 하나 · 동기", ev, {style:"font:12px var(--sans)", fill:"#4A5868"});
+el("path", {d:`M300,186 C380,120 470,60 ${EB.x - 4},54`, fill:"none", stroke:"#4A5868", "stroke-width":2, "marker-end":"url(#arrEV)"}, ev);
+el("path", {d:`M${EB.x + EB.w/2},${EB.y + EB.h} L${EB.x + EB.w/2},116`, fill:"none", stroke:"#4A5868", "stroke-width":2, "marker-end":"url(#arrEV)"}, ev);
+el("path", {d:`M${EB.x + EB.w},150 L796,150`, fill:"none", stroke:"#4A5868", "stroke-width":2, "marker-end":"url(#arrEV)"}, ev);
+el("rect", {x:800, y:24, width:190, height:200, rx:10, fill:"#1C2733"}, ev);
+txt(812, 46, "terminal (L3)", ev, {style:"font:700 12px var(--sans)", fill:"#8FA3B8"});
+const evLines = [];
+for (let i = 0; i < 6; i++) evLines.push(txt(812, 74 + i*24, "", ev, {style:"font:11.5px var(--mono)", fill:"#E6EDF3"}));
+const evShown = [];
+const evWrap = $("#evChips");
+EVENTS.forEach(([name, steps, what, line]) => {
+  const b = h("button", {class:"evchip", title: what}, name);
+  b.addEventListener("click", () => {
+    [...evWrap.children].forEach(c => c.setAttribute("aria-pressed", c === b));
+    for (let n = 1; n <= 22; n++) evSlots[n].setAttribute("fill", steps.includes(n) ? "#FFE08A" : "#fff");
+    evKind.textContent = `Event{Kind: "${name}"}`;
+    evShown.push(line); while (evShown.length > 6) evShown.shift();
+    evLines.forEach((t, i) => { t.textContent = evShown[i] ? (evShown[i].length > 22 ? evShown[i].slice(0, 22) + "…" : evShown[i]) : ""; t.setAttribute("fill", i === evShown.length - 1 ? "#FFE08A" : "#E6EDF3"); });
+    const n = steps[0];
+    $("#evNarr").innerHTML = `<b class="mono">${name}</b>: ${what}. 나오는 칸: <span class="mono">${n}. ${STEPS[n].id}</span>. harness 래핑이 이 칸의 맨 위 카드 함수를 감싸 이벤트를 만들고, <code>OnEvent</code> 가 한 번에 하나씩 화면에 넘긴다. 화면에는 오른쪽처럼 그려진다.`;
+  });
+  evWrap.appendChild(b);
+});
+$("#evNarr").innerHTML = "이벤트 이름을 누르면 어느 칸에서 나오는지, 화면에 어떻게 그려지는지 보인다. 여러 개를 누르면 화면에 줄이 쌓인다.";
+$("#evToCore").addEventListener("click", () => coreFocus("wrap"));
+
+/* ───────────── 저장 ───────────── */
+const LINES = [
+  ["message", `{"type":"message","message":{"id":"u1","role":"user","content":[{"kind":"text","text":"테스트를 고쳐 줘"}]}}`],
+  ["state",   `{"type":"state","ns":"base","delta":{"set":{"inbox.consumed":"0"},"publish":["inbox.consumed"]}}`],
+  ["message", `{"type":"message","message":{"id":"a1","role":"assistant","content":[{"kind":"tool_call","toolCall":{"name":"mode","args":{"name":"goal"}}}]}}`],
+  ["state",   `{"type":"state","ns":"harness.mode","delta":{"set":{"pending":"{\"To\":\"goal\",\"Origin\":\"model\"}"}}}`],
+  ["message", `{"type":"message","message":{"id":"r1","role":"tool_result","result":{"callId":"c1","status":"ok"}}}`],
+  ["state",   `{"type":"state","ns":"harness.mode","delta":{"set":{"active":"\"goal\""},"delete":["pending"]}}`],
+  ["message", `{"type":"message","message":{"id":"a2","role":"assistant","content":[{"kind":"text","text":"go test 결과: ok"}]}}`],
+  ["state",   `{"type":"state","ns":"goal","delta":{"set":{"progress":"{\"turns\":1}"}}}`],
+  ["edit",    `{"type":"edit","edit":{"kind":"replace_range","from":"u0","to":"a0","summary":"## Goal …"}}`],
+];
+const jsonl = $("#jsonl");
+LINES.forEach(([t, line]) => jsonl.appendChild(h("div", {class:"t-" + t}, line.replace(/</g, "&lt;"))));
+const LF = [["all","전부"],["message","message — 대화"],["edit","edit — 편집"],["state","state — 카드 상태"]];
+const lf = $("#lineFilter");
+function filterLines(k) {
+  [...lf.children].forEach((c, i) => c.setAttribute("aria-pressed", LF[i][0] === k));
+  [...jsonl.children].forEach((d, i) => d.classList.toggle("dim", k !== "all" && LINES[i][0] !== k));
+}
+LF.forEach(([k, label]) => { const b = h("button", {"aria-pressed": k === "all"}, label); b.addEventListener("click", () => filterLines(k)); lf.appendChild(b); });
+const ss = $("#storeSvg");
+const ssd = el("defs", {}, ss);
+const ssm = el("marker", {id:"arrST", viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"7", markerHeight:"7", orient:"auto-start-reverse"}, ssd);
+el("path", {d:"M0,0 L10,5 L0,10 z", fill:"#4A5868"}, ssm);
+const sp = k => el("g", {class:"part p-" + k}, ss);
+const pAppend = sp("append"), pReplay = sp("replay"), pNs = sp("ns"), pFiles = sp("files");
+el("path", {d:"M200,20 L200,0 L300,0 L320,20 L320,96 L200,96 z", fill:"#fff", stroke:"#3B5BA9", "stroke-width":2}, ss);
+txt(212, 40, "s1.jsonl", ss, {style:"font:700 13px var(--mono)", fill:"#1C2733"});
+[54, 66, 78].forEach(y => el("rect", {x:212, y, width:90, height:5, rx:2, fill:"#C9D1D9"}, ss));
+el("path", {d:"M40,48 L192,48", stroke:"#4A5868", "stroke-width":2, "marker-end":"url(#arrST)"}, pAppend);
+txt(20, 34, "run 이 한 줄씩 덧붙인다", pAppend, {style:"font:700 13px var(--sans)", fill:"#3B5BA9"});
+txt(20, 70, "(append 만, 고치지 않음)", pAppend, {style:"font:12px var(--sans)", fill:"#4A5868"});
+el("path", {d:"M260,100 C260,130 60,120 40,150", fill:"none", stroke:"#C98A12", "stroke-width":2.6, "marker-end":"url(#arrST)"}, pReplay);
+txt(250, 128, "다음 run: 1. run.start 가 처음부터 재생", pReplay, {style:"font:700 13px var(--sans)", fill:"#7A4F00"});
+el("rect", {x:20, y:154, width:480, height:34, rx:8, fill:"#5E6B78"}, ss);
+for (let n = 1; n <= 22; n++) el("rect", {x:26 + (n-1)*21.6, y:161, width:17, height:20, rx:3, fill: n === 1 ? "#FFE08A" : "#fff"}, ss);
+txt(20, 204, "core 22칸 — 1번 칸이 세션을 불러온다", ss, {style:"font:12.5px var(--sans)", fill:"#4A5868"});
+[["base","inbox.consumed · edits.saved","#5E6B78"],["resilient","재시도·압축 진행","#C2412D"],["verify","progress","#2E8B57"],["goal","progress","#7A5CC0"]].forEach(([nm, keys, c], i) => {
+  const y = 244 + i*30;
+  el("rect", {x:20, y, width:300, height:24, rx:6, fill:c, "fill-opacity":.14, stroke:c, "stroke-width":1.5}, pNs);
+  txt(30, y + 13, nm, pNs, {"dominant-baseline":"central", style:"font:700 13px var(--sans)", fill:c});
+  txt(120, y + 13, keys, pNs, {"dominant-baseline":"central", style:"font:12px var(--mono)", fill:"#4A5868"});
+});
+el("rect", {x:340, y:244, width:160, height:84, rx:8, fill:"#fff", stroke:"#3B5BA9", "stroke-width":2, "stroke-dasharray":"5 4"}, pNs);
+txt(352, 266, "harness.mode", pNs, {style:"font:700 13px var(--mono)", fill:"#3B5BA9"});
+txt(352, 286, "active · arg", pNs, {style:"font:12px var(--mono)", fill:"#4A5868"});
+txt(352, 304, "pending", pNs, {style:"font:12px var(--mono)", fill:"#4A5868"});
+txt(352, 320, "(harness 가 씀)", pNs, {style:"font:11.5px var(--sans)", fill:"#4A5868"});
+txt(20, 234, "카드 이름 = 상태 공간 이름", pNs, {style:"font:700 12.5px var(--sans)", fill:"#1C2733"});
+[[20,"config.json","설정·세트 배치·aux"],[180,"auth.json","API 키 (0600)"],[340,"<cwd>/…config.json","프로젝트 승인 규칙"]].forEach(([x, a, b]) => {
+  el("rect", {x, y:396, width:150, height:46, rx:8, fill:"#fff", stroke:"#8A7A52", "stroke-width":2}, pFiles);
+  txt(x + 10, 416, a, pFiles, {style:"font:700 12px var(--mono)", fill:"#1C2733"});
+  txt(x + 10, 434, b, pFiles, {style:"font:12px var(--sans)", fill:"#4A5868"});
+});
+txt(20, 386, "사용자 파일 (세션과 별개)", pFiles, {style:"font:700 12.5px var(--sans)", fill:"#8A7A52"});
+let storeTok = 0;
+async function flashLines(order, ms) {
+  const t = ++storeTok;
+  for (const i of order) {
+    if (t !== storeTok) return;
+    const d = jsonl.children[i];
+    d.classList.remove("hide"); d.classList.add("flash");
+    await new Promise(r => setTimeout(r, REDUCED ? 60 : ms));
+    d.classList.remove("flash");
+  }
+}
+const STORESTEPS = [
+  {label:"run 중: 덧붙이기", say:"<b>run 중</b>: 카드가 대화·편집·상태를 바꿀 때마다 파일 끝에 한 줄을 덧붙인다. 이미 쓴 줄은 고치지 않는다. 쓰다가 끊긴 마지막 줄은 다음에 읽을 때 버린다.",
+   on: () => { markParts(ss, ["append"]); filterLines("all"); [...jsonl.children].forEach(d => d.classList.add("hide")); flashLines([...LINES.keys()], 420); }},
+  {label:"줄은 세 종류", say:"<b>줄은 세 종류</b>: <code>message</code>(대화), <code>edit</code>(압축 요약 같은 편집 — 원문은 지우지 않고 편집을 덧붙인다), <code>state</code>(카드 상태의 바뀐 부분). 위의 칩으로 걸러 볼 수 있다.",
+   on: () => { storeTok++; markParts(ss, null); [...jsonl.children].forEach(d => d.classList.remove("hide")); filterLines("all"); }},
+  {label:"다음 run 이 이어받기", say:"<b>다음 run</b>: 1번 칸 <code>run.start</code> 가 파일을 처음부터 다시 읽는다. message 는 대화가 되고, edit 은 다시 적용되고, state 는 카드마다 쌓아 현재 상태가 된다. 그래서 run 이 끝나도, 프로세스를 다시 켜도 이어진다.",
+   on: () => { markParts(ss, ["replay"]); filterLines("all"); [...jsonl.children].forEach(d => d.classList.remove("hide")); flashLines([...LINES.keys()], 180); }},
+  {label:"카드 이름 = 상태 공간", say:"<b>카드 이름 = 상태 공간</b>: 카드는 <code>ctx.State()</code> 로 자기 이름의 공간에만 쓴다. 공개(publish)한 키만 다른 카드가 읽는다. 예: base 의 <code>inbox.consumed</code> 를 agent 의 Steer 판단이 읽는다. <code>harness.mode</code> 는 harness 가 쓰는 예약된 이름이다.",
+   on: () => { storeTok++; markParts(ss, ["ns"]); [...jsonl.children].forEach(d => d.classList.remove("hide")); filterLines("state"); }},
+  {label:"사용자 파일", say:"<b>사용자 파일</b>은 세션과 따로다. <code>config.json</code> 에 모델·aux·승인 규칙·세트 배치, <code>auth.json</code> 에 API 키(0600)만 둔다. 화면(L3)은 이 파일을 직접 읽지 않고 agent 를 거친다.",
+   on: () => { storeTok++; markParts(ss, ["files"]); [...jsonl.children].forEach(d => d.classList.remove("hide")); filterLines("all"); }},
+];
+stepper("#storeSteps", "#storeNarr", STORESTEPS, (i, st) => st.on());
+$("#storeNarr").innerHTML = "차례로 누르면 줄이 쌓이고, 다음 run 이 그것을 읽어 이어받는 과정이 보인다.";
+$("#storeToCore").addEventListener("click", () => coreFocus("sets"));
+
+/* ───────────── 모델 호출 경로 ───────────── */
+const msv = $("#modelSvg");
+const md = el("defs", {}, msv);
+const mk3 = el("marker", {id:"arr2", viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"7", markerHeight:"7", orient:"auto-start-reverse"}, md);
+el("path", {d:"M0,0 L10,5 L0,10 z", fill:"#4A5868"}, mk3);
+const BOX = {
+  req:   {x:140, y:60,  w:220, t:"6·7 요청 만들기", s:"require · cache · (plan: 쓰기 도구 뺌)", n:"6번 request.build 에서 require 카드가 시스템 프롬프트·도구 목록·투영·출력 한도로 요청을 만든다. 7번 request.finalize 에서 짝 없는 도구 호출을 고치고 cache 카드가 캐시 힌트를 붙인다. plan 모드면 plan 카드가 여기서 write·edit·bash 를 뺀다."},
+  sel:   {x:140, y:160, w:220, t:"8 모델 고르기", s:"설정 model → 카탈로그", n:"8번 model.select 에서 설정의 모델을 ModelCaller.Lookup 으로 찾아 문맥 크기·출력 한도를 알아낸다. 다른 카드를 끼우면 여기서 모델을 바꿀 수도 있다(라우팅)."},
+  call:  {x:140, y:270, w:220, t:"9 model.call", s:"require 카드", n:"9번에서 require 카드가 Deps.Model.Call(ctx, req) 로 스트림을 연다. core 는 그 스트림을 끝까지 읽으며 조각마다 10번을 부른다."},
+  mc:    {x:420, y:270, w:200, t:"ModelCaller", s:"agent 가 감쌀 수 있다", n:"Call 과 Lookup 두 메서드만 있는 인터페이스. agent.Options.ModelCaller 로 감싸 계량·기록을 넣을 수 있다. 기본값은 adapters.Client 다."},
+  comp:  {x:420, y:150, w:200, t:"sets.Complete", s:"판단기 · run 밖 (aux)", n:"칸을 거치지 않는 단발 호출. 판단기 카드가 20번 칸 안에서 부르거나, run 밖에서 Agent.Complete 로 부른다. 모델은 AuxModel(cfg, role): 설정 agent.aux.<role> 이 있으면 그 모델, 없으면 본 모델. 도구 없이, 재시도 없이."},
+  client:{x:680, y:270, w:200, t:"adapters.Client", s:"프로필로 방언 선택", n:"provider 프로필(내장 24개 + 설정 providers)에서 API 형식과 주소를 찾아 요청을 그 방언으로 바꾼다. 모델 정보는 사용자 설정 > provider 조회 > 원격 카탈로그 > 내장 스냅샷 순."},
+  key:   {x:680, y:150, w:200, t:"auth.json", s:"provider 별 API 키", n:"키는 ~/.dynamic_react/auth.json(0600)에만 있다. 환경변수는 읽지 않는다. agent 가 provider 별로 꺼내 adapters 에 준다."},
+  ant:   {x:900, y:190, w:170, t:"anthropic-messages", s:"Anthropic", n:"Anthropic Messages API 의 SSE 를 contract.StreamEvent 로 바꾼다."},
+  chat:  {x:900, y:270, w:170, t:"openai-chat", s:"호환 provider 다수", n:"Chat Completions. deepseek, openrouter, groq, vllm, ollama 등 OpenAI 호환 provider 대부분."},
+  resp:  {x:900, y:350, w:170, t:"openai-responses", s:"OpenAI", n:"Responses API."},
+  ev:    {x:680, y:420, w:200, t:"StreamEvent", s:"start · delta · done · error", n:"방언과 무관한 이벤트. 모든 provider 의 응답이 이 모양으로 바뀌어 돌아온다."},
+  back:  {x:140, y:420, w:220, t:"10 · 11 · 12 받기", s:"조각 · 확정 · 실패", n:"core 는 이벤트마다 10번 stream.event 를 부르고, done 이면 11번 stream.end, error 면 12번 call.error 로 간다. 12번에서 resilient 카드가 재시도·문맥 초과 복구를 정한다."},
+};
+const gArr = el("g", {}, msv), gBox = el("g", {}, msv);
+const arrowD = d => el("path", {d, class:"flowarrow"}, gArr);
+const R = k => BOX[k].x + BOX[k].w/2, L = k => BOX[k].x - BOX[k].w/2;
+arrowD(`M140,88 L140,128`); arrowD(`M140,188 L140,238`);
+arrowD(`M${R("call")},270 L${L("mc") - 2},270`); arrowD(`M${R("mc")},270 L${L("client") - 2},270`);
+arrowD(`M420,178 L420,238`); arrowD(`M680,178 L680,238`);
+for (const k of ["ant","chat","resp"]) arrowD(`M${R("client")},270 C${R("client") + 20},270 ${L(k) - 20},${BOX[k].y} ${L(k) - 2},${BOX[k].y}`);
+arrowD(`M900,378 C900,420 860,420 ${R("ev") + 2},420`);
+arrowD(`M${L("ev")},420 L${R("back") + 2},420`);
+const boxEls = {};
+for (const [k, b] of Object.entries(BOX)) {
+  const g = el("g", {class:"boxg", tabindex:"0", role:"button", "aria-label": b.t}, gBox);
+  el("rect", {x:b.x - b.w/2, y:b.y - 28, width:b.w, height:56}, g);
+  txt(b.x, b.y - 9, b.t, g);
+  txt(b.x, b.y + 12, b.s, g, {class:"sub"});
+  const pick = () => { Object.entries(boxEls).forEach(([kk, e]) => e.classList.toggle("on", kk === k)); $("#modelNote").innerHTML = `<h3>${b.t}</h3><p>${b.n}</p>`; };
+  g.addEventListener("click", pick);
+  g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+  boxEls[k] = g;
+}
+const MODELSTEPS = [
+  {label:"요청 만들기", keys:["req"], say:"<b>요청 만들기</b> (6·7번): require 카드가 요청을 조립하고, cache 카드가 캐시 힌트를 붙인다. plan 모드면 plan 카드가 여기서 쓰기 도구를 뺀다. 모두 카드의 일이라서 카드를 바꾸면 요청이 바뀐다."},
+  {label:"모델 고르기", keys:["sel"], say:"<b>모델 고르기</b> (8번): 설정의 모델을 카탈로그에서 찾는다. 이 칸에 다른 카드를 쌓으면 상황에 따라 모델을 바꿀 수 있다."},
+  {label:"보내기", keys:["call","mc","client","key","ant","chat","resp"], say:"<b>보내기</b> (9번): require 카드 → ModelCaller → adapters 가 provider 의 방언으로 바꿔 보낸다. 키는 auth.json 에서 온다. ModelCaller 는 agent 에서 감쌀 수 있는 마지막 지점이다."},
+  {label:"받기", keys:["ev","back","resp"], say:"<b>받기</b> (10·11·12번): 어느 provider 든 응답은 StreamEvent 로 바뀌어 온다. core 는 조각마다 10번, 끝나면 11번, 실패면 12번을 부른다. 12번에서 resilient 카드가 재시도를 정한다."},
+  {label:"판단기 단발 호출", keys:["comp","mc","client","key"], say:"<b>판단기 단발 호출</b>: goal 판단기 같은 카드는 20번 칸 안에서 <code>sets.Complete</code> 로 모델을 한 번 부른다. 칸을 거치지 않지만 같은 ModelCaller·adapters 를 쓴다. 모델은 역할 이름(<code>aux.goal_judge</code>)으로 따로 정할 수 있다."},
+];
+stepper("#modelSteps", "#modelNarr", MODELSTEPS, (i, st) => Object.entries(boxEls).forEach(([k, g]) => g.classList.toggle("on", st.keys.includes(k))));
+$("#modelNarr").innerHTML = "차례로 누르면 그 단계에 해당하는 상자가 강조된다.";
+$("#modelNote").innerHTML = `<h3>두 갈래, 같은 통로</h3><p>run 안의 호출(9번 칸)과 판단기의 단발 호출(sets.Complete)은 출발점만 다르고 같은 ModelCaller·adapters 를 쓴다. 그래서 키, provider 설정, 계량 래핑이 양쪽에 똑같이 적용된다.</p>`;
+$("#modelToCore").addEventListener("click", () => coreFocus("adapters"));
+
+/* ───────────── 신호: 고르기와 그림 ───────────── */
+const SIGEX = {
+  N:{set:"guard", n:16, ret:"return ctx.Next(call)", say:"전이 신호가 없으면 next 다. 대부분의 칸에서 기본 진행이다."},
+  RC:{set:"resilient", n:12, ret:"[recall]", say:"rate_limit 같은 일시적 실패면 기다렸다가 같은 요청을 다시 보낸다."},
+  RS:{set:"사용자 카드", n:12, ret:"[reselect]", say:"다른 모델·provider 로 바꿔 다시 고른다 (fallback 체인)."},
+  RB:{set:"resilient", n:12, ret:"[rewrite(요약), rebuild]", say:"문맥 초과면 오래된 구간을 요약하는 편집을 내고, 투영부터 다시 만든다."},
+  RT:{set:"사용자 카드", n:10, ret:"[inject_input(규칙), restart_turn]", say:"스트림 도중 규칙 위반을 보면 이번 응답을 버리고 턴을 다시 한다."},
+  CT:{set:"require", n:20, ret:"[continue_turn]", say:"도구를 썼으면 다음 턴으로 간다. verify·goal 카드도 settle 을 빼고 이것을 낸다."},
+  ST:{set:"사용자 카드", n:15, ret:"[skip_tools(결과)]", say:"도구를 실행하지 않고 정해 둔 결과로 19번에 간다."},
+  SE:{set:"require", n:20, ret:"[settle]", say:"도구를 쓰지 않았으면 끝내기 절차(21번)로 간다."},
+  SP:{set:"사용자 카드", n:20, ret:"[stop]", say:"즉시 정상 종료한다. 21번을 건너뛴다."},
+  F:{set:"require", n:12, ret:"[fail(err)]", say:"재시도 카드(resilient)가 없으면 호출 실패는 곧 run 실패다. verify 도 검증이 끝내 실패하면 이것을 낸다."},
+  W:{set:"resilient", n:3, ret:"[rewrite(요약)]", say:"문맥이 임계치를 넘으면 요약 편집을 낸다. 칸은 옮기지 않는다."},
+  II:{set:"goal", n:20, ret:"[inject_input(지시), continue_turn]", say:"다음 턴에 넣을 메시지를 입력함에 넣는다. 판단기·검증 카드가 이어서 할 일을 전할 때 쓴다."},
+  SO:{set:"사용자 카드", n:10, ret:"[start_tool(call)]", say:"스트림이 끝나기 전에 도구를 먼저 실행한다. 기본 카드는 쓰지 않는다."},
+};
+const SIGGROUPS = [["진행",["N"]],["다시 하기",["RC","RS","RB","RT"]],["턴",["CT","ST"]],["끝내기",["SE","SP","F"]],["효과 (칸 안 옮김)",["W","II","SO"]]];
+const sg = $("#sigSvg");
+const sgd = el("defs", {}, sg);
+const sgm = el("marker", {id:"arrSG", viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"7", markerHeight:"7", orient:"auto-start-reverse"}, sgd);
+el("path", {d:"M0,0 L10,5 L0,10 z", fill:"#4A5868"}, sgm);
+const sgCard = el("rect", {x:20, y:24, width:400, height:108, rx:10, fill:"#fff", stroke:"#3B5BA9", "stroke-width":2.5}, sg);
+const sgTitle = txt(36, 52, "", sg, {style:"font:800 15px var(--sans)", fill:"#1C2733"});
+const sgStep = txt(36, 74, "", sg, {style:"font:13px var(--mono)", fill:"#4A5868"});
+el("rect", {x:36, y:88, width:368, height:30, rx:6, fill:"#1C2733"}, sg);
+const sgRet = txt(46, 103, "", sg, {"dominant-baseline":"central", style:"font:13px var(--mono)", fill:"#E6EDF3"});
+el("path", {d:"M424,78 L492,78", stroke:"#4A5868", "stroke-width":2.2, "marker-end":"url(#arrSG)"}, sg);
+const sgLamp = el("circle", {cx:530, cy:78, r:30, fill:"#2E8B57"}, sg);
+txt(530, 128, "core", sg, {"text-anchor":"middle", style:"font:800 14px var(--sans)", fill:"#5E6B78"});
+el("path", {d:"M564,78 L632,78", stroke:"#4A5868", "stroke-width":2.2, "marker-end":"url(#arrSG)"}, sg);
+const sgDest = txt(644, 72, "", sg, {style:"font:800 16px var(--sans)", fill:"#1C2733"});
+const sgDest2 = txt(644, 96, "", sg, {style:"font:13px var(--sans)", fill:"#4A5868"});
+const SGX = n => 24 + (n - 1)*43.4;
+el("rect", {x:16, y:196, width:22*43.4 + 8, height:44, rx:9, fill:"#5E6B78"}, sg);
+const sgSlots = {}, sgRings = {};
+for (let n = 1; n <= 22; n++) {
+  sgSlots[n] = el("rect", {x:SGX(n), y:203, width:37, height:30, rx:5, fill:"#fff"}, sg);
+  txt(SGX(n) + 18.5, 218, n, sg, {"text-anchor":"middle", "dominant-baseline":"central", style:"font:700 12px var(--sans)"});
+  sgRings[n] = el("rect", {x:SGX(n) - 3, y:200, width:43, height:36, rx:7, fill:"none", stroke:"#1C2733", "stroke-width":3.5, opacity:0}, sg);
+}
+txt(16, 266, "칠한 칸 = 이 신호를 쓸 수 있는 칸 · 굵은 테두리 = 가는 곳", sg, {style:"font:13px var(--sans)", fill:"#4A5868"});
+function pickSig(k) {
+  const s = SIG[k], ex = SIGEX[k], col = CLSCOL[s.cls];
+  document.querySelectorAll("#sigPick button").forEach(b => b.setAttribute("aria-pressed", b.dataset.k === k));
+  sgTitle.textContent = `${ex.set} 카드의 함수`;
+  sgStep.textContent = `${ex.n}. ${STEPS[ex.n].id}`;
+  sgRet.textContent = ex.ret;
+  sgLamp.setAttribute("fill", col);
+  sgCard.setAttribute("stroke", col);
+  if (s.eff) { sgDest.textContent = "칸을 옮기지 않는다"; sgDest2.textContent = "효과만 적용하고 같은 흐름을 이어 간다"; }
+  else if (typeof s.dest === "number") { sgDest.textContent = `→ ${s.dest}. ${STEPS[s.dest].id}`; sgDest2.textContent = s.what; }
+  else { sgDest.textContent = "→ 다음 칸"; sgDest2.textContent = s.what; }
+  for (let n = 1; n <= 22; n++) {
+    const ok = STEPS[n].sig.split(" ").includes(k);
+    sgSlots[n].setAttribute("fill", ok ? col : "#fff");
+    sgSlots[n].setAttribute("fill-opacity", ok ? .55 : 1);
+    sgRings[n].setAttribute("opacity", typeof s.dest === "number" && s.dest === n ? 1 : 0);
+  }
+  const where = STEPS.map((st, n) => st && st.sig.split(" ").includes(k) ? n : null).filter(Boolean);
+  $("#sigNarr").innerHTML = `${sigChip(k)} <b>${s.eff ? "효과" : "전이"}</b> — ${ex.say} 쓸 수 있는 칸: <span class="mono">${where.join(", ")}</span>.`;
+}
+const sigPickEl = $("#sigPick");
+for (const [gname, keys] of SIGGROUPS) {
+  const g = h("div", {class:"grp"}, `<span class="gl">${gname}</span>`);
+  for (const k of keys) { const b = h("button", {"data-k": k}, SIG[k].name); b.addEventListener("click", () => pickSig(k)); g.appendChild(b); }
+  sigPickEl.appendChild(g);
+}
+pickSig("CT");
+
+/* ───────────── 신호표 ───────────── */
+const sigT = $("#sigTable");
+sigT.innerHTML = `<colgroup><col style="width:13rem"><col style="width:4.5rem"><col style="width:14rem"><col><col style="width:16rem"></colgroup><tr><th>신호</th><th>종류</th><th>가는 곳</th><th>뜻</th><th>쓸 수 있는 역</th></tr>` +
+  Object.entries(SIG).map(([k, s]) => {
+    const where = STEPS.map((st, n) => st && st.sig.split(" ").includes(k) ? n : null).filter(Boolean);
+    const dest = s.eff ? "옮기지 않음 (효과)" : typeof s.dest === "number" ? `<span class="mono">${s.dest}. ${STEPS[s.dest].id}</span>` : s.dest;
+    return `<tr><td>${sigChip(k)}</td><td>${s.eff ? "효과" : "전이"}</td><td>${dest}</td><td>${s.what}</td><td class="mono small">${where.join(", ")}</td></tr>`;
+  }).join("");
+
+/* 목차 강조 */
+const navLinks = [...document.querySelectorAll(".bar a")];
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) navLinks.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + e.target.id));
+}), {rootMargin:"-40% 0px -55% 0px"});
+document.querySelectorAll("main section").forEach(s => io.observe(s));
+
+/* 첫 화면: 텍스트 답 시나리오를 한 번 재생 (움직임 줄이기 설정이면 생략) */
+
+</script>
+</body>
+</html>

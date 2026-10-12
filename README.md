@@ -148,6 +148,7 @@ a, err := agent.New(ctx, agent.Options{
 - 적용: run 안에서는 다음 `turn.start`, run 밖 예약은 다음 run 시작. 세션 상태(`harness.mode`)로 저장되어 재개 뒤에도 유지된다.
 - 판단기 같은 세트는 `sets.Complete` + `sets.AuxModel(cfg, role)` 로 보조 모델을 부른다 (설정 `agent.aux.<role>`, 없으면 본 모델). run 밖에서는 `Agent.Complete`.
 - 예시: [`examples/modes`](examples/modes/main.go) (`cd examples/modes && go run . [-check "go test ./..."]`).
+- 자세한 사용법은 [`docs/INJECT.md`](docs/INJECT.md) 5장. run 이 끝난 뒤 다음 run 을 언제 시작할지 정하는 대기 제어(WAIT 자동 재개·주기 실행)는 하지 않는다 (R28).
 
 ## 핵심 개념 (한 장 요약)
 
