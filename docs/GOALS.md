@@ -64,7 +64,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 영향이 없는 것:
 
 - 모드 전환 자체. 같은 RunTable 을 쓰고 system 이 고정이므로 전환만으로는 접두가 바뀌지 않는다.
-- goal 판단기의 보조 모델 호출(`sets.Complete`). 별도 요청이라 본 모델의 캐시와 섞이지 않는다.
+- goal 판단기의 보조 모델 호출(`Deps.Aux`, R39). 별도 요청이라 본 모델의 캐시와 섞이지 않는다.
 
 ### 3.3 개선 항목
 
@@ -85,7 +85,7 @@ provider 동작은 provider 문서를 기준으로 적었다. 실제 모델로�
 | id | 내용 | 상태 | 출처 |
 |---|---|---|---|
 | MD-1 | 뮤테이션 검사: harness `mode.go`의 `decide`·`applyPending`·`runSwitch` 핵심 분기 | 해소 (`decide`·`applyPending`·`runSwitch.Dispatch`·`pick` 34/34 KILLED. 처음 살아남은 8개 — 모드 안에서 세트 진입, 예약이 있을 때 지금 상태로 가는 요청, 같은 모드 다른 Arg, 세트 Exit 적용 이벤트의 Reason, 적용 저장 실패 때 고침 이벤트, 고침 저장 실패의 `Start` 에러, run 안 적용 실패, Modes 없는 Agent 의 run — 는 테스트를 보강해 잡음. 마지막 것은 스펙에 없어 harness v1.7 HN-FR-65·66 에 명시함 — 동작 변경 없음) | impl-09 |
-| MD-2 | 보조 모델의 thinking·max tokens 설정 (지금은 모델만 정한다) | 열림 | impl-09 |
+| MD-2 | 보조 모델의 thinking·max tokens 설정 (지금은 모델만 정한다) | 해소 (R40: `aux.<역할>` 에 `maxOutputTokens`·`thinking`, 폴백 aux → 설정 → Lookup, thinking 은 물려받지 않음. 인터뷰 중 R39 원칙 "sets 는 자기 루프의 제어만" 을 정하고 sets 전수조사 — 보조 모델 규칙·aux 설정·레지스트리·메모리 Store·StateStore 연결을 harness 로 옮기고 세트는 `Deps.Aux` 통로로 부름. harness v1.9, sets v0.11, agent v0.11, examples/modes v0.4. 뮤테이션 32개 중 KILLED 31, 등가 1은 분기를 없앰) | impl-09 |
 | MD-3 | 터미널에서 실행 중에 `/mode off` (지금은 대기 중에만 된다. agent API 는 실행 중에도 받는다) | 해소 (R36: terminal v0.10 이 실행 중 `/mode off` 를 받고 `(다음 턴부터)` 줄을 냄. 같은 run 의 다음 턴부터 기본 배치. 실행 중 `/mode <name>` 은 그대로 거부) | impl-09 |
 | MD-4 | 전체 배치형 모드 (`Mode.Layout`) | 보류 (R27 비목표) | impl-09 |
 | MD-5 | 모드 겹치기, 모델이 모드에서 다른 모드로 직접 전환 | 보류 (R27 비목표) | INJECT.md 5.6 |

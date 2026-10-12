@@ -379,3 +379,36 @@ func TestPlanMode(t *testing.T) {
 		}
 	}
 }
+
+func runWithConfig(t *testing.T, a *harness.Agent, config, text string) core.Settle {
+	t.Helper()
+	in := contract.Message{ID: fmt.Sprint("u", time.Now().UnixNano()), Role: contract.RoleUser, Timestamp: time.Now(),
+		Content: []contract.Block{{Kind: contract.BlockText, Text: text}}}
+	r, _, err := a.Start(context.Background(), harness.RunRequest{SessionID: "s1", Input: []contract.Message{in}, Config: json.RawMessage(config)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r.Wait()
+}
+
+// MX-FR-03, MX-C3 (R39·R40): 판정은 Deps.Aux 로 — aux 의 모델·max tokens·thinking 을 따르고, 설정 에러는 judge error 로 continue.
+func TestGoalJudgeUsesAux(t *testing.T) {
+	m := &fakeModel{worker: say("w"), judge: verdicts(`{"verdict":"done","reason":"ok"}`)}
+	a, _ := newHarness(t, m, config{goalTurns: 20})
+	enter(t, a, "goal", "G")
+	runWithConfig(t, a, `{"model":{"provider":"p","id":"m"},"thinking":"low",`+
+		`"aux":{"goal_judge":{"provider":"p","id":"judge-m","maxOutputTokens":77,"thinking":"high"}}}`, "go")
+	_, judges := m.snapshot()
+	if len(judges) != 1 || judges[0].Model.ID != "judge-m" || judges[0].Options.MaxOutputTokens != 77 || judges[0].Options.Thinking != "high" {
+		t.Fatalf("judge request %+v", judges)
+	}
+
+	m = &fakeModel{worker: say("w"), judge: verdicts(`{"verdict":"done","reason":"ok"}`)}
+	a, _ = newHarness(t, m, config{goalTurns: 2})
+	enter(t, a, "goal", "G")
+	runWithConfig(t, a, `{"model":{"provider":"p","id":"m"},"aux":{"goal_judge":{"provider":"p"}}}`, "go")
+	work, judges := m.snapshot()
+	if len(judges) != 0 || len(work) != 2 || !has(work[1], "Judge: judge error: harness: config: aux") {
+		t.Fatalf("bad aux: judges %d work %d", len(judges), len(work))
+	}
+}

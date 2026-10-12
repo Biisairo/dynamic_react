@@ -92,7 +92,7 @@ func (a *Agent) bind(layout []SetState) (*inject.Dispatcher, error) {
 	if a.sf.active() {
 		fs = a.sf.wrap(fs)
 	}
-	d, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(a.store), Runs: a.runs}, fs...)
+	d, err := inject.BindWith(inject.BindOptions{StateStore: stateStoreOf(a.store), Runs: a.runs}, fs...)
 	if err != nil {
 		return nil, fmt.Errorf("harness: sets: %w", err)
 	}

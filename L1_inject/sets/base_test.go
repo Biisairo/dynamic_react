@@ -348,7 +348,7 @@ func TestPolicySetsNoState(t *testing.T) {
 		return doneEv(assistant("a1", contract.Usage{Output: 1}, contract.StopStop, text("ok")))
 	}}
 	d := deps(m, echoTool(nil))
-	rec := &nsRecorder{StateStore: sets.StateStoreOf(d.Store), ns: map[string]bool{}}
+	rec := &nsRecorder{StateStore: stateStoreOf(d.Store), ns: map[string]bool{}}
 	disp, err := inject.BindWith(inject.BindOptions{StateStore: rec}, stack(d, false)...)
 	if err != nil {
 		t.Fatal(err)

@@ -13,6 +13,7 @@ import (
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness/envtest"
+	"github.com/Biisairo/dynamic_react/L2_harness/harness/storetest"
 )
 
 func textModel() *fakeModel {
@@ -106,7 +107,7 @@ func (s *listStore) SaveState(ctx context.Context, id, ns string, d inject.State
 
 // memStore 는 파일을 쓰지 않는 저장소다.
 type memStore struct {
-	*sets.MemoryStore
+	*storetest.MemoryStore
 	mu  sync.Mutex
 	ids []string
 }
@@ -149,7 +150,7 @@ func TestStore(t *testing.T) {
 	}
 
 	e2 := envtest.New("/w", "/h")
-	ms := &memStore{MemoryStore: sets.NewMemoryStore()}
+	ms := &memStore{MemoryStore: storetest.New()}
 	b := newAgent(t, e2, textModel(), func(o *harness.Options) { o.Store = func(harness.Store) harness.Store { return ms } })
 	start(t, b, "s2", user("u1", "hi"))
 	if _, ok := e2.File("/h/sessions/s2.jsonl"); ok {
@@ -255,7 +256,7 @@ func TestSummarizer(t *testing.T) {
 
 // HN-FR-36: 바꾼 저장소에서도 sessionID 를 검사한다.
 func TestCompactChecksIDWithCustomStore(t *testing.T) {
-	ms := &memStore{MemoryStore: sets.NewMemoryStore()}
+	ms := &memStore{MemoryStore: storetest.New()}
 	a := newAgent(t, envtest.New("/w", "/h"), compactModel(okSummary), func(o *harness.Options) {
 		o.Store = func(harness.Store) harness.Store { return ms }
 	})

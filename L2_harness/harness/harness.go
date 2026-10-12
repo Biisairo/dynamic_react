@@ -70,7 +70,7 @@ type Agent struct {
 	mt     modeTable
 	copts  core.Options
 	system []contract.Block
-	tools  *sets.Registry
+	tools  *registry
 	now    func() time.Time
 	sf     *surface
 	store  Store
@@ -100,9 +100,9 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 	if o.ToolSet != nil {
 		toolList = o.ToolSet(toolList)
 	}
-	reg := sets.NewRegistry()
+	reg := newRegistry()
 	for _, t := range toolList {
-		reg.Add(t)
+		reg.add(t)
 	}
 	def, err := session.New(o.Env, o.SessionDir)
 	if err != nil {
@@ -134,9 +134,9 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 			summarizer = eventSummarizer{sf, summarizer}
 		}
 	}
-	switcher := &modeSwitcher{}
+	switcher, aux := &modeSwitcher{}, &auxCaller{}
 	deps := sets.Deps{Model: o.Model, Tools: reg, Store: store, System: system,
-		Summarizer: summarizer, Sleep: sleep, Now: o.Now, NewID: o.NewID, Modes: switcher}
+		Summarizer: summarizer, Sleep: sleep, Now: o.Now, NewID: o.NewID, Modes: switcher, Aux: aux}
 	var entries []SetEntry
 	if o.Sets != nil {
 		entries = o.Sets(deps)
@@ -165,11 +165,11 @@ func New(ctx context.Context, o Options) (*Agent, error) {
 		return nil, err
 	}
 	a.bundle = b
-	self, switcher.a = a, a
+	self, switcher.a, aux.a = a, a, a
 	return a, nil
 }
 
-func buildSystem(ctx context.Context, o Options, reg *sets.Registry) ([]contract.Block, error) {
+func buildSystem(ctx context.Context, o Options, reg *registry) ([]contract.Block, error) {
 	files, err := prompt.ContextFiles(ctx, o.Env, o.Env.Cwd())
 	if err != nil {
 		return nil, fmt.Errorf("harness: context files: %w", err)

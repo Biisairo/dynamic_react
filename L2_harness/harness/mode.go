@@ -451,27 +451,3 @@ func (m *modeSwitcher) Exit(ctx context.Context, sid, reason string) error {
 	}
 	return m.a.RequestMode(ctx, sid, ModeRequest{Origin: ModeSet, Reason: reason})
 }
-
-// Complete 는 run 밖의 보조 모델 단발 호출이다 (HN-FR-72).
-func (a *Agent) Complete(ctx context.Context, config json.RawMessage, role string,
-	system []contract.Block, msgs []contract.Message) (contract.Message, error) {
-	cfg, err := sets.ParseConfig(config)
-	if err != nil {
-		return contract.Message{}, err
-	}
-	m := sets.AuxModel(cfg, role)
-	ref := contract.ModelRef{Provider: m.Provider, ID: m.ID}
-	maxOut := cfg.MaxOutputTokens
-	if info, ok := a.model.Lookup(ctx, m.Provider, m.ID); ok {
-		ref.API = info.Ref.API
-		if maxOut == 0 {
-			maxOut = info.MaxOutputTokens
-		}
-	}
-	return sets.Complete(ctx, a.model, contract.Request{
-		Model:    ref,
-		System:   append([]contract.Block(nil), system...),
-		Messages: append([]contract.Message(nil), msgs...),
-		Options:  contract.Options{MaxOutputTokens: maxOut},
-	})
-}

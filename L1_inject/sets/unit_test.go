@@ -1,15 +1,15 @@
 package sets_test
 
 import (
-	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
-	"github.com/Biisairo/dynamic_react/L1_inject/inject"
+	"github.com/Biisairo/dynamic_react/L0_core/core"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 )
 
@@ -103,21 +103,6 @@ func TestEstimateContext(t *testing.T) {
 	}
 }
 
-// ST-FR-33, 10
-func TestRegistry(t *testing.T) {
-	r := sets.NewRegistry(echoTool(nil), sets.Tool{Spec: contract.ToolSpec{Name: "b", InputSchema: json.RawMessage(`{}`)}})
-	if strings.Join(r.Names(), ",") != "echo,b" {
-		t.Fatalf("names %v", r.Names())
-	}
-	r.Add(sets.Tool{Spec: contract.ToolSpec{Name: "echo", Description: "v2", InputSchema: json.RawMessage(`{}`)}})
-	if tl, _ := r.Get("echo"); tl.Spec.Description != "v2" || len(r.Names()) != 2 {
-		t.Fatal("replace")
-	}
-	if _, ok := r.Get("zz"); ok {
-		t.Fatal("unknown found")
-	}
-}
-
 // ST-FR-38
 func TestCheckArgs(t *testing.T) {
 	schema := json.RawMessage(`{"type":"object","required":["a"],"properties":{"a":{"type":"string"},"n":{"type":"integer"},"f":{"type":"number"},"b":{"type":"boolean"},"l":{"type":"array"},"o":{"type":"object"},"z":{"type":"null"},"any":{}}}`)
@@ -138,39 +123,21 @@ func TestCheckArgs(t *testing.T) {
 	}
 }
 
-// ST-FR-34, 39, 15
-func TestMemoryStore(t *testing.T) {
-	ctx := context.Background()
-	s := sets.NewMemoryStore()
-	if sess, err := s.Load(ctx, "x"); err != nil || len(sess.Messages) != 0 {
-		t.Fatalf("empty %+v %v", sess, err)
+// ST-FR-33, 34, 42: nil Tools → 도구 없음, nil Store → 빈 세션을 읽고 저장하지 않음 (다음 run 에 남지 않음).
+func TestNilToolsAndStore(t *testing.T) {
+	m := &fakeModel{script: func(n int, req contract.Request) []contract.StreamEvent {
+		return doneEv(assistant(fmt.Sprint("a", n), contract.Usage{}, contract.StopStop, text("ok")))
+	}}
+	d := deps(m)
+	d.Tools, d.Store = nil, nil
+	for i, in := range []string{"first", "second"} {
+		if s := agent(t, d, false, cfgJSON, user(fmt.Sprint("u", i), in)); s.Reason != core.SettleCompleted {
+			t.Fatalf("run %d %+v", i, s)
+		}
 	}
-	s.AppendMessages(ctx, "x", []contract.Message{user("u1", "a")})
-	s.AppendMessages(ctx, "x", []contract.Message{user("u2", "b")})
-	edit := contract.ContextEdit{ID: "e", Kind: contract.EditHide, Timestamp: ts, Target: "u1"}
-	s.AppendEdits(ctx, "x", []contract.ContextEdit{edit})
-	s.SaveState(ctx, "x", "base", inject.StateDelta{Set: map[string]json.RawMessage{"k": json.RawMessage(`1`), "d": json.RawMessage(`2`)}, Publish: []string{"k"}})
-	s.SaveState(ctx, "x", "base", inject.StateDelta{Delete: []string{"d"}})
-	sess, _ := s.Load(ctx, "x")
-	if len(sess.Messages) != 2 || sess.Messages[1].ID != "u2" || len(sess.Edits) != 1 {
-		t.Fatalf("session %+v", sess)
-	}
-	ns := sess.State["base"]
-	if string(ns.Values["k"]) != "1" || ns.Values["d"] != nil || len(ns.Published) != 1 {
-		t.Fatalf("state %+v", ns)
-	}
-	sess.Messages[0].ID = "mutated"
-	if again, _ := s.Load(ctx, "x"); again.Messages[0].ID != "u1" {
-		t.Fatal("Load shares storage")
-	}
-	st := sets.StateStoreOf(s)
-	loaded, _ := st.Load(ctx, "x")
-	if string(loaded["base"].Values["k"]) != "1" {
-		t.Fatalf("StateStoreOf %+v", loaded)
-	}
-	st.Save(ctx, "x", "other", inject.StateDelta{Set: map[string]json.RawMessage{"q": json.RawMessage(`true`)}})
-	if sess, _ := s.Load(ctx, "x"); string(sess.State["other"].Values["q"]) != "true" {
-		t.Fatal("StateStoreOf save")
+	reqs := m.requests()
+	if len(reqs) != 2 || len(reqs[1].Tools) != 0 || len(reqs[1].Messages) != 1 || reqs[1].Messages[0].Content[0].Text != "second" {
+		t.Fatalf("second request %+v", reqs[len(reqs)-1])
 	}
 }
 

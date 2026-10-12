@@ -17,13 +17,12 @@ const (
 
 // Config 는 루프 설정(RunInput.Config)이다 (ST-FR-01). API 키 필드는 없다 (ST-FR-02).
 type Config struct {
-	Model           ConfigModel            `json:"model"`
-	MaxOutputTokens int                    `json:"maxOutputTokens"`
-	Thinking        string                 `json:"thinking"`
-	Tools           []string               `json:"tools"`
-	Compaction      Compaction             `json:"compaction"`
-	Retry           Retry                  `json:"retry"`
-	Aux             map[string]ConfigModel `json:"aux"` // 역할 → 보조 모델 (ST-FR-54)
+	Model           ConfigModel `json:"model"`
+	MaxOutputTokens int         `json:"maxOutputTokens"`
+	Thinking        string      `json:"thinking"`
+	Tools           []string    `json:"tools"`
+	Compaction      Compaction  `json:"compaction"`
+	Retry           Retry       `json:"retry"`
 }
 
 type ConfigModel struct {
@@ -54,8 +53,8 @@ type rawConfig struct {
 		ReserveTokens    int   `json:"reserveTokens"`
 		KeepRecentTokens int   `json:"keepRecentTokens"`
 	} `json:"compaction"`
-	Retry Retry                  `json:"retry"`
-	Aux   map[string]ConfigModel `json:"aux"`
+	Retry Retry           `json:"retry"`
+	Aux   json.RawMessage `json:"aux"` // 하네스 키: 검사하지 않고 건너뛴다 (ST-FR-01, R39)
 }
 
 // ParseConfig 는 설정을 읽고 빈 값·0 을 기본값으로 채운다. 모르는 키는 에러다.
@@ -72,11 +71,6 @@ func ParseConfig(raw json.RawMessage) (Config, error) {
 	if r.Model == nil || r.Model.Provider == "" || r.Model.ID == "" {
 		return Config{}, errors.New("sets: config: model.provider and model.id required")
 	}
-	for role, m := range r.Aux {
-		if role == "" || m.Provider == "" || m.ID == "" {
-			return Config{}, fmt.Errorf("sets: config: aux %q: role, provider and id required", role)
-		}
-	}
 	c := Config{
 		Model:           *r.Model,
 		MaxOutputTokens: r.MaxOutputTokens,
@@ -92,7 +86,6 @@ func ParseConfig(raw json.RawMessage) (Config, error) {
 			BaseDelayMs: orDefault(r.Retry.BaseDelayMs, defaultBaseDelayMs),
 			MaxDelayMs:  orDefault(r.Retry.MaxDelayMs, defaultMaxDelayMs),
 		},
-		Aux: r.Aux,
 	}
 	return c, nil
 }

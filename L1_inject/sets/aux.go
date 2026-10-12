@@ -2,43 +2,31 @@ package sets
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 )
 
-// AuxModel 은 역할의 보조 모델이다. 설정에 없으면 본 모델이다 (ST-FR-55).
-func AuxModel(cfg Config, role string) ConfigModel {
-	if m, ok := cfg.Aux[role]; ok {
-		return m
-	}
-	return cfg.Model
+// AuxCaller 는 세트가 보조 모델을 부르는 통로다. 모델·옵션 결정과 호출은 하네스의 몫이다 (ST-FR-63, R39).
+type AuxCaller interface {
+	Complete(ctx context.Context, config json.RawMessage, role string, system []contract.Block, msgs []contract.Message) (contract.Message, error)
 }
 
-// Complete 는 모델을 한 번 불러 done 메시지를 돌려준다. 도구를 실행하지 않고 재시도하지 않는다 (ST-FR-56).
-func Complete(ctx context.Context, m ModelCaller, req contract.Request) (contract.Message, error) {
-	for ev, err := range m.Call(ctx, req) {
-		if err != nil {
-			return contract.Message{}, err
-		}
-		switch ev.Kind {
-		case contract.EventDone:
-			if ev.Message == nil {
-				return contract.Message{}, errors.New("sets: complete: done without message")
-			}
-			return *ev.Message, nil
-		case contract.EventError:
-			if ev.Error == nil {
-				return contract.Message{}, errors.New("sets: complete: error event without error")
-			}
-			ce := *ev.Error
-			return contract.Message{}, &ce
-		}
+var ErrNoAux = errors.New("sets: aux model not available")
+
+type noAux struct{}
+
+func (noAux) Complete(context.Context, json.RawMessage, string, []contract.Block, []contract.Message) (contract.Message, error) {
+	return contract.Message{}, ErrNoAux
+}
+
+// AuxOf 는 d.Aux 이고, nil 이면 ErrNoAux 를 내는 구현이다 (ST-FR-63).
+func AuxOf(d Deps) AuxCaller {
+	if d.Aux == nil {
+		return noAux{}
 	}
-	if err := ctx.Err(); err != nil {
-		return contract.Message{}, err
-	}
-	return contract.Message{}, errors.New("sets: complete: stream ended without done")
+	return d.Aux
 }
 
 // ModeState 는 세션의 모드다. Active "" = 기본 모드 (ST-FR-57).

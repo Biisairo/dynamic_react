@@ -79,7 +79,7 @@ func verifyRun(t *testing.T, d sets.Deps, o sets.VerifyOptions, below ...inject.
 	if err != nil {
 		t.Fatal(err)
 	}
-	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, stack(d, true, append(below, v)...)...)
+	disp, err := inject.BindWith(inject.BindOptions{StateStore: stateStoreOf(d.Store)}, stack(d, true, append(below, v)...)...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestVerifyCheckedAfterPass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, stack(d, true, v)...)
+	disp, err := inject.BindWith(inject.BindOptions{StateStore: stateStoreOf(d.Store)}, stack(d, true, v)...)
 	if err != nil {
 		t.Fatal(err)
 	}

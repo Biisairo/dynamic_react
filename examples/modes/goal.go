@@ -240,22 +240,15 @@ func GoalSet(d sets.Deps, maxTurns int) inject.FunctionSet {
 		}}
 }
 
-// judge 는 보조 모델 goal_judge 의 판정이다. 실패는 continue 로 본다 (MX-FR-03, fail-open).
+// judge 는 보조 모델 goal_judge 의 판정이다. 하네스 통로(Deps.Aux)로 부르고, 실패는 continue 로 본다 (MX-FR-03, fail-open).
 func judge(ctx *inject.TurnFinishCtx, d sets.Deps, goal, response string, userNotes []string) (string, string) {
-	cfg, err := sets.ParseConfig(ctx.Env().Config())
-	if err != nil {
-		return "continue", "judge config: " + err.Error()
-	}
 	if r := []rune(response); len(r) > judgeResponseChars {
 		response = string(r[:judgeResponseChars])
 	}
-	ref := sets.AuxModel(cfg, "goal_judge")
-	msg, err := sets.Complete(ctx.Context(), d.Model, contract.Request{
-		Model:  contract.ModelRef{Provider: ref.Provider, ID: ref.ID},
-		System: []contract.Block{{Kind: contract.BlockText, Text: judgeSystem}},
-		Messages: []contract.Message{userMessage(d, fmt.Sprintf("Goal:\n%s\n\nAgent's most recent response:\n%s\n\n"+
-			"Is the goal satisfied — done, blocked, or continue?%s", goal, response, notesBlock(userNotes)))},
-	})
+	msg, err := sets.AuxOf(d).Complete(ctx.Context(), ctx.Env().Config(), "goal_judge",
+		[]contract.Block{{Kind: contract.BlockText, Text: judgeSystem}},
+		[]contract.Message{userMessage(d, fmt.Sprintf("Goal:\n%s\n\nAgent's most recent response:\n%s\n\n"+
+			"Is the goal satisfied — done, blocked, or continue?%s", goal, response, notesBlock(userNotes)))})
 	if err != nil {
 		return "continue", "judge error: " + err.Error()
 	}

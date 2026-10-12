@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -126,8 +127,8 @@ func idGen() func() string {
 func deps(m *fakeModel, tools ...sets.Tool) sets.Deps {
 	return sets.Deps{
 		Model:  m,
-		Tools:  sets.NewRegistry(tools...),
-		Store:  sets.NewMemoryStore(),
+		Tools:  newTools(tools...),
+		Store:  newStore(),
 		System: []contract.Block{text("sys")},
 		Sleep:  func(ctx context.Context, d time.Duration) error { return ctx.Err() },
 		Now:    func() time.Time { return ts },
@@ -149,7 +150,7 @@ func stack(d sets.Deps, resilient bool, top ...inject.FunctionSet) []inject.Func
 // agent 는 stack 으로 core run 하나를 돌린다.
 func agent(t *testing.T, d sets.Deps, resilient bool, cfg string, input ...contract.Message) core.Settle {
 	t.Helper()
-	disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, stack(d, resilient)...)
+	disp, err := inject.BindWith(inject.BindOptions{StateStore: stateStoreOf(d.Store)}, stack(d, resilient)...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,4 +201,116 @@ func kinds(sigs []core.Signal) string {
 		out = append(out, string(s.Kind))
 	}
 	return fmt.Sprint(out)
+}
+
+// toolList 는 테스트용 도구 목록이다 (레지스트리 구현은 하네스, R39).
+type toolList []sets.Tool
+
+func newTools(tools ...sets.Tool) toolList { return toolList(tools) }
+
+func (l toolList) Get(name string) (sets.Tool, bool) {
+	for _, t := range l {
+		if t.Spec.Name == name {
+			return t, true
+		}
+	}
+	return sets.Tool{}, false
+}
+
+func (l toolList) Names() []string {
+	var out []string
+	for _, t := range l {
+		out = append(out, t.Spec.Name)
+	}
+	return out
+}
+
+// memStore 는 테스트용 메모리 Store 다 (메모리 Store 구현은 하네스, R39).
+type memStore struct {
+	mu       sync.Mutex
+	messages map[string][]contract.Message
+	edits    map[string][]contract.ContextEdit
+	state    map[string]map[string]inject.NamespaceState
+}
+
+func newStore() *memStore {
+	return &memStore{messages: map[string][]contract.Message{}, edits: map[string][]contract.ContextEdit{},
+		state: map[string]map[string]inject.NamespaceState{}}
+}
+
+func (s *memStore) Load(ctx context.Context, id string) (sets.Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := sets.Session{Messages: append([]contract.Message(nil), s.messages[id]...),
+		Edits: append([]contract.ContextEdit(nil), s.edits[id]...), State: map[string]inject.NamespaceState{}}
+	for name, ns := range s.state[id] {
+		c := inject.NamespaceState{Values: map[string]json.RawMessage{}, Published: append([]string(nil), ns.Published...)}
+		for k, v := range ns.Values {
+			c.Values[k] = append(json.RawMessage(nil), v...)
+		}
+		out.State[name] = c
+	}
+	return out, nil
+}
+
+func (s *memStore) AppendMessages(ctx context.Context, id string, msgs []contract.Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.messages[id] = append(s.messages[id], msgs...)
+	return nil
+}
+
+func (s *memStore) AppendEdits(ctx context.Context, id string, edits []contract.ContextEdit) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.edits[id] = append(s.edits[id], edits...)
+	return nil
+}
+
+func (s *memStore) SaveState(ctx context.Context, id, ns string, d inject.StateDelta) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state[id] == nil {
+		s.state[id] = map[string]inject.NamespaceState{}
+	}
+	cur := s.state[id][ns]
+	if cur.Values == nil {
+		cur.Values = map[string]json.RawMessage{}
+	}
+	for k, v := range d.Set {
+		cur.Values[k] = append(json.RawMessage(nil), v...)
+	}
+	for _, k := range d.Delete {
+		delete(cur.Values, k)
+	}
+	pub := map[string]bool{}
+	for _, k := range append(cur.Published, d.Publish...) {
+		pub[k] = true
+	}
+	cur.Published = nil
+	for k := range pub {
+		cur.Published = append(cur.Published, k)
+	}
+	sort.Strings(cur.Published)
+	s.state[id][ns] = cur
+	return nil
+}
+
+// stateStoreOf 는 Store 를 inject StateStore 로 감싼다 (하네스의 연결과 같음, R39).
+func stateStoreOf(s sets.Store) inject.StateStore {
+	if s == nil {
+		return nil
+	}
+	return stateStore{s}
+}
+
+type stateStore struct{ s sets.Store }
+
+func (x stateStore) Load(ctx context.Context, id string) (map[string]inject.NamespaceState, error) {
+	sess, err := x.s.Load(ctx, id)
+	return sess.State, err
+}
+
+func (x stateStore) Save(ctx context.Context, id, ns string, d inject.StateDelta) error {
+	return x.s.SaveState(ctx, id, ns, d)
 }

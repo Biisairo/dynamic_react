@@ -4,83 +4,51 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"iter"
 	"testing"
 
 	"github.com/Biisairo/dynamic_react/L0_core/contract"
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 )
 
-// ST-FR-54, 55
-func TestAuxConfig(t *testing.T) {
-	c, err := sets.ParseConfig(json.RawMessage(`{"model":{"provider":"p","id":"m"},"aux":{"judge":{"provider":"q","id":"j"}}}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := sets.AuxModel(c, "judge"); got != (sets.ConfigModel{Provider: "q", ID: "j"}) {
-		t.Fatalf("aux judge = %+v", got)
-	}
-	if got := sets.AuxModel(c, "other"); got != (sets.ConfigModel{Provider: "p", ID: "m"}) {
-		t.Fatalf("fallback = %+v", got)
-	}
-	for name, bad := range map[string]string{
-		"empty role":     `{"model":{"provider":"p","id":"m"},"aux":{"":{"provider":"q","id":"j"}}}`,
-		"empty provider": `{"model":{"provider":"p","id":"m"},"aux":{"judge":{"provider":"","id":"j"}}}`,
-		"empty id":       `{"model":{"provider":"p","id":"m"},"aux":{"judge":{"provider":"q"}}}`,
-		"unknown key":    `{"model":{"provider":"p","id":"m"},"aux":{"judge":{"provider":"q","id":"j","x":1}}}`,
+// ST-FR-01 (R39): aux 는 하네스 키라 형식이 틀려도 건너뛴다. 다른 모르는 키는 에러.
+func TestAuxConfigSkipped(t *testing.T) {
+	for name, raw := range map[string]string{
+		"valid":       `{"model":{"provider":"p","id":"m"},"aux":{"judge":{"provider":"q","id":"j","maxOutputTokens":9,"thinking":"low"}}}`,
+		"empty role":  `{"model":{"provider":"p","id":"m"},"aux":{"":{"provider":"q","id":"j"}}}`,
+		"empty id":    `{"model":{"provider":"p","id":"m"},"aux":{"judge":{"provider":"q"}}}`,
+		"unknown key": `{"model":{"provider":"p","id":"m"},"aux":{"judge":{"x":1}}}`,
+		"not object":  `{"model":{"provider":"p","id":"m"},"aux":[1]}`,
 	} {
-		if _, err := sets.ParseConfig(json.RawMessage(bad)); err == nil {
-			t.Errorf("%s accepted", name)
+		if _, err := sets.ParseConfig(json.RawMessage(raw)); err != nil {
+			t.Errorf("%s: %v", name, err)
 		}
 	}
-}
-
-// ST-FR-56
-func TestComplete(t *testing.T) {
-	want := assistant("a1", contract.Usage{}, contract.StopStop, text("verdict"))
-	m := &fakeModel{script: func(n int, req contract.Request) []contract.StreamEvent { return doneEv(want) }}
-	req := contract.Request{Model: contract.ModelRef{Provider: "p", ID: "m"}, Messages: []contract.Message{user("u1", "q")}}
-	got, err := sets.Complete(context.Background(), m, req)
-	if err != nil || got.ID != "a1" || got.Content[0].Text != "verdict" {
-		t.Fatalf("done: %+v %v", got, err)
-	}
-	if r := m.requests(); len(r) != 1 || r[0].Model.ID != "m" || len(r[0].Tools) != 0 {
-		t.Fatalf("request %+v", r)
-	}
-
-	m = &fakeModel{script: func(n int, req contract.Request) []contract.StreamEvent {
-		return errEv(contract.CallError{Class: contract.ClassRateLimit, Message: "slow"})
-	}}
-	_, err = sets.Complete(context.Background(), m, req)
-	var ce *contract.CallError
-	if !errors.As(err, &ce) || ce.Class != contract.ClassRateLimit {
-		t.Fatalf("error event: %v", err)
-	}
-	if len(m.requests()) != 1 {
-		t.Fatal("Complete must not retry")
-	}
-
-	m = &fakeModel{script: func(n int, req contract.Request) []contract.StreamEvent {
-		return []contract.StreamEvent{{Kind: contract.EventStart}}
-	}}
-	if _, err := sets.Complete(context.Background(), m, req); err == nil {
-		t.Fatal("stream without done accepted")
-	}
-
-	boom := errors.New("boom")
-	if _, err := sets.Complete(context.Background(), errModel{boom}, req); !errors.Is(err, boom) {
-		t.Fatalf("iterator error: %v", err)
+	if _, err := sets.ParseConfig(json.RawMessage(`{"model":{"provider":"p","id":"m"},"bogus":1}`)); err == nil {
+		t.Error("unknown top-level key accepted")
 	}
 }
 
-type errModel struct{ err error }
-
-func (e errModel) Call(ctx context.Context, req contract.Request) iter.Seq2[contract.StreamEvent, error] {
-	return func(yield func(contract.StreamEvent, error) bool) { yield(contract.StreamEvent{}, e.err) }
+// ST-FR-63
+func TestAuxOf(t *testing.T) {
+	_, err := sets.AuxOf(sets.Deps{}).Complete(context.Background(), nil, "judge", nil, nil)
+	if !errors.Is(err, sets.ErrNoAux) || err.Error() != "sets: aux model not available" {
+		t.Fatalf("no aux: %v", err)
+	}
+	mine := &fixedAux{reply: contract.Message{ID: "r"}}
+	got, err := sets.AuxOf(sets.Deps{Aux: mine}).Complete(context.Background(), json.RawMessage(`{}`), "judge", nil, nil)
+	if err != nil || got.ID != "r" || mine.role != "judge" {
+		t.Fatalf("AuxOf did not return Deps.Aux: %+v %v %q", got, err, mine.role)
+	}
 }
 
-func (e errModel) Lookup(ctx context.Context, provider, id string) (contract.ModelInfo, bool) {
-	return contract.ModelInfo{}, false
+type fixedAux struct {
+	reply contract.Message
+	role  string
+}
+
+func (f *fixedAux) Complete(ctx context.Context, config json.RawMessage, role string, system []contract.Block, msgs []contract.Message) (contract.Message, error) {
+	f.role = role
+	return f.reply, nil
 }
 
 // ST-FR-57

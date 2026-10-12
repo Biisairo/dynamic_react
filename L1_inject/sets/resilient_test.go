@@ -91,7 +91,7 @@ func TestOverflowRecoveredMarkScope(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			ctx := context.Background()
-			store := sets.NewMemoryStore()
+			store := newStore()
 			store.SaveState(ctx, "s1", "resilient", inject.StateDelta{Set: map[string]json.RawMessage{"recovered": json.RawMessage(c.mark)}})
 			d := deps(infoW(100000))
 			d.Summarizer = &fakeSummarizer{}
@@ -99,7 +99,7 @@ func TestOverflowRecoveredMarkScope(t *testing.T) {
 				RunStart: func(*inject.RunStartCtx, core.RunInput) (core.RunInit, []inject.RunStartSignal, error) {
 					return core.RunInit{}, nil, nil
 				}})
-			disp, err := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(store)}, set)
+			disp, err := inject.BindWith(inject.BindOptions{StateStore: stateStoreOf(store)}, set)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -341,7 +341,7 @@ func TestFollowUp(t *testing.T) {
 		}
 		return ctx.Next(msg)
 	}}
-	disp, _ := inject.BindWith(inject.BindOptions{StateStore: sets.StateStoreOf(d.Store)}, stack(d, true, wrapped)...)
+	disp, _ := inject.BindWith(inject.BindOptions{StateStore: stateStoreOf(d.Store)}, stack(d, true, wrapped)...)
 	r := core.New(disp, core.Options{}).Start(context.Background(), core.RunInput{SessionID: "s1", Input: []contract.Message{user("u1", "x")}, Config: json.RawMessage(cfgJSON)})
 	runCh <- r
 	if s := r.Wait(); s.Reason != core.SettleCompleted {

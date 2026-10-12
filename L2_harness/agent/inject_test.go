@@ -18,6 +18,7 @@ import (
 	"github.com/Biisairo/dynamic_react/L1_inject/sets"
 	"github.com/Biisairo/dynamic_react/L2_harness/agent"
 	"github.com/Biisairo/dynamic_react/L2_harness/harness"
+	"github.com/Biisairo/dynamic_react/L2_harness/harness/storetest"
 )
 
 const injectedRule = "INJECTED-RULE-7"
@@ -195,7 +196,7 @@ func TestInjectSummarizer(t *testing.T) {
 }
 
 type memStore struct {
-	*sets.MemoryStore
+	*storetest.MemoryStore
 	mu  sync.Mutex
 	ids []string
 }
@@ -223,7 +224,7 @@ func (failList) List(context.Context) ([]string, error) { return nil, errors.New
 func TestInjectStore(t *testing.T) {
 	f := setup(t)
 	l := newLLM(t, textReply("ok"))
-	ms := &memStore{MemoryStore: sets.NewMemoryStore()}
+	ms := &memStore{MemoryStore: storetest.New()}
 	a := newAgent(t, f, testConfig(l.URL, ""), func(o *agent.Options) {
 		o.Store = func(harness.Store) harness.Store { return ms }
 	})

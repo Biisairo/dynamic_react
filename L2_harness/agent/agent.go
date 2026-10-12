@@ -301,6 +301,9 @@ func agentConfig(raw json.RawMessage, override string) (json.RawMessage, string,
 			return nil, "", fmt.Errorf("agent: config: agent: %w", err)
 		}
 	}
+	if _, err := harness.ParseAux(raw); err != nil {
+		return nil, "", fmt.Errorf("agent: config: %w", err)
+	}
 	cfg, err := sets.ParseConfig(raw)
 	if err == nil {
 		return raw, cfg.Model.Provider + "/" + cfg.Model.ID, nil
