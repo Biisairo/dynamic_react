@@ -300,21 +300,27 @@ func TestSteer(t *testing.T) {
 func TestFollowUp(t *testing.T) {
 	f := setup(t)
 	l := newLLM(t, textReply("first answer"), textReply("second answer"))
-	f.writeConfig(t, testConfig(l.URL, ""))
-	ev := &events{}
-	gotStart := make(chan struct{}, 4)
-	o := f.opts()
-	o.OnEvent = func(e harness.Event) {
-		ev.on(e)
-		if e.Kind == harness.EventMessageStart {
-			gotStart <- struct{}{}
+	// 첫 응답을 붙잡아 두어 FollowUp 이 run 종료보다 먼저 들어가게 한다.
+	arrived, release := make(chan struct{}), make(chan struct{})
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			close(arrived)
+			<-release
 		}
-	}
+		l.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	f.writeConfig(t, testConfig(srv.URL, ""))
+	ev := &events{}
+	o := f.opts()
+	o.OnEvent = ev.on
 	r := start(t, f, o, "", "go")
-	<-gotStart
+	<-arrived
 	if err := r.FollowUp(user("and then")[0]); err != nil {
 		t.Fatal(err)
 	}
+	close(release)
 	if s := r.Wait(); s.Reason != core.SettleCompleted {
 		t.Fatalf("%+v", s)
 	}
