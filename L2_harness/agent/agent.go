@@ -215,7 +215,7 @@ func limitTools(raw json.RawMessage, limit, registry []string) (json.RawMessage,
 		return nil, errors.New("no tool left after applying the limit")
 	}
 	var m map[string]json.RawMessage
-	json.Unmarshal(raw, &m)
+	json.Unmarshal(raw, &m) //nolint:errcheck // LINT-REPORT #1
 	m["tools"], _ = json.Marshal(names)
 	return json.Marshal(m)
 }

@@ -56,7 +56,7 @@ func (a *Agent) ArrangeSets(ctx context.Context, layout []harness.SetState) erro
 		return err
 	})
 	if err != nil {
-		a.h.Arrange(prev)
+		_ = a.h.Arrange(prev)
 		return err
 	}
 	return nil

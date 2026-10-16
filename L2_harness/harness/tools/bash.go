@@ -115,11 +115,11 @@ func (c *capture) Write(p []byte) (int, error) {
 		c.sinceNL += len(p)
 	}
 	if c.spill != nil {
-		c.spill.Write(p)
+		_, _ = c.spill.Write(p)
 	}
 	c.buf = append(c.buf, p...)
 	if c.progress != nil {
-		data := append(c.pending, p...)
+		data := append(c.pending, p...) //nolint:gocritic // c.pending 은 아래에서 새 슬라이스로 바뀐다
 		k := completeUpTo(data)
 		if k > 0 {
 			c.progress(string(data[:k]))
@@ -143,7 +143,7 @@ func (c *capture) openSpill() {
 		c.spill = nil
 		return
 	}
-	c.spill.Write(c.buf)
+	_, _ = c.spill.Write(c.buf)
 }
 
 // finish 는 모델에 줄 출력이다. 잘렸으면 끝 2000줄 / 50KB 와 전체 출력 경로 안내 (pi bash).

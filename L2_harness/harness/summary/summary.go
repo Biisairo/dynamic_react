@@ -233,7 +233,7 @@ func formatArgs(raw json.RawMessage) string {
 			return string(raw)
 		}
 		var buf bytes.Buffer
-		json.Compact(&buf, v)
+		_ = json.Compact(&buf, v)
 		parts = append(parts, fmt.Sprintf("%v=%s", k, buf.String()))
 	}
 	return strings.Join(parts, ", ")

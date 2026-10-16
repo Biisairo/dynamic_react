@@ -48,7 +48,7 @@ func Example(d sets.Deps) inject.FunctionSet {
 			var args struct {
 				Command string `json:"command"`
 			}
-			json.Unmarshal(call.Args, &args)
+			_ = json.Unmarshal(call.Args, &args)
 			if call.Name == "bash" && strings.Contains(args.Command, "rm -rf") {
 				return core.BeforeOut{Call: call, ShortCircuit: &contract.ToolResult{CallID: call.ID, Status: contract.StatusError,
 					Content: []contract.Block{{Kind: contract.BlockText, Text: "blocked by example: rm -rf"}}}}, nil, nil

@@ -1,0 +1,44 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - staticcheck
+    - misspell
+    - unconvert
+    - gocritic
+  settings:
+    errcheck:
+      exclude-functions:
+        # 출력 실패는 되돌릴 방법이 없어 무시한다 (stdout·stderr·버퍼 쓰기).
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - io.WriteString
+        # 정리 단계의 실패는 앞선 결과를 바꾸지 않는다.
+        - (io.Closer).Close
+        - (*os.File).Close
+        - os.Remove
+        - os.RemoveAll
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        # !(a && b) 가 "[next] 하나만이 아님" 같은 조건의 뜻을 더 잘 드러낸다.
+        - -QF1001
+  exclusions:
+    rules:
+      # 테스트 도우미는 실패하면 뒤 단언에서 드러난다.
+      - path: (_test\.go|envtest/)
+        linters:
+          - errcheck
+      # 도구 에러 문구는 pi 도구 문안을 그대로 모델에 준다 (THIRD_PARTY_NOTICES).
+      - path: L2_harness/harness/tools/
+        text: ST1005
+        linters:
+          - staticcheck

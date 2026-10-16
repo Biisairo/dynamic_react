@@ -139,7 +139,7 @@ func (p *printer) release(first string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	io.WriteString(p.stderr, first)
-	p.stderr.Write(p.held.Bytes())
+	_, _ = p.stderr.Write(p.held.Bytes())
 	p.held = nil
 }
 
@@ -148,7 +148,7 @@ func (p *printer) finish() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.held != nil {
-		p.stderr.Write(p.held.Bytes())
+		_, _ = p.stderr.Write(p.held.Bytes())
 		p.held = nil
 	}
 	if p.wrote && p.last != '\n' {
@@ -161,7 +161,7 @@ func (p *printer) Observe(ev core.ObserverEvent) {
 	defer p.mu.Unlock()
 	if p.json {
 		b, _ := json.Marshal(toJSON(ev))
-		p.stdout.Write(append(b, '\n'))
+		_, _ = p.stdout.Write(append(b, '\n'))
 		return
 	}
 	if ev.Kind != core.ObsStreamEvent || ev.Stream == nil {

@@ -21,7 +21,7 @@ type tracer struct{ recs []inject.TraceRecord }
 func (t *tracer) Trace(r inject.TraceRecord) { t.recs = append(t.recs, r) }
 
 // run 은 set 의 step 하나를 dispatch 하고 결과와 트레이스를 돌려준다.
-func run(t *testing.T, set inject.FunctionSet, step core.Step, input any) (core.Result, error, inject.TraceRecord) {
+func run(t *testing.T, set inject.FunctionSet, step core.Step, input any) (core.Result, inject.TraceRecord, error) {
 	t.Helper()
 	tr := &tracer{}
 	d, err := inject.BindWith(inject.BindOptions{Tracer: tr}, injecttest.Fill(set))
@@ -30,7 +30,7 @@ func run(t *testing.T, set inject.FunctionSet, step core.Step, input any) (core.
 	}
 	f := injecttest.Facts{RunID: "r", Step: step, Seq: 1}
 	res, err := d.DispatchSource(context.Background(), step, input, f.View())
-	return res, err, tr.recs[0]
+	return res, tr.recs[0], err
 }
 
 func kinds(sigs []core.Signal) string {
@@ -67,7 +67,7 @@ func TestFirstDecisive(t *testing.T) {
 			return []inject.TurnFinishSignal{ctx.Settle()}
 		}),
 	)
-	res, err, _ := run(t, inject.FunctionSet{Name: "x", TurnFinish: fn}, core.StepTurnFinish, nil)
+	res, _, err := run(t, inject.FunctionSet{Name: "x", TurnFinish: fn}, core.StepTurnFinish, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestFirstDecisiveSkipsNextAndDropsIt(t *testing.T) {
 		return []inject.StreamEventSignal{ctx.Recall()}, nil
 	}
 	fn := combine.StreamEvent.FirstDecisive(next, recall)
-	res, _, tr := run(t, inject.FunctionSet{Name: "x", StreamEvent: fn}, core.StepStreamEvent, contract.StreamEvent{Kind: contract.EventStart})
+	res, tr, _ := run(t, inject.FunctionSet{Name: "x", StreamEvent: fn}, core.StepStreamEvent, contract.StreamEvent{Kind: contract.EventStart})
 	if kinds(res.Signals) != "[recall:]" || kinds(tr.Dropped) != "[next:n]" {
 		t.Fatalf("signals %s dropped %s", kinds(res.Signals), kinds(tr.Dropped))
 	}
@@ -97,7 +97,7 @@ func TestFirstDecisiveSkipsNextAndDropsIt(t *testing.T) {
 func TestFirstDecisiveAllNext(t *testing.T) {
 	var log []string
 	fn := combine.TurnFinish.FirstDecisive(fin(&log, "a", none), fin(&log, "b", none))
-	res, err, _ := run(t, inject.FunctionSet{Name: "x", TurnFinish: fn}, core.StepTurnFinish, nil)
+	res, _, err := run(t, inject.FunctionSet{Name: "x", TurnFinish: fn}, core.StepTurnFinish, nil)
 	if err != nil || res.Signals != nil || fmt.Sprint(log) != "[a b]" {
 		t.Fatalf("res %+v err %v log %v", res, err, log)
 	}
@@ -115,7 +115,7 @@ func TestErrorStops(t *testing.T) {
 		"bykind": combine.TurnFinish.ByKind([]core.SignalKind{core.SigStop}, failing, fin(&log, "after", none)),
 	} {
 		log = nil
-		_, err, _ := run(t, inject.FunctionSet{Name: "x", TurnFinish: fn}, core.StepTurnFinish, nil)
+		_, _, err := run(t, inject.FunctionSet{Name: "x", TurnFinish: fn}, core.StepTurnFinish, nil)
 		if !errors.Is(err, boom) || fmt.Sprint(log) != "[err]" {
 			t.Fatalf("%s: err %v log %v", name, err, log)
 		}
@@ -149,7 +149,7 @@ func TestByKind(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			log = nil
 			fn := combine.TurnFinish.ByKind(c.order, c.fns...)
-			res, err, tr := run(t, inject.FunctionSet{Name: "x", TurnFinish: fn}, core.StepTurnFinish, nil)
+			res, tr, err := run(t, inject.FunctionSet{Name: "x", TurnFinish: fn}, core.StepTurnFinish, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -191,7 +191,7 @@ func TestPipeRequest(t *testing.T) {
 			return req, nil, nil
 		}
 	}
-	res, err, _ := run(t, inject.FunctionSet{Name: "x", RequestFinalize: combine.RequestFinalize.Pipe(add(1), add(2), add(3))},
+	res, _, err := run(t, inject.FunctionSet{Name: "x", RequestFinalize: combine.RequestFinalize.Pipe(add(1), add(2), add(3))},
 		core.StepRequestFinalize, contract.Request{})
 	if err != nil || res.Output.(contract.Request).Options.MaxOutputTokens != 123 {
 		t.Fatalf("output %+v err %v", res.Output, err)
@@ -237,7 +237,7 @@ func TestConcat(t *testing.T) {
 		}
 	}
 	fn := combine.TurnStart.Concat(mk("a", false), mk("b", true), mk("c", true))
-	res, err, tr := run(t, inject.FunctionSet{Name: "x", TurnStart: fn}, core.StepTurnStart, nil)
+	res, tr, err := run(t, inject.FunctionSet{Name: "x", TurnStart: fn}, core.StepTurnStart, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestWrap(t *testing.T) {
 			r.Status = contract.StatusError
 			return r, s, err
 		})
-	res, err, _ := run(t, inject.FunctionSet{Name: "x", ToolExecute: fn}, core.StepToolExecute, contract.ToolCall{ID: "c1"})
+	res, _, err := run(t, inject.FunctionSet{Name: "x", ToolExecute: fn}, core.StepToolExecute, contract.ToolCall{ID: "c1"})
 	if err != nil || res.Output.(contract.ToolResult).Status != contract.StatusError || fmt.Sprint(log) != "[before:c1 inner after]" {
 		t.Fatalf("res %+v err %v log %v", res, err, log)
 	}
@@ -274,7 +274,7 @@ func TestWrap(t *testing.T) {
 		got = s.Reason
 		return nil
 	}, nil, nil)
-	if _, err, _ := run(t, inject.FunctionSet{Name: "x", RunSettled: settled}, core.StepRunSettled, core.Settle{Reason: core.SettleGuard}); err != nil || got != core.SettleGuard {
+	if _, _, err := run(t, inject.FunctionSet{Name: "x", RunSettled: settled}, core.StepRunSettled, core.Settle{Reason: core.SettleGuard}); err != nil || got != core.SettleGuard {
 		t.Fatalf("settled %v %s", err, got)
 	}
 }

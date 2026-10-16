@@ -60,7 +60,7 @@ type notes struct {
 func loadNotes(st inject.State, arg string) notes {
 	var n notes
 	if v, ok := st.Get("notes"); ok {
-		json.Unmarshal(v, &n)
+		_ = json.Unmarshal(v, &n)
 	}
 	if n.Arg != arg {
 		n = notes{Arg: arg}
@@ -85,7 +85,7 @@ func injectedIDs(f inject.Flow) map[string]bool {
 func inboxPending(st inject.State, c inject.Conv) bool {
 	consumed := 0
 	if raw, ok := st.Read(baseNamespace, keyInboxConsumed); ok {
-		json.Unmarshal(raw, &consumed)
+		_ = json.Unmarshal(raw, &consumed)
 	}
 	return len(c.Inbox()) > consumed
 }
@@ -216,7 +216,7 @@ func GoalSet(d sets.Deps, maxTurns int) inject.FunctionSet {
 			}
 			var p progress
 			if v, ok := ctx.State().Get("progress"); ok {
-				json.Unmarshal(v, &p)
+				_ = json.Unmarshal(v, &p)
 			}
 			if p.Arg != st.Arg {
 				p = progress{Arg: st.Arg}

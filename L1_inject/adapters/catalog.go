@@ -286,7 +286,7 @@ func (c *Client) fetchProvider(ctx context.Context, p Profile, provider, id stri
 		r := record{found: true}
 		for k, raw := range v.ModelInfo {
 			if strings.HasSuffix(k, ".context_length") {
-				json.Unmarshal(raw, &r.cw)
+				_ = json.Unmarshal(raw, &r.cw)
 			}
 		}
 		if v.Capabilities != nil {

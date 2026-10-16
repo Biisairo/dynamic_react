@@ -42,7 +42,7 @@ func CheckID(id string) error {
 // NewID 는 시간순 정렬 가능한 sessionID 다: 20060102-150405-<8 hex>. entropy 가 짧으면 0 으로 채운다.
 func NewID(now time.Time, entropy io.Reader) string {
 	var b [4]byte
-	io.ReadFull(entropy, b[:])
+	_, _ = io.ReadFull(entropy, b[:])
 	return now.UTC().Format("20060102-150405") + "-" + hex.EncodeToString(b[:])
 }
 

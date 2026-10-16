@@ -344,7 +344,7 @@ func (s *surface) toolBefore(inner inject.ToolBeforeFn) inject.ToolBeforeFn {
 		fl := ctx.Flow()
 		in := GateInput{RunID: fl.RunID(), SessionID: fl.SessionID(), TurnIndex: fl.TurnIndex(), Call: out.Call}
 		if raw, ok := ctx.State().Read(baseSetName, keyInboxConsumed); ok {
-			json.Unmarshal(raw, &in.InboxConsumed)
+			_ = json.Unmarshal(raw, &in.InboxConsumed)
 		}
 		if res := s.gate(ctx.Context(), in); res != nil {
 			r := *res

@@ -213,10 +213,10 @@ func (a *Agent) modeLocked(ctx context.Context, sid string) (*ModeStatus, []Mode
 	st := &ModeStatus{}
 	if ns, ok := sess.State[ModeNamespace]; ok {
 		if v, ok := ns.Values[keyModeActive]; ok {
-			json.Unmarshal(v, &st.Active)
+			_ = json.Unmarshal(v, &st.Active)
 		}
 		if v, ok := ns.Values[keyModeArg]; ok {
-			json.Unmarshal(v, &st.Arg)
+			_ = json.Unmarshal(v, &st.Arg)
 		}
 		if v, ok := ns.Values[keyModePending]; ok {
 			var p ModeRequest

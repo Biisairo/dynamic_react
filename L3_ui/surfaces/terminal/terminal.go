@@ -246,7 +246,7 @@ func (t *Terminal) view() view {
 			lines[i] = "  " + lines[i]
 		}
 	}
-	v.lines, v.line = append(above, lines...), line+len(above)
+	v.lines, v.line = append(above, lines...), line+len(above) //nolint:gocritic // above 는 이 뒤로 쓰지 않는다
 	v.col = col + 2
 	if line == 0 {
 		v.col = col + len([]rune(prompt))

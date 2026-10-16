@@ -55,7 +55,7 @@ func typeNames(raw json.RawMessage) []string {
 		return []string{one}
 	}
 	var many []string
-	json.Unmarshal(raw, &many)
+	_ = json.Unmarshal(raw, &many)
 	return many
 }
 

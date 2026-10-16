@@ -124,9 +124,10 @@ func parseIgnore(base, content string) []ignoreRule {
 			continue
 		}
 		r := ignoreRule{base: base}
-		if line[0] == '!' {
+		switch line[0] {
+		case '!':
 			r.negate, line = true, line[1:]
-		} else if line[0] == '\\' {
+		case '\\':
 			line = line[1:]
 		}
 		if strings.HasSuffix(line, "/") {

@@ -149,7 +149,7 @@ func (a *Agent) saveConfig(ctx context.Context, change func(top map[string]json.
 		return fmt.Errorf("agent: config: %s: %w", a.cfgPath, err)
 	}
 	var top map[string]json.RawMessage
-	json.Unmarshal(b, &top)
+	_ = json.Unmarshal(b, &top)
 	if top == nil {
 		top = map[string]json.RawMessage{}
 	}

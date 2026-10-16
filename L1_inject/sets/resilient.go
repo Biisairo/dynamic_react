@@ -237,7 +237,7 @@ func ResilientRunBeforeSettle(d Deps) inject.RunBeforeSettleFn {
 	return func(ctx *inject.RunBeforeSettleCtx) ([]inject.RunBeforeSettleSignal, error) {
 		consumed := 0
 		if raw, ok := ctx.State().Read(baseNamespace, keyInboxConsumed); ok {
-			json.Unmarshal(raw, &consumed)
+			_ = json.Unmarshal(raw, &consumed)
 		}
 		if len(ctx.Conv().Inbox()) > consumed {
 			return []inject.RunBeforeSettleSignal{ctx.ContinueTurn()}, nil

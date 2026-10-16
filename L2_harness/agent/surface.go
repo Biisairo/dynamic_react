@@ -255,7 +255,7 @@ func (a *Agent) target(call contract.ToolCall) (string, bool) {
 		Command string `json:"command"`
 		Path    string `json:"path"`
 	}
-	json.Unmarshal(call.Args, &args)
+	_ = json.Unmarshal(call.Args, &args)
 	switch call.Name {
 	case "bash":
 		return args.Command, true

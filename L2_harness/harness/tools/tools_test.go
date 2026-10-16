@@ -177,7 +177,7 @@ func TestRead(t *testing.T) {
 		res.Content[1].Image.MediaType != "image/png" || string(res.Content[1].Image.Data) != png || !strings.Contains(res.Content[0].Text, "image/png") {
 		t.Fatalf("image %+v", res)
 	}
-	for sig, mt := range map[string]string{"\xff\xd8\xff\xe0jfif": "image/jpeg", "GIF89a...": "image/gif", "RIFF\x00\x00\x00\x00WEBPVP8 ": "image/webp"} {
+	for sig, mt := range map[string]string{"\xff\xd8\xff\xe0jfif": "image/jpeg", "GIF89a...": "image/gif", "RIFF\x00\x00\x00\x00WEBPVP8 ": "image/webp"} { //nolint:gocritic // "VP8 " 의 공백은 WebP 형식의 일부다
 		e.SetFile("/w/img", sig)
 		if res := run(t, r, map[string]any{"path": "img"}); len(res.Content) != 2 || res.Content[1].Image.MediaType != mt {
 			t.Errorf("%s not detected", mt)

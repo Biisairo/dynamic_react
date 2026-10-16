@@ -127,7 +127,7 @@ func runWith(ctx context.Context, args []string, stderr io.Writer, h hooks) int 
 		fmt.Fprintf(stderr, "modes-example: %v\n", err)
 		return 1
 	}
-	defer restore()
+	defer func() { _ = restore() }()
 	t := terminal.New(terminal.Options{In: h.stdin, Out: h.stdout, Width: width, Color: !*noColor})
 	o := agent.Options{Cwd: *cwd, ConfigPath: *cfgPath, Model: *model, Sets: c.sets, Modes: c.modes(),
 		Approver: t.Approver(), OnEvent: t.OnEvent}
@@ -136,7 +136,7 @@ func runWith(ctx context.Context, args []string, stderr io.Writer, h hooks) int 
 	}
 	a, err := agent.New(ctx, o)
 	if err != nil {
-		restore()
+		_ = restore()
 		fmt.Fprintf(stderr, "modes-example: %v\n", err)
 		return 1
 	}
@@ -152,7 +152,7 @@ func runWith(ctx context.Context, args []string, stderr io.Writer, h hooks) int 
 		}
 	}()
 	err = t.Run(ctx, a, terminal.Start{})
-	restore()
+	_ = restore()
 	switch {
 	case err == nil:
 		return 0

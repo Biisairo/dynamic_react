@@ -424,7 +424,7 @@ func (t *Terminal) approvalView(a *approval) ([]string, int) {
 		lines = append(lines, "  "+l)
 	}
 	var m map[string]json.RawMessage
-	json.Unmarshal(a.req.Call.Args, &m)
+	_ = json.Unmarshal(a.req.Call.Args, &m)
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)

@@ -71,7 +71,7 @@ func runWith(ctx context.Context, args []string, stdin, stdout *os.File, stderr 
 		fmt.Fprintf(stderr, "dr: %v\n", err)
 		return 1
 	}
-	defer restore()
+	defer func() { _ = restore() }()
 	t := terminal.New(terminal.Options{In: stdin, Out: stdout, Width: width, Color: !*noColor})
 	o := agent.Options{Model: *model, Cwd: *cwd, ConfigPath: *config, Approver: t.Approver(), OnEvent: t.OnEvent}
 	if h.agentOptions != nil {
@@ -79,7 +79,7 @@ func runWith(ctx context.Context, args []string, stdin, stdout *os.File, stderr 
 	}
 	a, err := agent.New(ctx, o)
 	if err != nil {
-		restore()
+		_ = restore()
 		fmt.Fprintf(stderr, "dr: %v\n", err)
 		return 1
 	}
@@ -95,7 +95,7 @@ func runWith(ctx context.Context, args []string, stdin, stdout *os.File, stderr 
 		}
 	}()
 	err = t.Run(ctx, a, terminal.Start{Session: *session, Continue: *cont, Pick: *pick})
-	restore()
+	_ = restore()
 	switch {
 	case err == nil:
 		return 0

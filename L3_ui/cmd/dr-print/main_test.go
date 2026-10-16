@@ -153,8 +153,11 @@ func TestTextAndTools(t *testing.T) {
 	l3 := newLLM(t, toolReply("bash", `{"command":"`+long+`"}`), textReply("done"))
 	cwd = setup(t, l3)
 	r = call(t, context.Background(), "", "-cwd", cwd, "go")
-	line := r.stderr[strings.Index(r.stderr, "[tool]"):]
-	line = line[:strings.Index(line, "\n")]
+	_, after, ok := strings.Cut(r.stderr, "[tool]")
+	if !ok {
+		t.Fatalf("no tool line: %q", r.stderr)
+	}
+	line, _, _ := strings.Cut("[tool]"+after, "\n")
 	if !strings.HasSuffix(line, "…") || len(line) > len("[tool] bash ")+200+len("…") {
 		t.Fatalf("tool args not truncated: %q", line)
 	}

@@ -172,7 +172,7 @@ func runInteractive(ctx context.Context, o agent.Options, color bool, stderr io.
 		fmt.Fprintf(stderr, "verify-example: %v\n", err)
 		return 1
 	}
-	defer restore()
+	defer func() { _ = restore() }()
 	t := terminal.New(terminal.Options{In: h.stdin, Out: h.stdout, Width: width, Color: color})
 	o.Approver, o.OnEvent = t.Approver(), t.OnEvent
 	if h.agentOptions != nil {
@@ -180,7 +180,7 @@ func runInteractive(ctx context.Context, o agent.Options, color bool, stderr io.
 	}
 	a, err := agent.New(ctx, o)
 	if err != nil {
-		restore()
+		_ = restore()
 		fmt.Fprintf(stderr, "verify-example: %v\n", err)
 		return 1
 	}
@@ -196,7 +196,7 @@ func runInteractive(ctx context.Context, o agent.Options, color bool, stderr io.
 		}
 	}()
 	err = t.Run(ctx, a, terminal.Start{})
-	restore()
+	_ = restore()
 	switch {
 	case err == nil:
 		return 0

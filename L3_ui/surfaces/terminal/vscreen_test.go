@@ -21,7 +21,7 @@ type vscreen struct {
 func newVScreen(w int) *vscreen { return &vscreen{w: w, rows: [][]rune{nil}} }
 
 func (v *vscreen) Write(b []byte) (int, error) {
-	data := append(v.pend, b...)
+	data := append(v.pend, b...) //nolint:gocritic // v.pend 은 바로 비운다
 	v.pend = nil
 	for len(data) > 0 {
 		if data[0] == 0x1b {
