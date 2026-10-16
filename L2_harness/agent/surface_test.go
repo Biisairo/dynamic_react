@@ -256,6 +256,18 @@ func TestToolsLimit(t *testing.T) {
 	}
 }
 
+// AG-FR-21: 설정 agent 가 null 이면 {} 로 본다 (LINT-REPORT #1).
+func TestToolsLimitNullAgent(t *testing.T) {
+	f := setup(t)
+	l := newLLM(t, textReply("ok"))
+	f.writeConfig(t, strings.Replace(testConfig(l.URL, ""), `"agent":{"model":{"provider":"test","id":"m"}}`, `"agent":null`, 1))
+	o := f.opts()
+	o.Tools = []string{"read"}
+	if _, err := agent.New(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func multiTool(calls ...[2]string) string {
 	var parts []string
 	for i, c := range calls {

@@ -215,7 +215,7 @@ func limitTools(raw json.RawMessage, limit, registry []string) (json.RawMessage,
 		return nil, errors.New("no tool left after applying the limit")
 	}
 	var m map[string]json.RawMessage
-	json.Unmarshal(raw, &m) //nolint:errcheck // LINT-REPORT #1
+	_ = json.Unmarshal(raw, &m)
 	m["tools"], _ = json.Marshal(names)
 	return json.Marshal(m)
 }
@@ -289,7 +289,7 @@ func withModel(raw json.RawMessage, provider, id string) (json.RawMessage, error
 
 // agentConfig 는 AG-FR-04·05 다: 모델을 덮은 sets 설정 raw 와 "provider/id" (모델이 없으면 "").
 func agentConfig(raw json.RawMessage, override string) (json.RawMessage, string, error) {
-	if len(raw) == 0 {
+	if len(raw) == 0 || string(raw) == "null" {
 		raw = json.RawMessage(`{}`)
 	}
 	if override != "" {

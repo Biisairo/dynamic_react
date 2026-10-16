@@ -28,4 +28,4 @@
 | [GOALS](GOALS.md) | 목표(G1~G6)와 개선 목록입니다. 남은 항목은 모두 `보류` 상태입니다. |
 | [VERIFY-22step](VERIFY-22step.md) | Hermes, pi, oh-my-pi 의 기능을 22 step 과 신호로 표현할 수 있는지 하나씩 대조한 표입니다. |
 | [SRS-portfolio](SRS-portfolio.md) | 저장소를 공개용으로 정비한 작업의 요구사항입니다. |
-| [LINT-REPORT](LINT-REPORT.md) | 린트를 도입하면서 지적을 처리한 결과입니다. 결정을 기다리는 항목이 하나 있습니다. |
+| [LINT-REPORT](LINT-REPORT.md) | 린트를 도입하면서 지적을 처리한 결과입니다. 동작을 바꾼 수정 1건의 기록도 있습니다. |

@@ -12,19 +12,22 @@
 | 무시를 명시 (`_ =`) | 30 | 실패하면 0 값이나 기본값으로 진행하는 기존 동작을 그대로 두고, 무시한다는 의도만 코드에 드러냈다 |
 | 동작 보존 수정 | 4 | `switch` 로 바꿈(QF1003), 테스트 도우미 반환 순서 변경(ST1008, 호출 11곳 포함), 테스트의 `strings.Index` 를 `strings.Cut` 으로 바꿈(offBy1 2건) |
 | 오탐으로 표시 (`nolint` + 이유) | 4 | `append` 결과를 다른 변수에 담는 의도된 코드 3건, WebP 시그니처의 공백 1건 |
-| 결정 대기 (`nolint` + 이 문서 번호) | 1 | 아래 2장 |
+| 사용자 결정 뒤 수정 | 1 | 아래 2장 |
 
-## 2. 결정 대기 항목
+## 2. 사용자 결정 항목
 
 ### #1 `L2_harness/agent/agent.go:218` — `limitTools` 의 nil 맵 대입
 
 - 린터: errcheck (`json.Unmarshal` 반환값 무시)
 - 현상: `raw` 가 JSON `null` 이면 앞의 구조체 디코딩은 성공한다. 그런데 `m` 이 nil 맵으로 남아서 다음 줄 `m["tools"] = ...` 에서 panic 이 난다.
 - 재현: `limitTools([]byte("null"), []string{"bash"}, []string{"bash"})` 를 부르면 `assignment to entry in nil map` panic 이 난다 (함수 단위로 확인).
-- 미확인: 사용자 설정(`"agent": null`)에서 이 경로까지 도달하는지는 확인하지 않았다. `agentConfig` 는 길이 0 만 `{}` 로 바꾸고 `null` 은 바꾸지 않는다.
-- 고치면 바뀌는 동작: 지금은 panic 이 나지만, 고친 뒤에는 에러를 반환하거나 `{}` 로 취급하게 된다.
-- 권장: `null` 을 `{}` 로 취급한다 (`agentConfig` 의 길이 0 처리와 같은 규칙). 회귀 테스트도 함께 추가한다.
-- 상태: 결정 대기
+- 도달 경로: 사용자 설정이 `"agent": null` 이고 `agent.Options.Tools` 를 지정하면 `agent.New` 에서 panic 이 난다 (회귀 테스트로 확인). `agentConfig` 는 길이 0 만 `{}` 로 바꾸고 `null` 은 바꾸지 않았다.
+- 결정: 권장안대로 `null` 을 `{}` 로 취급한다 (2026-10-16).
+- 이전 동작: `agent.New` 가 panic 한다.
+- 새 동작: `"agent": null` 을 `"agent": {}` 와 같게 처리하고, `New` 가 성공한다.
+- 이유: 길이 0 인 값과 `null` 은 둘 다 "설정 없음"이다. 같은 규칙을 적용해야 한다.
+- 수정: `agentConfig` 에서 `null` 을 `{}` 로 바꾸고, `limitTools` 의 `nolint` 를 `_ =` 로 바꿨다. 회귀 테스트는 `TestToolsLimitNullAgent` 다.
+- 상태: 해소
 
 ## 3. 의도를 유지한 항목 (참고)
 
