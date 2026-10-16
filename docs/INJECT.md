@@ -283,7 +283,7 @@ msg, err := sets.AuxOf(d).Complete(ctx.Context(), ctx.Env().Config(), "goal_judg
 cd examples/inject && go run . "질문"          # 플래그: -model provider/id, -cwd, -config
 ```
 
-설정·키는 dr 과 같은 `~/.dynamic_react/config.json`·`auth.json` 을 쓴다. 테스트는 httptest 가짜 서버로 두 효과와 base 검사 유지를 확인한다. deepseek(`deepseek/deepseek-flash`)로 실제 확인한 결과는 [`docs/history/HANDOFF-impl-07.md`](history/HANDOFF-impl-07.md) 에 있다.
+설정·키는 dr 과 같은 `~/.dynamic_react/config.json`·`auth.json` 을 쓴다. 테스트는 httptest 가짜 서버로 두 효과와 base 검사 유지를 확인한다. deepseek(`deepseek/deepseek-flash`)로도 실제로 확인했다.
 
 | 예시 | 보여 주는 것 | 실행 |
 |---|---|---|

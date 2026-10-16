@@ -256,7 +256,7 @@ func TestToolsLimit(t *testing.T) {
 	}
 }
 
-// AG-FR-21: 설정 agent 가 null 이면 {} 로 본다 (LINT-REPORT #1).
+// AG-FR-21: 설정 agent 가 null 이면 {} 로 본다.
 func TestToolsLimitNullAgent(t *testing.T) {
 	f := setup(t)
 	l := newLLM(t, textReply("ok"))
